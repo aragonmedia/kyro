@@ -1,9 +1,19 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
+        // Semantic theme tokens — flip between light/dark via CSS vars (see index.css)
+        app: 'rgb(var(--app) / <alpha-value>)',
+        surface: 'rgb(var(--surface) / <alpha-value>)',
+        'surface-2': 'rgb(var(--surface-2) / <alpha-value>)',
+        line: 'rgb(var(--line) / <alpha-value>)',
+        heading: 'rgb(var(--heading) / <alpha-value>)',
+        body: 'rgb(var(--body) / <alpha-value>)',
+        muted: 'rgb(var(--muted) / <alpha-value>)',
+        faint: 'rgb(var(--faint) / <alpha-value>)',
         kyro: {
           50: '#f8f6ff',
           100: '#f0ebff',

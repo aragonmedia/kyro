@@ -4,6 +4,34 @@ All notable changes since the initial Vercel deploy.
 
 ---
 
+## v0.3.0 — Light/dark theming, rebuilt landing, Admin analytics
+
+### 🌗 Light + dark theme system
+- New `src/lib/theme.tsx` — `ThemeProvider` + `useTheme()` hook. Dark is default; a `.light` class on `<html>` flips the palette. Choice persisted to `localStorage`.
+- Semantic theme tokens in `tailwind.config.js` + `index.css` (`bg-app`, `bg-surface`, `bg-surface-2`, `border-line`, `text-heading`, `text-body`, `text-muted`, `text-faint`) backed by CSS variables.
+- Entire app converted from hardcoded slate classes to tokens — every screen now renders correctly in both themes.
+- Theme toggle in the landing nav (sun/moon) + an **Appearance** control (Light/Dark) in Account Settings.
+
+### 🚀 Rebuilt landing page (Trybe-aligned)
+- Floating pill nav, gradient hero, brand row, 3-step how-it-works, 9-tile feature grid, testimonials, CTA, footer — all theme-aware.
+
+### 📊 Admin analytics command center
+- Rebuilt Admin dashboard: KPI row with deltas (revenue, spend, orders, blended ROAS), a hand-rolled Revenue-vs-Spend bar chart, spend-by-brand breakdown, a brand performance table, top creators, platform health, reconciliation, pool health, and curation queue. No new dependencies.
+
+### 🔐 Real sign-in + email OTP
+- New `SignIn` screen replaces the demo role-picker jump: email → 6-digit code → verify. Auto-advancing/paste-friendly OTP boxes, resend countdown, "use a different email".
+- `lib/supabase.ts` gains `sendEmailOtp` / `verifyEmailOtp` (Supabase `signInWithOtp` / `verifyOtp`). Real codes send once Supabase env vars are set; until then it runs in demo mode (any 6 digits) so the flow is fully clickable.
+- After verify: normal users pick a workspace (brand/creator/admin); admins go straight to the analytics dashboard.
+
+### 🧭 Routing + `/admin`
+- Lightweight path routing: visiting `/admin` opens the admin sign-in and lands on the analytics dashboard; `/signin` opens normal sign-in. Browser back/forward supported.
+- `vercel.json` adds an SPA rewrite so deep links like `/admin` resolve on Vercel.
+
+### 📎 Reference
+- `docs/TRYBE_REFERENCE.md` — captured Trybe design system + IA.
+
+---
+
 ## v0.2.0 — Trybe-aligned, real brands, public profiles, API scaffolding
 
 ### 🎨 Branding

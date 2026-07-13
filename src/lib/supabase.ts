@@ -67,6 +67,36 @@ export async function signIn(email: string, password: string) {
   return { user: data.user, error };
 }
 
+/**
+ * Passwordless email OTP — step 1: send a 6-digit code to the email.
+ * Real when Supabase is configured; `demo: true` signals the caller to
+ * run the demo flow (no real email sent).
+ *
+ * NOTE for V1: in the Supabase dashboard, set the "Magic Link" email
+ * template to send `{{ .Token }}` so users receive a 6-digit code
+ * instead of a magic link.
+ */
+export async function sendEmailOtp(email: string): Promise<{ error: Error | null; demo: boolean }> {
+  const supabase = getSupabase();
+  if (!supabase) return { error: null, demo: true };
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: true },
+  });
+  return { error, demo: false };
+}
+
+/** Passwordless email OTP — step 2: verify the 6-digit code. */
+export async function verifyEmailOtp(
+  email: string,
+  token: string
+): Promise<{ error: Error | null; demo: boolean }> {
+  const supabase = getSupabase();
+  if (!supabase) return { error: null, demo: true };
+  const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
+  return { error, demo: false };
+}
+
 export async function signOut() {
   const supabase = getSupabase();
   if (!supabase) return;

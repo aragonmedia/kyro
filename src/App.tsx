@@ -1,14 +1,54 @@
 import {
-  Menu, X, ArrowRight, Play, Star, TrendingUp, Zap, DollarSign, BarChart3,
+  Menu, X, ArrowRight, Star, TrendingUp, Zap, DollarSign,
   CheckCircle, Clock, Briefcase, Camera, Shield, ChevronRight,
   Plus, Upload, Eye, Users, Wallet, FileVideo, AlertCircle, Activity,
   Sparkles, Bell, LogOut, Filter, Search, ExternalLink, Award, Target,
   ArrowUpRight, RefreshCw, MessageSquare, Globe, Mail, Trophy, Hash,
   Instagram, Youtube, ShieldCheck, Cpu, Layers, Heart,
-  ChevronLeft, Share2
+  ChevronLeft, Share2, Sun, Moon, BarChart3, PieChart, Calendar, ArrowDownRight
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { mockApi } from './lib/api';
+import { useTheme } from './lib/theme';
+import { sendEmailOtp, verifyEmailOtp } from './lib/supabase';
+
+/* ─────────────────────────────────────────────────────────────
+   THEME TOGGLE — shared control (landing nav + settings)
+   ───────────────────────────────────────────────────────────── */
+function ThemeToggle({ className = '' }: { className?: string }) {
+  const { theme, toggle } = useTheme();
+  return (
+    <button
+      onClick={toggle}
+      title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+      aria-label="Toggle theme"
+      className={`p-2 rounded-lg text-muted hover:text-heading hover:bg-surface-2 transition ${className}`}
+    >
+      {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+    </button>
+  );
+}
+
+function ThemeSegmented() {
+  const { theme, setTheme } = useTheme();
+  const opts = [
+    { val: 'light' as const, Icon: Sun, label: 'Light' },
+    { val: 'dark' as const, Icon: Moon, label: 'Dark' },
+  ];
+  return (
+    <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg">
+      {opts.map(({ val, Icon, label }) => (
+        <button
+          key={val}
+          onClick={() => setTheme(val)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition ${theme === val ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}
+        >
+          <Icon size={14} /> {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /* ─────────────────────────────────────────────────────────────
    KYRO LOGO — image-based, matches uploaded asset
@@ -275,7 +315,7 @@ function StatusPill({ status }: { status: string }) {
     approved: { label: 'Approved', cls: 'bg-purple-400/15 text-purple-300 border-purple-400/30' },
     paid: { label: 'Paid', cls: 'bg-emerald-400/15 text-emerald-300 border-emerald-400/30' },
   };
-  const it = map[status] || { label: status, cls: 'bg-slate-700 text-slate-300 border-slate-600' };
+  const it = map[status] || { label: status, cls: 'bg-line text-body border-line' };
   return <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${it.cls}`}>{it.label}</span>;
 }
 
@@ -283,7 +323,7 @@ function BrandLogo({ brandId, size = 40 }: { brandId: BrandId; size?: number }) 
   const brand = BRANDS[brandId];
   return (
     <div
-      className="rounded-lg bg-slate-800/60 border border-slate-700/50 flex items-center justify-center overflow-hidden flex-shrink-0"
+      className="rounded-lg bg-surface-2 border border-line flex items-center justify-center overflow-hidden flex-shrink-0"
       style={{ width: size, height: size }}
     >
       <img
@@ -293,7 +333,7 @@ function BrandLogo({ brandId, size = 40 }: { brandId: BrandId; size?: number }) 
         onError={(e) => {
           // Fallback to letter avatar if logo missing
           e.currentTarget.style.display = 'none';
-          e.currentTarget.parentElement!.innerHTML = `<span class="text-sm font-bold text-white">${brand.name.charAt(0)}</span>`;
+          e.currentTarget.parentElement!.innerHTML = `<span class="text-sm font-bold text-heading">${brand.name.charAt(0)}</span>`;
         }}
       />
     </div>
@@ -306,251 +346,159 @@ function BrandLogo({ brandId, size = 40 }: { brandId: BrandId; size?: number }) 
 function Landing({ onSignIn, onAbout }: { onSignIn: () => void; onAbout: () => void }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-      <nav className="fixed w-full top-0 z-50 backdrop-blur-md bg-slate-950/80 border-b border-slate-800/50">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-2.5">
-              <KyroLogo size={36} />
-              <span className="text-2xl font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
-              <span className="hidden md:inline text-slate-500 text-sm border-l border-slate-700 pl-3 ml-1">The Creator Growth Portal</span>
-            </div>
-            <div className="hidden md:flex items-center gap-8">
-              <a href="#creators" className="text-slate-300 hover:text-white transition-colors font-medium">For Creators</a>
-              <a href="#brands" className="text-slate-300 hover:text-white transition-colors font-medium">For Brands</a>
-              <button onClick={onAbout} className="text-slate-300 hover:text-white transition-colors font-medium">About</button>
-            </div>
-            <div className="hidden md:flex items-center gap-3">
-              <button onClick={onSignIn} className="px-5 py-2 text-slate-300 hover:text-white transition-colors font-medium">Sign In</button>
-              <button onClick={onSignIn} className="px-5 py-2 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105">
-                Start for Free
-              </button>
-            </div>
-            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-white p-1">
-              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+    <div className="min-h-screen bg-app text-body">
+      {/* Floating pill nav — Trybe-style */}
+      <nav className="fixed inset-x-0 top-4 z-50 px-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4 rounded-full border border-line bg-surface/80 backdrop-blur-md pl-5 pr-3 py-2.5 shadow-lg shadow-black/5">
+          <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2.5 shrink-0">
+            <KyroLogo size={30} />
+            <span className="text-xl font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
+          </button>
+          <div className="hidden md:flex items-center gap-7 text-sm font-medium">
+            <a href="#creators" className="text-body hover:text-heading transition-colors">For Creators</a>
+            <a href="#brands" className="text-body hover:text-heading transition-colors">For Brands</a>
+            <button onClick={onAbout} className="text-body hover:text-heading transition-colors">About</button>
+          </div>
+          <div className="hidden md:flex items-center gap-1.5">
+            <ThemeToggle />
+            <button onClick={onSignIn} className="px-4 py-2 text-sm font-semibold text-body hover:text-heading transition-colors">Sign In</button>
+            <button onClick={onSignIn} className="px-5 py-2 bg-gradient-kyro rounded-full text-white text-sm font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105">Get Started</button>
+          </div>
+          <div className="md:hidden flex items-center gap-1">
+            <ThemeToggle />
+            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-heading">
+              {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
           </div>
-          {mobileMenuOpen && (
-            <div className="md:hidden pb-5 space-y-1 border-t border-slate-800/50 pt-4">
-              <a href="#creators" className="block text-slate-300 hover:text-white transition py-2.5 font-medium">For Creators</a>
-              <a href="#brands" className="block text-slate-300 hover:text-white transition py-2.5 font-medium">For Brands</a>
-              <button onClick={onAbout} className="block w-full text-left text-slate-300 hover:text-white transition py-2.5 font-medium">About</button>
-              <div className="pt-3 space-y-2">
-                <button onClick={onSignIn} className="w-full px-4 py-2.5 text-white border border-slate-700 rounded-lg hover:bg-slate-800/50 transition font-medium">Sign In</button>
-                <button onClick={onSignIn} className="w-full px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg transition">Start for Free</button>
-              </div>
-            </div>
-          )}
         </div>
+        {mobileMenuOpen && (
+          <div className="md:hidden max-w-5xl mx-auto mt-2 rounded-2xl border border-line bg-surface/95 backdrop-blur-md p-4 space-y-1 shadow-lg">
+            <a href="#creators" className="block py-2.5 text-body hover:text-heading font-medium">For Creators</a>
+            <a href="#brands" className="block py-2.5 text-body hover:text-heading font-medium">For Brands</a>
+            <button onClick={onAbout} className="block w-full text-left py-2.5 text-body hover:text-heading font-medium">About</button>
+            <div className="pt-2 space-y-2">
+              <button onClick={onSignIn} className="w-full px-4 py-2.5 border border-line rounded-lg text-heading font-semibold hover:bg-surface-2 transition">Sign In</button>
+              <button onClick={onSignIn} className="w-full px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold transition">Get Started</button>
+            </div>
+          </div>
+        )}
       </nav>
 
-      <section className="pt-40 pb-20 px-4 sm:px-6 lg:px-8">
+      {/* Hero */}
+      <section className="pt-36 md:pt-44 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center space-y-8">
-          <div className="space-y-5">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-slate-800/60 border border-slate-700/60 rounded-full">
-              <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
-              <span className="text-sm text-slate-300 font-medium">Now live — join for free</span>
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-surface-2 border border-line rounded-full">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+              <span className="text-sm text-muted font-medium">Now live — join for free</span>
             </div>
             <h1 className="text-6xl md:text-7xl lg:text-8xl font-bold leading-[1.05] tracking-tight">
               <span className="bg-gradient-kyro bg-clip-text text-transparent">The New Way</span><br />
               <span className="bg-gradient-kyro bg-clip-text text-transparent">to Scale</span>
             </h1>
-            <p className="text-xl md:text-2xl text-slate-300 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-xl md:text-2xl text-muted max-w-2xl mx-auto leading-relaxed">
               Creators scale their performance. Brands scale their impact.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button onClick={onSignIn} className="px-8 py-4 bg-gradient-kyro rounded-xl text-white font-semibold flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105 text-lg">
+            <button onClick={onSignIn} className="px-8 py-4 bg-gradient-kyro rounded-full text-white font-semibold flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105 text-lg">
               Join KYRO Free <ArrowRight size={20} />
             </button>
           </div>
-          <div className="flex items-center justify-center gap-10 pt-2">
-            <div className="text-center"><p className="text-3xl font-bold text-white">15K+</p><p className="text-slate-400 text-sm mt-0.5">Creators</p></div>
-            <div className="w-px h-10 bg-slate-700"></div>
-            <div className="text-center"><p className="text-3xl font-bold text-white">600+</p><p className="text-slate-400 text-sm mt-0.5">Brands</p></div>
-            <div className="w-px h-10 bg-slate-700"></div>
-            <div className="text-center"><p className="text-3xl font-bold text-white">$3M+</p><p className="text-slate-400 text-sm mt-0.5">Paid to Creators</p></div>
+          <div className="flex items-center justify-center gap-8 sm:gap-10 pt-2">
+            <div className="text-center"><p className="text-3xl font-bold text-heading">15K+</p><p className="text-muted text-sm mt-0.5">Creators</p></div>
+            <div className="w-px h-10 bg-line"></div>
+            <div className="text-center"><p className="text-3xl font-bold text-heading">600+</p><p className="text-muted text-sm mt-0.5">Brands</p></div>
+            <div className="w-px h-10 bg-line"></div>
+            <div className="text-center"><p className="text-3xl font-bold text-heading">$3M+</p><p className="text-muted text-sm mt-0.5">Paid to Creators</p></div>
           </div>
         </div>
       </section>
 
-      {/* Brand carousel (Trybe-style) */}
-      <section className="px-4 sm:px-6 lg:px-8 pb-16">
-        <div className="max-w-6xl mx-auto">
-          <p className="text-center text-sm font-semibold text-slate-500 uppercase tracking-widest mb-8">
+      {/* Brand row */}
+      <section className="px-4 sm:px-6 lg:px-8 pb-20">
+        <div className="max-w-5xl mx-auto">
+          <p className="text-center text-sm font-semibold text-faint uppercase tracking-widest mb-8">
             The fastest growing consumer brands choose KYRO
           </p>
-          <div className="relative overflow-hidden">
-            <div className="flex items-center gap-12 justify-center flex-wrap">
-              {(Object.values(BRANDS)).map((b) => (
-                <div key={b.id} className="flex items-center gap-3 opacity-70 hover:opacity-100 transition">
-                  <img
-                    src={b.logo}
-                    alt={b.name}
-                    className="h-10 w-10 object-contain rounded-lg bg-slate-900/40 p-1 border border-slate-800"
-                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                  />
-                  <span className="text-slate-300 font-semibold">{b.name}</span>
-                </div>
-              ))}
-            </div>
+          <div className="flex items-center gap-10 justify-center flex-wrap">
+            {Object.values(BRANDS).map((b) => (
+              <div key={b.id} className="flex items-center gap-3 opacity-70 hover:opacity-100 transition">
+                <img src={b.logo} alt={b.name} className="h-9 w-9 object-contain rounded-lg bg-surface-2 p-1 border border-line" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                <span className="text-body font-semibold">{b.name}</span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      <section className="px-4 sm:px-6 lg:px-8 pb-24">
+      {/* How it works */}
+      <section id="how-it-works" className="py-20 px-4 sm:px-6 lg:px-8 border-t border-line">
         <div className="max-w-6xl mx-auto">
-          <div className="relative w-full rounded-2xl overflow-hidden border border-slate-700/60 bg-slate-900 group cursor-pointer" style={{ aspectRatio: '16/7' }}>
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-900/40 via-purple-900/30 to-pink-900/40"></div>
-            <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl"></div>
-            <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-pink-500/20 rounded-full blur-3xl"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-full max-w-3xl px-8 grid grid-cols-3 gap-4 opacity-30">
-                {[...Array(6)].map((_, i) => (<div key={i} className="h-16 bg-slate-600/60 rounded-lg"></div>))}
+          <div className="text-center mb-14"><h2 className="text-4xl md:text-5xl font-bold text-heading">How KYRO Works</h2></div>
+          <div className="grid md:grid-cols-3 gap-5">
+            {[
+              { num: '01', id: 'creators', title: 'Creators join brands', desc: 'Creators discover brands they love and join their creator program in one tap.', icon: Heart },
+              { num: '02', id: 'brands', title: 'Brands launch on Meta', desc: 'Approved creator videos run as whitelisted Meta ads — at scale, in minutes.', icon: Zap },
+              { num: '03', id: 'earn', title: 'Performance pays out', desc: 'Real-time analytics track every order. Payouts run on auto-pilot via Trolley.', icon: DollarSign },
+            ].map((s) => (
+              <div key={s.num} id={s.id} className="relative overflow-hidden rounded-3xl border border-line bg-surface p-8 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-4xl font-bold bg-gradient-kyro bg-clip-text text-transparent">{s.num}</span>
+                  <div className="w-11 h-11 rounded-xl bg-gradient-kyro flex items-center justify-center"><s.icon size={20} className="text-white" /></div>
+                </div>
+                <h3 className="text-2xl font-bold text-heading">{s.title}</h3>
+                <p className="text-muted leading-relaxed">{s.desc}</p>
               </div>
-            </div>
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-              <div className="w-20 h-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full flex items-center justify-center group-hover:bg-white/20 group-hover:scale-110 transition duration-300">
-                <Play size={32} className="text-white ml-1" fill="white" />
-              </div>
-              <p className="text-white font-semibold text-lg tracking-wide">Watch Demo</p>
-            </div>
-            <div className="absolute bottom-4 right-4 px-3 py-1 bg-black/60 backdrop-blur-sm rounded-md text-xs text-slate-300 font-mono">2:34</div>
+            ))}
           </div>
         </div>
       </section>
 
-      <section id="how-it-works" className="py-24 px-4 sm:px-6 lg:px-8 border-t border-slate-800/50">
-        <div className="max-w-6xl mx-auto space-y-8">
-          <div className="text-center mb-16"><h2 className="text-5xl md:text-6xl font-bold text-white mb-4">How KYRO Works</h2></div>
-
-          <div id="creators" className="relative overflow-hidden rounded-3xl border border-slate-700/50 bg-slate-900/60 p-8 md:p-12">
-            <div className="absolute top-0 left-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
-            <div className="relative z-10 flex flex-col lg:flex-row gap-10 items-start">
-              <div className="flex-1 space-y-4 min-w-0">
-                <span className="text-5xl font-bold bg-gradient-kyro bg-clip-text text-transparent">01</span>
-                <h3 className="text-3xl md:text-4xl font-bold text-white">Creators join brands</h3>
-                <p className="text-lg text-slate-400 max-w-md leading-relaxed">Creators discover brands they love and join their creator program in one tap.</p>
-              </div>
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
-                {[
-                  { label: 'Creator Ads', status: 'Ads built', icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-                  { label: 'Whitelisting', status: 'Live', icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-                  { label: 'Launching to Meta', status: 'Live', icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-                  { label: 'Scaling', status: 'Pending', icon: Clock, color: 'text-amber-400', bg: 'bg-amber-400/10 border-amber-400/20' },
-                ].map((item, i) => (
-                  <div key={i} className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border bg-slate-800/50 ${item.bg}`}>
-                    <item.icon size={18} className={item.color} />
-                    <div><p className="text-xs text-slate-400">{item.label}</p><p className={`text-sm font-semibold ${item.color}`}>{item.status}</p></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div id="brands" className="relative overflow-hidden rounded-3xl border border-slate-700/50 bg-slate-900/60 p-8 md:p-12">
-            <div className="absolute top-0 right-0 w-80 h-80 bg-pink-500/10 rounded-full blur-3xl translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
-            <div className="relative z-10 flex flex-col lg:flex-row gap-10 items-start">
-              <div className="flex-1 space-y-4 min-w-0">
-                <span className="text-5xl font-bold bg-gradient-kyro bg-clip-text text-transparent">02</span>
-                <h3 className="text-3xl md:text-4xl font-bold text-white">Brands launch ads on Meta</h3>
-                <p className="text-lg text-slate-400 max-w-md leading-relaxed">Brands run creator submissions as Meta ads — at scale, in minutes.</p>
-                <div className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-5 mt-4">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-4">Top Products</p>
-                  <div className="space-y-3">
-                    {[
-                      { name: 'Hero Tonic — 16oz', amount: '$4.5K', pct: 80 },
-                      { name: 'Recovery Wear Set', amount: '$3.1K', pct: 55 },
-                      { name: 'Activewear Capsule', amount: '$1.9K', pct: 34 },
-                    ].map((p, i) => (
-                      <div key={i} className="space-y-1">
-                        <div className="flex justify-between text-sm"><span className="text-white font-medium">{p.name}</span><span className="text-blue-400 font-semibold">{p.amount}</span></div>
-                        <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden"><div className="h-full bg-gradient-kyro rounded-full" style={{ width: `${p.pct}%` }}></div></div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
-                <div className="sm:col-span-2 flex items-center gap-4 px-5 py-4 rounded-xl bg-emerald-400/10 border border-emerald-400/20">
-                  <DollarSign size={28} className="text-emerald-400 flex-shrink-0" />
-                  <div><p className="text-xs text-slate-400">Earnings</p><p className="text-2xl font-bold text-emerald-400">$12.4K <span className="text-base text-emerald-300/70">+ $1.8K pending</span></p></div>
-                  <span className="ml-auto text-xs font-semibold px-2.5 py-1 bg-emerald-400/20 text-emerald-300 rounded-full">Paid</span>
-                </div>
-                <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-blue-400/10 border border-blue-400/20"><TrendingUp size={18} className="text-blue-400" /><div><p className="text-xs text-slate-400">Orders</p><p className="text-lg font-bold text-blue-400">+18%</p></div></div>
-                <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-purple-400/10 border border-purple-400/20"><BarChart3 size={18} className="text-purple-400" /><div><p className="text-xs text-slate-400">Active Ads</p><p className="text-lg font-bold text-purple-400">24 running</p></div></div>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-3xl border border-slate-700/50 bg-slate-900/60 p-8 md:p-12">
-            <div className="absolute bottom-0 left-1/2 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl -translate-x-1/2 translate-y-1/2 pointer-events-none"></div>
-            <div className="relative z-10 flex flex-col lg:flex-row gap-10 items-start">
-              <div className="flex-1 space-y-4 min-w-0">
-                <span className="text-5xl font-bold bg-gradient-kyro bg-clip-text text-transparent">03</span>
-                <h3 className="text-3xl md:text-4xl font-bold text-white">Performance-based earnings</h3>
-                <p className="text-lg text-slate-400 max-w-md leading-relaxed">Payouts on auto-pilot. Real-time earnings and analytics for ultimate transparency.</p>
-              </div>
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
-                {[
-                  { label: 'Real-time Analytics', status: 'Active', icon: BarChart3, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-                  { label: 'Auto Payouts', status: 'Enabled', icon: Zap, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-                  { label: 'Transparency', status: '100%', icon: CheckCircle, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-                ].map((item, i) => (
-                  <div key={i} className={`flex flex-col gap-3 p-5 rounded-xl border ${item.bg}`}>
-                    <item.icon size={22} className={item.color} />
-                    <div><p className="text-xs text-slate-400 mb-1">{item.label}</p><p className={`text-xl font-bold ${item.color}`}>{item.status}</p></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Feature grid — Trybe-style "operating system" */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8 border-t border-slate-800/50">
+      {/* Feature grid */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-line">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16 space-y-3">
-            <h2 className="text-4xl md:text-5xl font-bold text-white">The operating system for creator programs</h2>
-            <p className="text-lg text-slate-400 max-w-2xl mx-auto">Submissions, whitelisting, ad launching, payouts, performance — all in one streamlined workflow.</p>
+          <div className="text-center mb-14 space-y-3">
+            <h2 className="text-4xl md:text-5xl font-bold text-heading">The operating system for creator programs</h2>
+            <p className="text-lg text-muted max-w-2xl mx-auto">Submissions, whitelisting, ad launching, payouts, performance — all in one streamlined workflow.</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
-              { icon: Layers, title: 'Creative management at scale', desc: 'Submissions, revisions, and approvals organized in one workspace.', color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-              { icon: Zap, title: 'Whitelisting & ad launching', desc: 'Push approved UGC to Meta as whitelisted ads in seconds.', color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-              { icon: Trophy, title: 'Creator leaderboards', desc: 'Top performers and best-selling products ranked in real time.', color: 'text-amber-400', bg: 'bg-amber-400/10 border-amber-400/20' },
-              { icon: ShieldCheck, title: 'Server-side attribution', desc: 'Track conversions at the order level with last-click attribution.', color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-              { icon: Cpu, title: 'AI angle & persona tagging', desc: 'Every submission auto-tagged by angle, persona, and creative DNA.', color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
-              { icon: Bell, title: 'Creator earning notifications', desc: 'Creators get notified the moment a sale hits their account.', color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-              { icon: MessageSquare, title: 'Built-in chats & channels', desc: 'Talk to creators 1:1 or in channels — no Slack, no email threads.', color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-              { icon: Wallet, title: 'Auto payouts & smart contracts', desc: 'Commission rules execute automatically — paid via Trolley.', color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-              { icon: Target, title: 'Spot and scale winners', desc: 'Surface the winning ads instantly and double down.', color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
+              { icon: Layers, title: 'Creative management at scale', desc: 'Submissions, revisions, and approvals organized in one workspace.', color: 'text-purple-500' },
+              { icon: Zap, title: 'Whitelisting & ad launching', desc: 'Push approved UGC to Meta as whitelisted ads in seconds.', color: 'text-blue-500' },
+              { icon: Trophy, title: 'Creator leaderboards', desc: 'Top performers and best-selling products ranked in real time.', color: 'text-amber-500' },
+              { icon: ShieldCheck, title: 'Server-side attribution', desc: 'Track conversions at the order level with last-click attribution.', color: 'text-emerald-500' },
+              { icon: Cpu, title: 'AI angle & persona tagging', desc: 'Every submission auto-tagged by angle, persona, and creative DNA.', color: 'text-pink-500' },
+              { icon: Bell, title: 'Creator earning notifications', desc: 'Creators get notified the moment a sale hits their account.', color: 'text-purple-500' },
+              { icon: MessageSquare, title: 'Built-in chats & channels', desc: 'Talk to creators 1:1 or in channels — no Slack, no email threads.', color: 'text-blue-500' },
+              { icon: Wallet, title: 'Auto payouts & smart contracts', desc: 'Commission rules execute automatically — paid via Trolley.', color: 'text-emerald-500' },
+              { icon: Target, title: 'Spot and scale winners', desc: 'Surface the winning ads instantly and double down.', color: 'text-pink-500' },
             ].map((f, i) => (
-              <div key={i} className={`p-5 rounded-2xl border ${f.bg} hover:scale-[1.02] transition`}>
-                <f.icon size={22} className={f.color} />
-                <h3 className="text-lg font-bold text-white mt-4 mb-1.5">{f.title}</h3>
-                <p className="text-sm text-slate-400 leading-relaxed">{f.desc}</p>
+              <div key={i} className="p-6 rounded-2xl border border-line bg-surface hover:-translate-y-0.5 transition">
+                <div className="w-11 h-11 rounded-xl bg-surface-2 border border-line flex items-center justify-center"><f.icon size={20} className={f.color} /></div>
+                <h3 className="text-lg font-bold text-heading mt-4 mb-1.5">{f.title}</h3>
+                <p className="text-sm text-muted leading-relaxed">{f.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="py-24 px-4 sm:px-6 lg:px-8 border-t border-slate-800/50">
+      {/* Testimonials */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-line">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16 space-y-3">
-            <h2 className="text-5xl md:text-6xl font-bold text-white">Loved by creators<br />and brands alike</h2>
-            <p className="text-xl text-slate-400">Real results from real people.</p>
+          <div className="text-center mb-14 space-y-3">
+            <h2 className="text-4xl md:text-5xl font-bold text-heading">Loved by creators<br />and brands alike</h2>
+            <p className="text-xl text-muted">Real results from real people.</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {testimonials.map((t, idx) => (
-              <div key={idx} className="flex flex-col gap-4 p-6 bg-slate-800/40 border border-slate-700/50 rounded-2xl hover:border-slate-600/60 hover:bg-slate-800/60 transition">
-                <div className="flex gap-1">{[...Array(t.stars)].map((_, i) => (<Star key={i} size={14} className="text-yellow-400 fill-yellow-400" />))}</div>
-                <p className="text-slate-200 leading-relaxed flex-1">"{t.quote}"</p>
-                <div className="flex items-center gap-3 pt-2 border-t border-slate-700/40">
+              <div key={idx} className="flex flex-col gap-4 p-6 bg-surface border border-line rounded-2xl hover:shadow-lg hover:shadow-black/5 transition">
+                <div className="flex gap-1">{[...Array(t.stars)].map((_, i) => (<Star key={i} size={14} className="text-amber-400 fill-amber-400" />))}</div>
+                <p className="text-body leading-relaxed flex-1">"{t.quote}"</p>
+                <div className="flex items-center gap-3 pt-2 border-t border-line">
                   <img src={t.avatar} alt={t.name} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
-                  <div><p className="text-white font-semibold text-sm">{t.name}</p><p className="text-slate-400 text-xs">{t.role}</p></div>
+                  <div><p className="text-heading font-semibold text-sm">{t.name}</p><p className="text-muted text-xs">{t.role}</p></div>
                 </div>
               </div>
             ))}
@@ -558,23 +506,214 @@ function Landing({ onSignIn, onAbout }: { onSignIn: () => void; onAbout: () => v
         </div>
       </section>
 
-      <footer className="border-t border-slate-800/50 py-16 px-4 sm:px-6 lg:px-8 bg-slate-950/50">
+      {/* CTA */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-line">
+        <div className="max-w-3xl mx-auto text-center rounded-3xl border border-line bg-surface p-10 md:p-14 space-y-5">
+          <h2 className="text-3xl md:text-4xl font-bold text-heading">Ready to scale with KYRO?</h2>
+          <p className="text-muted text-lg">Free to join. Brands and creators welcome.</p>
+          <button onClick={onSignIn} className="px-8 py-3.5 bg-gradient-kyro rounded-full text-white font-semibold inline-flex items-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105">
+            Join KYRO Free <ArrowRight size={18} />
+          </button>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-line py-14 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <div className="grid md:grid-cols-4 gap-12 mb-12">
+          <div className="grid md:grid-cols-4 gap-10 mb-10">
             <div className="col-span-1">
               <div className="flex items-center gap-2 mb-4"><KyroLogo size={28} /><span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span></div>
-              <p className="text-slate-400 text-sm">The Creator Growth Portal. Scale your performance with KYRO.</p>
+              <p className="text-muted text-sm">The Creator Growth Portal. Scale your performance with KYRO.</p>
             </div>
-            <div><h4 className="text-white font-semibold mb-4">Platform</h4><ul className="space-y-2 text-slate-400 text-sm"><li><a href="#creators" className="hover:text-white transition">For Creators</a></li><li><a href="#brands" className="hover:text-white transition">For Brands</a></li><li><a href="#how-it-works" className="hover:text-white transition">How it Works</a></li></ul></div>
-            <div><h4 className="text-white font-semibold mb-4">Company</h4><ul className="space-y-2 text-slate-400 text-sm"><li><button onClick={onAbout} className="hover:text-white transition">About</button></li><li><a href="#" className="hover:text-white transition">Blog</a></li><li><a href="#" className="hover:text-white transition">Careers</a></li></ul></div>
-            <div><h4 className="text-white font-semibold mb-4">Legal</h4><ul className="space-y-2 text-slate-400 text-sm"><li><a href="#" className="hover:text-white transition">Privacy</a></li><li><a href="#" className="hover:text-white transition">Terms</a></li><li><a href="#" className="hover:text-white transition">Contact</a></li></ul></div>
+            <div><h4 className="text-heading font-semibold mb-4">Platform</h4><ul className="space-y-2 text-muted text-sm"><li><a href="#creators" className="hover:text-heading transition">For Creators</a></li><li><a href="#brands" className="hover:text-heading transition">For Brands</a></li><li><a href="#how-it-works" className="hover:text-heading transition">How it Works</a></li></ul></div>
+            <div><h4 className="text-heading font-semibold mb-4">Company</h4><ul className="space-y-2 text-muted text-sm"><li><button onClick={onAbout} className="hover:text-heading transition">About</button></li><li><a href="#" className="hover:text-heading transition">Blog</a></li><li><a href="#" className="hover:text-heading transition">Careers</a></li></ul></div>
+            <div><h4 className="text-heading font-semibold mb-4">Legal</h4><ul className="space-y-2 text-muted text-sm"><li><a href="#" className="hover:text-heading transition">Privacy</a></li><li><a href="#" className="hover:text-heading transition">Terms</a></li><li><a href="#" className="hover:text-heading transition">Contact</a></li></ul></div>
           </div>
-          <div className="border-t border-slate-800/50 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-slate-400 text-sm">© 2026 KYRO · Aragon Media. All rights reserved.</p>
-            <div className="flex gap-6"><a href="#" className="text-slate-400 hover:text-white transition">Twitter</a><a href="#" className="text-slate-400 hover:text-white transition">Discord</a><a href="#" className="text-slate-400 hover:text-white transition">GitHub</a></div>
+          <div className="border-t border-line pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-muted text-sm">© 2026 KYRO · Aragon Media. All rights reserved.</p>
+            <div className="flex gap-6"><a href="#" className="text-muted hover:text-heading transition">Twitter</a><a href="#" className="text-muted hover:text-heading transition">Discord</a><a href="#" className="text-muted hover:text-heading transition">GitHub</a></div>
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SIGN IN — email + 6-digit OTP (real via Supabase, demo fallback)
+   ───────────────────────────────────────────────────────────── */
+function SignIn({ adminMode, onVerified, onBack }: { adminMode: boolean; onVerified: () => void; onBack: () => void }) {
+  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [email, setEmail] = useState('');
+  const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [demo, setDemo] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+  const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const code = digits.join('');
+
+  async function handleSend() {
+    if (!emailValid || loading) return;
+    setLoading(true);
+    setError('');
+    const res = await sendEmailOtp(email.trim());
+    setLoading(false);
+    if (res.error) { setError(res.error.message || 'Could not send the code. Try again.'); return; }
+    setDemo(res.demo);
+    setStep('code');
+    setResendIn(30);
+    setDigits(['', '', '', '', '', '']);
+    setTimeout(() => inputsRef.current[0]?.focus(), 60);
+  }
+
+  async function handleVerify() {
+    if (code.length !== 6 || loading) return;
+    setLoading(true);
+    setError('');
+    if (demo) {
+      mockApi.logEvent('auth.otp.verify', { email: email.trim(), mode: 'demo', admin: adminMode });
+      setTimeout(() => { setLoading(false); onVerified(); }, 400);
+      return;
+    }
+    const res = await verifyEmailOtp(email.trim(), code);
+    setLoading(false);
+    if (res.error) { setError(res.error.message || 'That code is invalid or expired.'); return; }
+    onVerified();
+  }
+
+  function onDigitChange(i: number, val: string) {
+    const clean = val.replace(/\D/g, '');
+    if (!clean) { setDigits((d) => { const n = [...d]; n[i] = ''; return n; }); return; }
+    setDigits((d) => {
+      const n = [...d];
+      let idx = i;
+      for (const ch of clean.split('')) { if (idx > 5) break; n[idx] = ch; idx++; }
+      const focusTo = Math.min(idx, 5);
+      setTimeout(() => inputsRef.current[focusTo]?.focus(), 0);
+      return n;
+    });
+  }
+
+  function onDigitKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Backspace' && !digits[i] && i > 0) inputsRef.current[i - 1]?.focus();
+    if (e.key === 'Enter') handleVerify();
+  }
+
+  return (
+    <div className="min-h-screen bg-app text-body flex flex-col">
+      <div className="px-4 sm:px-6 lg:px-8 py-5 flex items-center justify-between">
+        <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-heading transition">
+          <ChevronLeft size={20} /> Back
+        </button>
+        <button onClick={onBack} className="flex items-center gap-2">
+          <KyroLogo size={28} />
+          <span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
+        </button>
+        <ThemeToggle />
+      </div>
+
+      <div className="flex-1 flex items-center justify-center px-4 pb-20">
+        <div className="w-full max-w-md">
+          <div className="bg-surface border border-line rounded-3xl p-8 md:p-10 shadow-xl shadow-black/5">
+            {adminMode && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-5 bg-purple-500/10 border border-purple-500/20 rounded-full text-xs font-semibold text-purple-500">
+                <Shield size={12} /> Admin access
+              </div>
+            )}
+
+            {step === 'email' && (
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <h1 className="text-2xl font-bold text-heading">{adminMode ? 'Admin sign in' : 'Sign in to KYRO'}</h1>
+                  <p className="text-muted text-sm">Enter your email and we'll send you a 6-digit sign-in code.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted uppercase tracking-wider">Email</label>
+                  <div className="relative">
+                    <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
+                    <input
+                      type="email"
+                      autoFocus
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
+                      placeholder="you@company.com"
+                      className="w-full pl-10 pr-4 py-3 bg-surface-2 border border-line rounded-xl text-heading placeholder-faint focus:outline-none focus:ring-2 focus:ring-kyro-600/40 focus:border-kyro-600 transition"
+                    />
+                  </div>
+                </div>
+                {error && <p className="text-sm text-pink-500">{error}</p>}
+                <button
+                  onClick={handleSend}
+                  disabled={!emailValid || loading}
+                  className="w-full px-4 py-3 bg-gradient-kyro rounded-xl text-white font-semibold flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-purple-600/40"
+                >
+                  {loading ? 'Sending code…' : <>Continue <ArrowRight size={18} /></>}
+                </button>
+                <p className="text-center text-xs text-faint">By continuing you agree to KYRO's Terms &amp; Privacy Policy.</p>
+              </div>
+            )}
+
+            {step === 'code' && (
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <h1 className="text-2xl font-bold text-heading">Enter your code</h1>
+                  <p className="text-muted text-sm">We sent a 6-digit code to <span className="text-heading font-semibold">{email.trim()}</span>.</p>
+                </div>
+                <div
+                  className="flex items-center justify-between gap-2"
+                  onPaste={(e) => { const t = e.clipboardData.getData('text').replace(/\D/g, ''); if (t) { e.preventDefault(); onDigitChange(0, t); } }}
+                >
+                  {digits.map((d, i) => (
+                    <input
+                      key={i}
+                      ref={(el) => { inputsRef.current[i] = el; }}
+                      value={d}
+                      inputMode="numeric"
+                      maxLength={1}
+                      onChange={(e) => onDigitChange(i, e.target.value)}
+                      onKeyDown={(e) => onDigitKeyDown(i, e)}
+                      className="w-12 h-14 text-center text-2xl font-bold bg-surface-2 border border-line rounded-xl text-heading focus:outline-none focus:ring-2 focus:ring-kyro-600/40 focus:border-kyro-600 transition"
+                    />
+                  ))}
+                </div>
+                {demo && (
+                  <div className="flex items-start gap-2 p-3 bg-amber-400/10 border border-amber-400/20 rounded-lg">
+                    <AlertCircle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-500">Demo mode — no real email sent. Enter any 6 digits to continue. Real codes send once Supabase is connected.</p>
+                  </div>
+                )}
+                {error && <p className="text-sm text-pink-500">{error}</p>}
+                <button
+                  onClick={handleVerify}
+                  disabled={code.length !== 6 || loading}
+                  className="w-full px-4 py-3 bg-gradient-kyro rounded-xl text-white font-semibold flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-purple-600/40"
+                >
+                  {loading ? 'Verifying…' : <>Verify &amp; continue <ArrowRight size={18} /></>}
+                </button>
+                <div className="flex items-center justify-between text-sm">
+                  <button onClick={() => { setStep('email'); setError(''); }} className="text-muted hover:text-heading transition">Use a different email</button>
+                  <button onClick={handleSend} disabled={resendIn > 0 || loading} className="text-kyro-600 hover:text-kyro-700 font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          <p className="text-center text-xs text-faint mt-6">
+            {adminMode ? 'Admin portal · KYRO' : 'New to KYRO? Signing in creates your account.'}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -584,18 +723,18 @@ function Landing({ onSignIn, onAbout }: { onSignIn: () => void; onAbout: () => v
    ───────────────────────────────────────────────────────────── */
 function RolePicker({ onPick, onBack }: { onPick: (r: Role) => void; onBack: () => void }) {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-app flex items-center justify-center px-4">
       <div className="max-w-3xl w-full">
         <div className="flex justify-between items-center mb-12">
-          <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-white transition">
+          <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-heading transition">
             <KyroLogo size={32} />
             <span className="text-xl font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
           </button>
-          <span className="text-xs uppercase tracking-widest text-slate-500 font-semibold">Demo Mode</span>
+          <span className="text-xs uppercase tracking-widest text-faint font-semibold">Demo Mode</span>
         </div>
         <div className="text-center mb-12 space-y-3">
-          <h1 className="text-4xl md:text-5xl font-bold text-white">Welcome to KYRO</h1>
-          <p className="text-lg text-slate-400">Choose how you want to explore the platform.</p>
+          <h1 className="text-4xl md:text-5xl font-bold text-heading">Welcome to KYRO</h1>
+          <p className="text-lg text-muted">Choose how you want to explore the platform.</p>
         </div>
         <div className="grid md:grid-cols-3 gap-5">
           {[
@@ -603,23 +742,23 @@ function RolePicker({ onPick, onBack }: { onPick: (r: Role) => void; onBack: () 
             { role: 'creator' as Role, icon: Camera, title: "I'm a Creator", desc: 'Apply to brand campaigns, submit videos, earn from ad performance.', border: 'border-purple-400/30 hover:border-purple-400/60' },
             { role: 'admin' as Role, icon: Shield, title: 'Admin', desc: 'Oversee platform, curate matches, manage funding pools.', border: 'border-pink-400/30 hover:border-pink-400/60' },
           ].map((opt) => (
-            <button key={opt.role} onClick={() => onPick(opt.role)} className={`group relative overflow-hidden p-7 rounded-2xl border-2 ${opt.border} bg-slate-900/60 hover:bg-slate-900/80 text-left transition-all duration-300 hover:scale-[1.02]`}>
+            <button key={opt.role} onClick={() => onPick(opt.role)} className={`group relative overflow-hidden p-7 rounded-2xl border-2 ${opt.border} bg-surface hover:bg-surface/80 text-left transition-all duration-300 hover:scale-[1.02]`}>
               <div className="relative z-10 space-y-4">
                 <div className="w-12 h-12 rounded-xl bg-gradient-kyro flex items-center justify-center">
                   <opt.icon size={24} className="text-white" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-white mb-2">{opt.title}</h3>
-                  <p className="text-sm text-slate-400 leading-relaxed">{opt.desc}</p>
+                  <h3 className="text-xl font-bold text-heading mb-2">{opt.title}</h3>
+                  <p className="text-sm text-muted leading-relaxed">{opt.desc}</p>
                 </div>
-                <div className="flex items-center gap-1 text-sm font-semibold text-white pt-2">
+                <div className="flex items-center gap-1 text-sm font-semibold text-heading pt-2">
                   Enter <ChevronRight size={16} className="group-hover:translate-x-1 transition" />
                 </div>
               </div>
             </button>
           ))}
         </div>
-        <p className="text-center text-xs text-slate-500 mt-10">Demo environment — real Supabase auth, Meta integration, Square + Trolley payments wire in V1.</p>
+        <p className="text-center text-xs text-faint mt-10">Demo environment — real Supabase auth, Meta integration, Square + Trolley payments wire in V1.</p>
       </div>
     </div>
   );
@@ -633,8 +772,8 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, children }: { role: R
   const roleIcons: Record<Role, typeof Briefcase> = { brand: Briefcase, creator: Camera, admin: Shield };
   const Icon = roleIcons[role];
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-      <header className="sticky top-0 z-40 backdrop-blur-md bg-slate-950/80 border-b border-slate-800/50">
+    <div className="min-h-screen bg-app">
+      <header className="sticky top-0 z-40 backdrop-blur-md bg-app/80 border-b border-line">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-6">
@@ -642,28 +781,28 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, children }: { role: R
                 <KyroLogo size={32} />
                 <span className="text-xl font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
               </button>
-              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-800/60 border border-slate-700/60 rounded-full">
-                <Icon size={14} className="text-slate-300" />
-                <span className="text-xs font-semibold text-slate-300">{roleLabels[role]} Portal</span>
+              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-full">
+                <Icon size={14} className="text-body" />
+                <span className="text-xs font-semibold text-body">{roleLabels[role]} Portal</span>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <div className="hidden md:flex items-center gap-1 p-1 bg-slate-800/60 border border-slate-700/60 rounded-lg">
-                <span className="text-xs text-slate-500 px-2">Demo as:</span>
+              <div className="hidden md:flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg">
+                <span className="text-xs text-faint px-2">Demo as:</span>
                 {(['brand', 'creator', 'admin'] as Role[]).map(r => (
-                  <button key={r} onClick={() => onSwitch(r)} className={`text-xs font-semibold px-2.5 py-1 rounded transition ${r === role ? 'bg-gradient-kyro text-white' : 'text-slate-400 hover:text-white'}`}>
+                  <button key={r} onClick={() => onSwitch(r)} className={`text-xs font-semibold px-2.5 py-1 rounded transition ${r === role ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}>
                     {roleLabels[r]}
                   </button>
                 ))}
               </div>
-              <button className="relative p-2 text-slate-400 hover:text-white transition" title="Notifications">
+              <button className="relative p-2 text-muted hover:text-heading transition" title="Notifications">
                 <Bell size={18} />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-pink-500 rounded-full"></span>
               </button>
-              <button onClick={onSettings} className="p-2 text-slate-400 hover:text-white transition" title="Account">
+              <button onClick={onSettings} className="p-2 text-muted hover:text-heading transition" title="Account">
                 <Users size={18} />
               </button>
-              <button onClick={onSignOut} className="flex items-center gap-2 px-3 py-1.5 text-slate-400 hover:text-white transition text-sm">
+              <button onClick={onSignOut} className="flex items-center gap-2 px-3 py-1.5 text-muted hover:text-heading transition text-sm">
                 <LogOut size={16} />
                 <span className="hidden md:inline">Exit</span>
               </button>
@@ -691,8 +830,8 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
         <div className="flex items-center gap-4">
           <BrandLogo brandId="boldbuns" size={56} />
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white">Welcome back, Bold Buns</h1>
-            <p className="text-slate-400 mt-1">Here's how your campaigns are performing right now.</p>
+            <h1 className="text-3xl md:text-4xl font-bold text-heading">Welcome back, Bold Buns</h1>
+            <p className="text-muted mt-1">Here's how your campaigns are performing right now.</p>
           </div>
         </div>
         <button onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105">
@@ -708,66 +847,66 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
           { label: 'Impressions', value: fmtK(totalImpr), sub: 'organic reach via creators', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
         ].map((s, i) => (
           <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
-            <div className="flex items-center justify-between mb-3"><s.icon size={20} className={s.color} /><span className="text-xs text-slate-500">Last 30d</span></div>
-            <p className="text-xs text-slate-400 mb-1">{s.label}</p>
+            <div className="flex items-center justify-between mb-3"><s.icon size={20} className={s.color} /><span className="text-xs text-faint">Last 30d</span></div>
+            <p className="text-xs text-muted mb-1">{s.label}</p>
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-xs text-slate-500 mt-1">{s.sub}</p>
+            <p className="text-xs text-faint mt-1">{s.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Creator leaderboard (Trybe-style) */}
-      <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between p-5 border-b border-slate-800/60">
+      <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between p-5 border-b border-line">
           <div className="flex items-center gap-2">
             <Trophy size={18} className="text-amber-400" />
-            <h2 className="text-xl font-bold text-white">Creator Leaderboard</h2>
-            <span className="text-xs text-slate-500 ml-2">Last 7 days</span>
+            <h2 className="text-xl font-bold text-heading">Creator Leaderboard</h2>
+            <span className="text-xs text-faint ml-2">Last 7 days</span>
           </div>
-          <button className="text-xs text-slate-400 hover:text-white">View all</button>
+          <button className="text-xs text-muted hover:text-heading">View all</button>
         </div>
-        <div className="divide-y divide-slate-800/60">
+        <div className="divide-y divide-line">
           {SEED_LEADERBOARD.map((l, i) => {
             const c = SEED_CREATORS[l.creatorId];
             const brand = BRANDS[l.brandId];
             return (
-              <button key={l.creatorId} onClick={() => onViewCreator(l.creatorId)} className="w-full p-4 flex items-center gap-4 hover:bg-slate-800/30 transition text-left">
+              <button key={l.creatorId} onClick={() => onViewCreator(l.creatorId)} className="w-full p-4 flex items-center gap-4 hover:bg-surface-2 transition text-left">
                 <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-kyro text-white font-bold text-sm">{i + 1}</div>
                 <img src={c.avatar} alt={c.name} className="w-10 h-10 rounded-full object-cover" />
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-white truncate">{c.name}</p>
-                  <p className="text-xs text-slate-400">{c.handle} · for {brand.name}</p>
+                  <p className="font-semibold text-heading truncate">{c.name}</p>
+                  <p className="text-xs text-muted">{c.handle} · for {brand.name}</p>
                 </div>
                 <div className="grid grid-cols-3 gap-6 text-right">
-                  <div><p className="text-xs text-slate-500">Orders</p><p className="text-sm font-bold text-emerald-400">{l.orders}</p></div>
-                  <div className="hidden sm:block"><p className="text-xs text-slate-500">Ads</p><p className="text-sm font-bold text-white">{l.ads}</p></div>
-                  <div className="hidden sm:block"><p className="text-xs text-slate-500">Views</p><p className="text-sm font-bold text-white">{fmtK(l.views)}</p></div>
+                  <div><p className="text-xs text-faint">Orders</p><p className="text-sm font-bold text-emerald-400">{l.orders}</p></div>
+                  <div className="hidden sm:block"><p className="text-xs text-faint">Ads</p><p className="text-sm font-bold text-heading">{l.ads}</p></div>
+                  <div className="hidden sm:block"><p className="text-xs text-faint">Views</p><p className="text-sm font-bold text-heading">{fmtK(l.views)}</p></div>
                 </div>
-                <ChevronRight size={16} className="text-slate-600" />
+                <ChevronRight size={16} className="text-faint" />
               </button>
             );
           })}
         </div>
       </div>
 
-      <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between p-5 border-b border-slate-800/60">
-          <h2 className="text-xl font-bold text-white">Active Campaigns</h2>
+      <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between p-5 border-b border-line">
+          <h2 className="text-xl font-bold text-heading">Active Campaigns</h2>
           <div className="flex items-center gap-2">
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-800/60 border border-slate-700/60 rounded-lg text-sm text-slate-400">
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-muted">
               <Search size={14} /><span>Search</span>
             </div>
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/60 border border-slate-700/60 rounded-lg text-sm text-slate-300 hover:text-white">
+            <button className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-body hover:text-heading">
               <Filter size={14} /> Filter
             </button>
           </div>
         </div>
-        <div className="divide-y divide-slate-800/60">
+        <div className="divide-y divide-line">
           {SEED_CAMPAIGNS.map((c) => {
             const poolPct = c.pool ? Math.round((c.spent / c.pool) * 100) : 0;
             const brand = BRANDS[c.brandId];
             return (
-              <div key={c.id} className="p-5 hover:bg-slate-800/30 transition cursor-pointer">
+              <div key={c.id} className="p-5 hover:bg-surface-2 transition cursor-pointer">
                 <div className="flex flex-col lg:flex-row gap-5">
                   <img src={c.cover} alt={c.name} className="w-full lg:w-48 h-32 rounded-xl object-cover flex-shrink-0" />
                   <div className="flex-1 min-w-0 space-y-3">
@@ -776,25 +915,25 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                         <BrandLogo brandId={c.brandId} size={36} />
                         <div>
                           <div className="flex items-center gap-3 mb-1.5">
-                            <h3 className="text-lg font-bold text-white">{c.name}</h3>
+                            <h3 className="text-lg font-bold text-heading">{c.name}</h3>
                             <StatusPill status={c.status} />
                           </div>
-                          <p className="text-sm text-slate-400">{brand.name} · {c.creators} creators · {c.submissions} submissions</p>
+                          <p className="text-sm text-muted">{brand.name} · {c.creators} creators · {c.submissions} submissions</p>
                         </div>
                       </div>
-                      <button className="text-slate-400 hover:text-white"><ExternalLink size={16} /></button>
+                      <button className="text-muted hover:text-heading"><ExternalLink size={16} /></button>
                     </div>
                     {c.status === 'live' && (
                       <>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <div><p className="text-xs text-slate-500">Spend</p><p className="text-sm font-bold text-white">{fmt(c.spent)}</p></div>
-                          <div><p className="text-xs text-slate-500">Pool</p><p className="text-sm font-bold text-white">{fmt(c.pool)}</p></div>
-                          <div><p className="text-xs text-slate-500">Conversions</p><p className="text-sm font-bold text-emerald-400">{c.conversions.toLocaleString()}</p></div>
-                          <div><p className="text-xs text-slate-500">ROAS</p><p className="text-sm font-bold text-purple-400">{c.roas}x</p></div>
+                          <div><p className="text-xs text-faint">Spend</p><p className="text-sm font-bold text-heading">{fmt(c.spent)}</p></div>
+                          <div><p className="text-xs text-faint">Pool</p><p className="text-sm font-bold text-heading">{fmt(c.pool)}</p></div>
+                          <div><p className="text-xs text-faint">Conversions</p><p className="text-sm font-bold text-emerald-400">{c.conversions.toLocaleString()}</p></div>
+                          <div><p className="text-xs text-faint">ROAS</p><p className="text-sm font-bold text-purple-400">{c.roas}x</p></div>
                         </div>
                         <div>
-                          <div className="flex justify-between text-xs text-slate-500 mb-1.5"><span>Pool depletion</span><span>{poolPct}%</span></div>
-                          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden"><div className={`h-full ${poolPct > 80 ? 'bg-pink-500' : 'bg-gradient-kyro'} rounded-full transition-all`} style={{ width: `${poolPct}%` }}></div></div>
+                          <div className="flex justify-between text-xs text-faint mb-1.5"><span>Pool depletion</span><span>{poolPct}%</span></div>
+                          <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden"><div className={`h-full ${poolPct > 80 ? 'bg-pink-500' : 'bg-gradient-kyro'} rounded-full transition-all`} style={{ width: `${poolPct}%` }}></div></div>
                         </div>
                       </>
                     )}
@@ -822,23 +961,23 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
 
 function CreateCampaignModal({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700/60 rounded-2xl max-w-lg w-full p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-app/80 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-surface border border-line rounded-2xl max-w-lg w-full p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-white">New Campaign</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={20} /></button>
+          <h2 className="text-xl font-bold text-heading">New Campaign</h2>
+          <button onClick={onClose} className="text-muted hover:text-heading"><X size={20} /></button>
         </div>
         <div className="space-y-4">
-          <div><label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">Campaign Name</label><input className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-purple-500" placeholder="Summer Drop 2026" /></div>
-          <div><label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">Pool Budget</label><div className="relative"><span className="absolute left-4 top-2.5 text-slate-400">$</span><input className="w-full pl-8 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500" placeholder="25,000" /></div></div>
+          <div><label className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block">Campaign Name</label><input className="w-full px-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500" placeholder="Summer Drop 2026" /></div>
+          <div><label className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block">Pool Budget</label><div className="relative"><span className="absolute left-4 top-2.5 text-muted">$</span><input className="w-full pl-8 pr-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500" placeholder="25,000" /></div></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">Commission Type</label><select className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500"><option>% of ad spend</option><option>Per conversion</option><option>Hybrid</option></select></div>
-            <div><label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">Rate</label><input className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-purple-500" placeholder="15%" /></div>
+            <div><label className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block">Commission Type</label><select className="w-full px-3 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500"><option>% of ad spend</option><option>Per conversion</option><option>Hybrid</option></select></div>
+            <div><label className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block">Rate</label><input className="w-full px-3 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500" placeholder="15%" /></div>
           </div>
-          <div><label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">Brief</label><textarea rows={3} className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-purple-500" placeholder="What creators should know about the brand, the product, and the vibe..." /></div>
+          <div><label className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block">Brief</label><textarea rows={3} className="w-full px-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500" placeholder="What creators should know about the brand, the product, and the vibe..." /></div>
         </div>
         <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-800/60 font-semibold">Cancel</button>
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-line rounded-lg text-body hover:bg-surface-2 font-semibold">Cancel</button>
           <button onClick={() => { mockApi.createCampaign({}); onClose(); }} className="flex-1 px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition">Launch & Fund</button>
         </div>
       </div>
@@ -893,36 +1032,36 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
 
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-white">Hey, Maya 👋</h1>
-          <p className="text-slate-400 mt-1">Your videos are working. Here's the latest.</p>
+          <h1 className="text-3xl md:text-4xl font-bold text-heading">Hey, Maya 👋</h1>
+          <p className="text-muted mt-1">Your videos are working. Here's the latest.</p>
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-3xl border border-slate-700/50 bg-slate-900/60 p-6 md:p-8">
+      <div className="relative overflow-hidden rounded-3xl border border-line bg-surface p-6 md:p-8">
         <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/15 rounded-full blur-3xl translate-x-1/3 -translate-y-1/3 pointer-events-none"></div>
         <div className="relative z-10 grid md:grid-cols-3 gap-6">
           <div className="md:col-span-2 space-y-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Earnings — this period</p>
+            <p className="text-xs font-semibold text-muted uppercase tracking-widest">Earnings — this period</p>
             <div className="flex items-baseline gap-3">
               <span className="text-5xl md:text-6xl font-bold bg-gradient-kyro bg-clip-text text-transparent tabular-nums">${liveEarnings.toFixed(2)}</span>
               <span className="text-emerald-400 text-sm font-semibold flex items-center gap-1"><ArrowUpRight size={14} /> live</span>
             </div>
-            <p className="text-sm text-slate-400">Bi-weekly payout via Trolley — next on <span className="text-white font-semibold">Jun 15, 2026</span></p>
+            <p className="text-sm text-muted">Bi-weekly payout via Trolley — next on <span className="text-heading font-semibold">Jun 15, 2026</span></p>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
-            <div className="p-4 rounded-xl bg-emerald-400/10 border border-emerald-400/20"><p className="text-xs text-slate-400">Total Paid</p><p className="text-xl font-bold text-emerald-400">{fmt(totalPaid)}</p></div>
-            <div className="p-4 rounded-xl bg-blue-400/10 border border-blue-400/20"><p className="text-xs text-slate-400">Active Videos</p><p className="text-xl font-bold text-blue-400">2 live</p></div>
+            <div className="p-4 rounded-xl bg-emerald-400/10 border border-emerald-400/20"><p className="text-xs text-muted">Total Paid</p><p className="text-xl font-bold text-emerald-400">{fmt(totalPaid)}</p></div>
+            <div className="p-4 rounded-xl bg-blue-400/10 border border-blue-400/20"><p className="text-xs text-muted">Active Videos</p><p className="text-xl font-bold text-blue-400">2 live</p></div>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-1 p-1 bg-slate-900/60 border border-slate-700/50 rounded-xl w-fit">
+      <div className="flex items-center gap-1 p-1 bg-surface border border-line rounded-xl w-fit">
         {[
           { id: 'submissions', label: 'My Submissions', icon: FileVideo },
           { id: 'browse', label: 'Browse Campaigns', icon: Search },
           { id: 'payouts', label: 'Payouts', icon: Wallet },
         ].map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id as 'submissions' | 'browse' | 'payouts')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${tab === t.id ? 'bg-gradient-kyro text-white' : 'text-slate-400 hover:text-white'}`}>
+          <button key={t.id} onClick={() => setTab(t.id as 'submissions' | 'browse' | 'payouts')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${tab === t.id ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}>
             <t.icon size={14} /> {t.label}
           </button>
         ))}
@@ -933,21 +1072,21 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
           {SEED_CREATOR_SUBMISSIONS.map((s) => {
             const brand = BRANDS[s.brandId];
             return (
-              <div key={s.id} className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden hover:border-slate-600/60 transition group">
+              <div key={s.id} className="bg-surface border border-line rounded-2xl overflow-hidden hover:border-line transition group">
                 <div className="relative aspect-video">
                   <img src={s.thumb} alt={s.id} className="w-full h-full object-cover" />
                   <div className="absolute top-3 left-3"><StatusPill status={s.status} /></div>
                   <div className="absolute top-3 right-3 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-md flex items-center gap-1">
                     <Cpu size={10} className="text-pink-400" />
-                    <span className="text-[10px] font-semibold text-white">AI tagged</span>
+                    <span className="text-[10px] font-semibold text-heading">AI tagged</span>
                   </div>
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 to-transparent"></div>
                   <div className="absolute bottom-3 left-3 right-3">
                     <button onClick={() => onViewBrand(s.brandId)} className="flex items-center gap-2 group/brand">
                       <BrandLogo brandId={s.brandId} size={20} />
-                      <p className="text-white font-bold text-sm group-hover/brand:underline">{brand.name}</p>
+                      <p className="text-heading font-bold text-sm group-hover/brand:underline">{brand.name}</p>
                     </button>
-                    <p className="text-slate-300 text-xs">{s.submittedAt}</p>
+                    <p className="text-body text-xs">{s.submittedAt}</p>
                   </div>
                 </div>
                 <div className="p-5 space-y-3">
@@ -959,14 +1098,14 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
                   {s.status === 'live' ? (
                     <>
                       <div className="grid grid-cols-3 gap-3">
-                        <div><p className="text-xs text-slate-500">Orders</p><p className="text-sm font-bold text-white">{s.orders}</p></div>
-                        <div><p className="text-xs text-slate-500">Impressions</p><p className="text-sm font-bold text-white">{fmtK(s.impressions)}</p></div>
-                        <div><p className="text-xs text-slate-500">Spend</p><p className="text-sm font-bold text-white">{fmt(s.spend)}</p></div>
+                        <div><p className="text-xs text-faint">Orders</p><p className="text-sm font-bold text-heading">{s.orders}</p></div>
+                        <div><p className="text-xs text-faint">Impressions</p><p className="text-sm font-bold text-heading">{fmtK(s.impressions)}</p></div>
+                        <div><p className="text-xs text-faint">Spend</p><p className="text-sm font-bold text-heading">{fmt(s.spend)}</p></div>
                       </div>
                       <div className="p-3 bg-emerald-400/10 border border-emerald-400/20 rounded-lg">
                         <div className="flex items-center justify-between">
-                          <div><p className="text-xs text-slate-400">Earned</p><p className="text-lg font-bold text-emerald-400">{fmt(s.earnings)}</p></div>
-                          <div className="text-right"><p className="text-xs text-slate-400">Pending</p><p className="text-sm font-semibold text-amber-300">{fmt(s.pending)}</p></div>
+                          <div><p className="text-xs text-muted">Earned</p><p className="text-lg font-bold text-emerald-400">{fmt(s.earnings)}</p></div>
+                          <div className="text-right"><p className="text-xs text-muted">Pending</p><p className="text-sm font-semibold text-amber-300">{fmt(s.pending)}</p></div>
                         </div>
                       </div>
                     </>
@@ -980,9 +1119,9 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
               </div>
             );
           })}
-          <button onClick={() => mockApi.openSubmissionUploader()} className="border-2 border-dashed border-slate-700 rounded-2xl flex flex-col items-center justify-center gap-3 p-8 text-slate-400 hover:text-white hover:border-slate-500 transition min-h-[320px]">
-            <div className="w-14 h-14 rounded-full bg-slate-800/60 flex items-center justify-center"><Upload size={22} /></div>
-            <div className="text-center"><p className="font-semibold">Submit New Video</p><p className="text-xs text-slate-500 mt-1">Upload to an active campaign</p></div>
+          <button onClick={() => mockApi.openSubmissionUploader()} className="border-2 border-dashed border-line rounded-2xl flex flex-col items-center justify-center gap-3 p-8 text-muted hover:text-heading hover:border-line transition min-h-[320px]">
+            <div className="w-14 h-14 rounded-full bg-surface-2 flex items-center justify-center"><Upload size={22} /></div>
+            <div className="text-center"><p className="font-semibold">Submit New Video</p><p className="text-xs text-faint mt-1">Upload to an active campaign</p></div>
           </button>
         </div>
       )}
@@ -992,24 +1131,24 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
           {SEED_MARKETPLACE.map((m) => {
             const brand = BRANDS[m.brandId];
             return (
-              <div key={m.id} className="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-5 hover:border-slate-600/60 transition space-y-4">
+              <div key={m.id} className="bg-surface border border-line rounded-2xl p-5 hover:border-line transition space-y-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
                     <BrandLogo brandId={m.brandId} size={40} />
                     <div>
-                      <h3 className="text-lg font-bold text-white">{m.name}</h3>
-                      <button onClick={() => onViewBrand(m.brandId)} className="text-sm text-slate-400 hover:text-white transition mt-0.5">{brand.name} →</button>
+                      <h3 className="text-lg font-bold text-heading">{m.name}</h3>
+                      <button onClick={() => onViewBrand(m.brandId)} className="text-sm text-muted hover:text-heading transition mt-0.5">{brand.name} →</button>
                     </div>
                   </div>
                   <div className="px-2.5 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/20"><p className="text-xs font-semibold text-emerald-300">{fmt(m.budget)}</p></div>
                 </div>
                 <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-slate-400"><Award size={14} /><span>{m.commission}</span></div>
-                  <div className="flex items-center gap-2 text-slate-400"><FileVideo size={14} /><span>{m.deliverable}</span></div>
-                  <div className="flex items-center gap-2 text-slate-400"><Clock size={14} /><span>{m.deadline}</span></div>
+                  <div className="flex items-center gap-2 text-muted"><Award size={14} /><span>{m.commission}</span></div>
+                  <div className="flex items-center gap-2 text-muted"><FileVideo size={14} /><span>{m.deliverable}</span></div>
+                  <div className="flex items-center gap-2 text-muted"><Clock size={14} /><span>{m.deadline}</span></div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {m.tags.map((t) => (<span key={t} className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded text-xs text-slate-300">{t}</span>))}
+                  {m.tags.map((t) => (<span key={t} className="px-2 py-0.5 bg-surface-2 border border-line rounded text-xs text-body">{t}</span>))}
                 </div>
                 <button onClick={() => mockApi.applyToCampaign(m.id)} className="w-full px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition">Apply</button>
               </div>
@@ -1019,19 +1158,19 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
       )}
 
       {tab === 'payouts' && (
-        <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-slate-800/60 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white">Payout History</h2>
-            <div className="flex items-center gap-2 text-sm text-slate-400"><RefreshCw size={14} /> Powered by Trolley</div>
+        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+          <div className="p-5 border-b border-line flex items-center justify-between">
+            <h2 className="text-xl font-bold text-heading">Payout History</h2>
+            <div className="flex items-center gap-2 text-sm text-muted"><RefreshCw size={14} /> Powered by Trolley</div>
           </div>
-          <div className="divide-y divide-slate-800/60">
+          <div className="divide-y divide-line">
             {SEED_PAYOUTS.map((p) => (
-              <div key={p.id} className="p-5 flex items-center justify-between hover:bg-slate-800/30 transition">
+              <div key={p.id} className="p-5 flex items-center justify-between hover:bg-surface-2 transition">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-emerald-400/15 border border-emerald-400/30 flex items-center justify-center"><DollarSign size={16} className="text-emerald-400" /></div>
-                  <div><p className="text-white font-semibold">{fmt(p.amount)}</p><p className="text-xs text-slate-400">{p.period} · {p.method}</p></div>
+                  <div><p className="text-heading font-semibold">{fmt(p.amount)}</p><p className="text-xs text-muted">{p.period} · {p.method}</p></div>
                 </div>
-                <div className="text-right"><p className="text-sm text-slate-300">{p.date}</p><StatusPill status={p.status} /></div>
+                <div className="text-right"><p className="text-sm text-body">{p.date}</p><StatusPill status={p.status} /></div>
               </div>
             ))}
           </div>
@@ -1042,96 +1181,262 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
 }
 
 /* ─────────────────────────────────────────────────────────────
-   ADMIN CONTROL CENTER
+   ADMIN — ANALYTICS COMMAND CENTER
    ───────────────────────────────────────────────────────────── */
+const ADMIN_MONTHS = [
+  { m: 'Jan', rev: 18200, spend: 41000 },
+  { m: 'Feb', rev: 22400, spend: 52000 },
+  { m: 'Mar', rev: 26800, spend: 61000 },
+  { m: 'Apr', rev: 24100, spend: 58000 },
+  { m: 'May', rev: 31430, spend: 74000 },
+  { m: 'Jun', rev: 38900, spend: 92000 },
+];
+
+const ADMIN_BRAND_PERF = [
+  { brandId: 'boldbuns' as BrandId, revenue: 12400, spend: 34200, roas: 3.4, orders: 1240 },
+  { brandId: 'jaje' as BrandId, revenue: 10800, spend: 28600, roas: 4.1, orders: 1840 },
+  { brandId: 'fuel' as BrandId, revenue: 7600, spend: 21800, roas: 2.9, orders: 612 },
+  { brandId: 'ns' as BrandId, revenue: 5200, spend: 14200, roas: 3.1, orders: 480 },
+  { brandId: 'lebanta' as BrandId, revenue: 2900, spend: 8100, roas: 2.4, orders: 210 },
+];
+
+function KpiCard({ label, value, delta, up = true, icon: Icon }: { label: string; value: string; delta: string; up?: boolean; icon: typeof Trophy }) {
+  return (
+    <div className="p-5 rounded-2xl border border-line bg-surface">
+      <div className="flex items-center justify-between mb-3">
+        <div className="w-9 h-9 rounded-lg bg-surface-2 border border-line flex items-center justify-center"><Icon size={16} className="text-purple-500" /></div>
+        <span className={`flex items-center gap-1 text-xs font-semibold ${up ? 'text-emerald-500' : 'text-pink-500'}`}>
+          {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{delta}
+        </span>
+      </div>
+      <p className="text-xs text-muted mb-1">{label}</p>
+      <p className="text-2xl font-bold text-heading">{value}</p>
+    </div>
+  );
+}
+
+function RevSpendChart() {
+  const max = Math.max(...ADMIN_MONTHS.flatMap((d) => [d.rev, d.spend]));
+  return (
+    <div>
+      <div className="flex items-end gap-4 h-52">
+        {ADMIN_MONTHS.map((d) => (
+          <div key={d.m} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
+            <div className="w-full flex items-end justify-center gap-1.5 h-full">
+              <div className="w-1/2 max-w-[18px] rounded-t bg-line" style={{ height: `${(d.spend / max) * 100}%` }} title={`Spend ${fmt(d.spend)}`}></div>
+              <div className="w-1/2 max-w-[18px] rounded-t bg-gradient-kyro" style={{ height: `${(d.rev / max) * 100}%` }} title={`Revenue ${fmt(d.rev)}`}></div>
+            </div>
+            <span className="text-[11px] text-faint">{d.m}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-5 mt-4 text-xs">
+        <span className="flex items-center gap-1.5 text-muted"><span className="w-3 h-3 rounded-sm bg-gradient-kyro"></span> Platform revenue</span>
+        <span className="flex items-center gap-1.5 text-muted"><span className="w-3 h-3 rounded-sm bg-line"></span> Ad spend managed</span>
+      </div>
+    </div>
+  );
+}
+
 function AdminDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => void }) {
+  const totalRevenue = ADMIN_MONTHS.reduce((s, m) => s + m.rev, 0);
+  const totalSpend = ADMIN_MONTHS.reduce((s, m) => s + m.spend, 0);
+  const totalOrders = ADMIN_BRAND_PERF.reduce((s, b) => s + b.orders, 0);
+  const blendedRoas = (ADMIN_BRAND_PERF.reduce((s, b) => s + b.roas, 0) / ADMIN_BRAND_PERF.length).toFixed(1);
+  const maxBrandSpend = Math.max(...ADMIN_BRAND_PERF.map((b) => b.spend));
   const totalCollected = 75000;
   const totalAccrued = 31430;
   const totalPaidOut = 24890;
   return (
     <div className="max-w-7xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-3xl md:text-4xl font-bold text-white">Admin Control Center</h1>
-        <p className="text-slate-400 mt-1">Platform health, curation queue, and money reconciliation.</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-bold text-heading">Admin Analytics</h1>
+          <p className="text-muted mt-1">Platform-wide performance, revenue, and reconciliation.</p>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2 bg-surface border border-line rounded-lg text-sm text-muted">
+          <Calendar size={14} /> Last 6 months
+        </div>
       </div>
 
+      {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Active Brands', value: '14', sub: '3 pending approval', icon: Briefcase, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-          { label: 'Active Creators', value: '247', sub: '18 onboarded this week', icon: Users, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-          { label: 'Live Campaigns', value: '8', sub: 'across all brands', icon: Activity, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-          { label: 'Platform Spend', value: '$31K', sub: 'last 30 days', icon: TrendingUp, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
-        ].map((s, i) => (
-          <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
-            <div className="flex items-center justify-between mb-3"><s.icon size={20} className={s.color} /></div>
-            <p className="text-xs text-slate-400 mb-1">{s.label}</p>
-            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-xs text-slate-500 mt-1">{s.sub}</p>
-          </div>
-        ))}
+        <KpiCard label="Platform Revenue" value={fmt(totalRevenue)} delta="+24%" up icon={DollarSign} />
+        <KpiCard label="Ad Spend Managed" value={fmt(totalSpend)} delta="+18%" up icon={TrendingUp} />
+        <KpiCard label="Orders Driven" value={totalOrders.toLocaleString()} delta="+31%" up icon={Target} />
+        <KpiCard label="Blended ROAS" value={`${blendedRoas}x`} delta="+0.3x" up icon={BarChart3} />
       </div>
 
-      <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-6 space-y-5">
+      {/* Trend + breakdown */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-surface border border-line rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-bold text-heading">Revenue vs Ad Spend</h2>
+            <span className="text-xs text-faint">Monthly</span>
+          </div>
+          <RevSpendChart />
+        </div>
+        <div className="bg-surface border border-line rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-bold text-heading flex items-center gap-2"><PieChart size={16} className="text-purple-500" /> Spend by Brand</h2>
+          </div>
+          <div className="space-y-4">
+            {ADMIN_BRAND_PERF.map((b) => {
+              const brand = BRANDS[b.brandId];
+              return (
+                <div key={b.brandId} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 text-body font-medium"><BrandLogo brandId={b.brandId} size={20} /> {brand.name}</span>
+                    <span className="text-faint">{fmt(b.spend)}</span>
+                  </div>
+                  <div className="h-2 bg-surface-2 rounded-full overflow-hidden"><div className="h-full bg-gradient-kyro rounded-full" style={{ width: `${(b.spend / maxBrandSpend) * 100}%` }}></div></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Brand performance table */}
+      <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+        <div className="p-5 border-b border-line flex items-center justify-between">
+          <h2 className="text-lg font-bold text-heading">Brand Performance</h2>
+          <button className="text-xs text-muted hover:text-heading flex items-center gap-1"><Filter size={12} /> Filter</button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
+            <thead>
+              <tr className="text-left text-faint border-b border-line">
+                <th className="p-4 font-semibold">Brand</th>
+                <th className="p-4 font-semibold">Revenue</th>
+                <th className="p-4 font-semibold">Spend</th>
+                <th className="p-4 font-semibold">Orders</th>
+                <th className="p-4 font-semibold">ROAS</th>
+                <th className="p-4 font-semibold">Spend share</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {ADMIN_BRAND_PERF.map((b) => {
+                const brand = BRANDS[b.brandId];
+                return (
+                  <tr key={b.brandId} className="hover:bg-surface-2 transition">
+                    <td className="p-4"><span className="flex items-center gap-3 font-semibold text-heading"><BrandLogo brandId={b.brandId} size={28} /> {brand.name}</span></td>
+                    <td className="p-4 font-semibold text-emerald-500">{fmt(b.revenue)}</td>
+                    <td className="p-4 text-body">{fmt(b.spend)}</td>
+                    <td className="p-4 text-body">{b.orders.toLocaleString()}</td>
+                    <td className="p-4"><span className={`font-semibold ${b.roas >= 3 ? 'text-emerald-500' : 'text-amber-500'}`}>{b.roas}x</span></td>
+                    <td className="p-4 w-40"><div className="h-1.5 bg-surface-2 rounded-full overflow-hidden"><div className="h-full bg-gradient-kyro rounded-full" style={{ width: `${(b.spend / maxBrandSpend) * 100}%` }}></div></div></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Top creators + platform health */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+          <div className="p-5 border-b border-line flex items-center justify-between">
+            <h2 className="text-lg font-bold text-heading flex items-center gap-2"><Trophy size={16} className="text-amber-500" /> Top Creators</h2>
+            <span className="text-xs text-faint">by orders</span>
+          </div>
+          <div className="divide-y divide-line">
+            {SEED_LEADERBOARD.map((l, i) => {
+              const c = SEED_CREATORS[l.creatorId];
+              return (
+                <button key={l.creatorId} onClick={() => onViewCreator(l.creatorId)} className="w-full p-4 flex items-center gap-4 hover:bg-surface-2 transition text-left">
+                  <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-kyro text-white font-bold text-xs">{i + 1}</div>
+                  <img src={c.avatar} alt={c.name} className="w-9 h-9 rounded-full object-cover" />
+                  <div className="flex-1 min-w-0"><p className="font-semibold text-heading truncate">{c.name}</p><p className="text-xs text-muted">{c.handle}</p></div>
+                  <div className="text-right"><p className="text-sm font-bold text-emerald-500">{l.orders}</p><p className="text-[11px] text-faint">orders</p></div>
+                  <ChevronRight size={16} className="text-faint" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="bg-surface border border-line rounded-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-heading flex items-center gap-2"><Activity size={16} className="text-purple-500" /> Platform Health</h2>
+            <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-xs font-semibold text-emerald-500">All systems go</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Active Brands', value: '14', sub: '3 pending' },
+              { label: 'Active Creators', value: '247', sub: '+18 this week' },
+              { label: 'Live Campaigns', value: '8', sub: 'across brands' },
+              { label: 'Avg Approval Time', value: '4.2h', sub: 'submission to live' },
+            ].map((s) => (
+              <div key={s.label} className="p-4 rounded-xl bg-surface-2 border border-line">
+                <p className="text-xs text-muted mb-1">{s.label}</p>
+                <p className="text-xl font-bold text-heading">{s.value}</p>
+                <p className="text-[11px] text-faint mt-0.5">{s.sub}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Reconciliation */}
+      <div className="bg-surface border border-line rounded-2xl p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2"><Sparkles size={18} className="text-emerald-400" /> Reconciliation — Today</h2>
-            <p className="text-sm text-slate-400 mt-0.5">Three-way diff: Square credits ↔ Trolley debits ↔ Kyro ledger.</p>
+            <h2 className="text-xl font-bold text-heading flex items-center gap-2"><Sparkles size={18} className="text-emerald-500" /> Reconciliation — Today</h2>
+            <p className="text-sm text-muted mt-0.5">Three-way diff: Square credits, Trolley debits, Kyro ledger.</p>
           </div>
-          <div className="px-3 py-1 bg-emerald-400/15 border border-emerald-400/30 rounded-full"><span className="text-xs font-semibold text-emerald-300">All green</span></div>
+          <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full"><span className="text-xs font-semibold text-emerald-500">All green</span></div>
         </div>
         <div className="grid md:grid-cols-3 gap-4">
-          <div className="p-5 rounded-xl bg-slate-800/60 border border-slate-700/50">
-            <div className="flex items-center gap-2 mb-2"><DollarSign size={16} className="text-blue-400" /><p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Collected (Square)</p></div>
-            <p className="text-2xl font-bold text-white">{fmt(totalCollected)}</p>
-          </div>
-          <div className="p-5 rounded-xl bg-slate-800/60 border border-slate-700/50">
-            <div className="flex items-center gap-2 mb-2"><Activity size={16} className="text-purple-400" /><p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Earnings Accrued</p></div>
-            <p className="text-2xl font-bold text-white">{fmt(totalAccrued)}</p>
-          </div>
-          <div className="p-5 rounded-xl bg-slate-800/60 border border-slate-700/50">
-            <div className="flex items-center gap-2 mb-2"><Wallet size={16} className="text-emerald-400" /><p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Paid Out (Trolley)</p></div>
-            <p className="text-2xl font-bold text-white">{fmt(totalPaidOut)}</p>
-          </div>
+          {[
+            { icon: DollarSign, label: 'Collected (Square)', value: fmt(totalCollected) },
+            { icon: Activity, label: 'Earnings Accrued', value: fmt(totalAccrued) },
+            { icon: Wallet, label: 'Paid Out (Trolley)', value: fmt(totalPaidOut) },
+          ].map((r) => (
+            <div key={r.label} className="p-5 rounded-xl bg-surface-2 border border-line">
+              <div className="flex items-center gap-2 mb-2"><r.icon size={16} className="text-purple-500" /><p className="text-xs font-semibold text-muted uppercase tracking-wider">{r.label}</p></div>
+              <p className="text-2xl font-bold text-heading">{r.value}</p>
+            </div>
+          ))}
         </div>
-        <div className="p-4 rounded-lg bg-emerald-400/10 border border-emerald-400/20 flex items-center gap-3">
-          <CheckCircle size={18} className="text-emerald-400" />
-          <p className="text-sm text-emerald-200">Ledger balanced. Pool float: <span className="font-bold">{fmt(totalCollected - totalAccrued)}</span> available across all campaigns.</p>
+        <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
+          <CheckCircle size={18} className="text-emerald-500" />
+          <p className="text-sm text-body">Ledger balanced. Pool float: <span className="font-bold text-heading">{fmt(totalCollected - totalAccrued)}</span> available across all campaigns.</p>
         </div>
       </div>
 
+      {/* Pool health + curation */}
       <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-slate-800/60 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white">Pool Health</h2>
-            <span className="text-xs text-slate-500">{SEED_CAMPAIGNS.filter(c => c.pool > 0).length} campaigns</span>
+        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+          <div className="p-5 border-b border-line flex items-center justify-between">
+            <h2 className="text-lg font-bold text-heading">Pool Health</h2>
+            <span className="text-xs text-faint">{SEED_CAMPAIGNS.filter((c) => c.pool > 0).length} campaigns</span>
           </div>
-          <div className="divide-y divide-slate-800/60">
-            {SEED_CAMPAIGNS.filter(c => c.pool > 0).map((c) => {
+          <div className="divide-y divide-line">
+            {SEED_CAMPAIGNS.filter((c) => c.pool > 0).map((c) => {
               const pct = Math.round((c.spent / c.pool) * 100);
               const lowPool = pct > 70;
               return (
                 <div key={c.id} className="p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <BrandLogo brandId={c.brandId} size={28} />
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-white">{c.name}</p>
-                      <p className="text-xs text-slate-500">{fmt(c.spent)} of {fmt(c.pool)}</p>
-                    </div>
-                    {lowPool ? <span className="px-2 py-0.5 bg-amber-400/15 border border-amber-400/30 rounded-full text-xs font-semibold text-amber-300">Top up soon</span> : <span className="px-2 py-0.5 bg-emerald-400/15 border border-emerald-400/30 rounded-full text-xs font-semibold text-emerald-300">Healthy</span>}
+                    <div className="flex-1"><p className="text-sm font-semibold text-heading">{c.name}</p><p className="text-xs text-faint">{fmt(c.spent)} of {fmt(c.pool)}</p></div>
+                    {lowPool ? <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-xs font-semibold text-amber-500">Top up soon</span> : <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-xs font-semibold text-emerald-500">Healthy</span>}
                   </div>
-                  <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden"><div className={`h-full ${lowPool ? 'bg-amber-400' : 'bg-gradient-kyro'} rounded-full`} style={{ width: `${pct}%` }}></div></div>
+                  <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden"><div className={`h-full ${lowPool ? 'bg-amber-500' : 'bg-gradient-kyro'} rounded-full`} style={{ width: `${pct}%` }}></div></div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-slate-800/60 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white">Curation Queue</h2>
-            <span className="text-xs text-slate-500">{SEED_CURATION.length} pending matches</span>
+        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+          <div className="p-5 border-b border-line flex items-center justify-between">
+            <h2 className="text-lg font-bold text-heading">Curation Queue</h2>
+            <span className="text-xs text-faint">{SEED_CURATION.length} pending</span>
           </div>
-          <div className="divide-y divide-slate-800/60">
+          <div className="divide-y divide-line">
             {SEED_CURATION.map((cu) => {
               const c = SEED_CREATORS[cu.creatorId];
               return (
@@ -1139,17 +1444,14 @@ function AdminDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                   <button onClick={() => onViewCreator(cu.creatorId)} className="w-full flex items-center gap-3 text-left hover:opacity-80 transition">
                     <img src={c.avatar} alt={c.name} className="w-10 h-10 rounded-full object-cover" />
                     <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <p className="text-sm font-semibold text-white">{c.name}</p>
-                        <span className="px-2 py-0.5 bg-purple-400/15 border border-purple-400/30 rounded-full text-xs font-semibold text-purple-300">{cu.match}% match</span>
-                      </div>
-                      <p className="text-xs text-slate-400">{c.social.instagram} IG · {c.niche.join(' · ')}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">For: {cu.campaign}</p>
+                      <div className="flex items-center justify-between mb-1"><p className="text-sm font-semibold text-heading">{c.name}</p><span className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 rounded-full text-xs font-semibold text-purple-500">{cu.match}% match</span></div>
+                      <p className="text-xs text-muted">{c.social.instagram} IG · {c.niche.join(' · ')}</p>
+                      <p className="text-xs text-faint mt-0.5">For: {cu.campaign}</p>
                     </div>
                   </button>
                   <div className="flex gap-2">
                     <button onClick={() => mockApi.proposeMatch(cu.id)} className="flex-1 px-3 py-1.5 bg-gradient-kyro rounded-lg text-white text-xs font-semibold">Propose Match</button>
-                    <button className="px-3 py-1.5 border border-slate-700 rounded-lg text-slate-300 text-xs font-semibold hover:bg-slate-800/60">Skip</button>
+                    <button className="px-3 py-1.5 border border-line rounded-lg text-body text-xs font-semibold hover:bg-surface-2">Skip</button>
                   </div>
                 </div>
               );
@@ -1167,17 +1469,17 @@ function AdminDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
 function CreatorPublicProfile({ creatorId, onBack }: { creatorId: CreatorId; onBack: () => void }) {
   const c = SEED_CREATORS[creatorId];
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-      <div className="sticky top-0 z-40 backdrop-blur-md bg-slate-950/80 border-b border-slate-800/50 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-app">
+      <div className="sticky top-0 z-40 backdrop-blur-md bg-app/80 border-b border-line px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto h-16 flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-white transition">
+          <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-heading transition">
             <ChevronLeft size={20} /> Back
           </button>
           <div className="flex items-center gap-2">
             <KyroLogo size={28} />
             <span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
           </div>
-          <button onClick={() => mockApi.shareProfile(c.id)} className="flex items-center gap-2 px-3 py-1.5 text-slate-400 hover:text-white text-sm">
+          <button onClick={() => mockApi.shareProfile(c.id)} className="flex items-center gap-2 px-3 py-1.5 text-muted hover:text-heading text-sm">
             <Share2 size={14} /> Share
           </button>
         </div>
@@ -1185,26 +1487,26 @@ function CreatorPublicProfile({ creatorId, onBack }: { creatorId: CreatorId; onB
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
         {/* Hero */}
-        <div className="relative overflow-hidden rounded-3xl border border-slate-700/50 bg-slate-900/60 p-8 md:p-12">
+        <div className="relative overflow-hidden rounded-3xl border border-line bg-surface p-8 md:p-12">
           <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/15 rounded-full blur-3xl translate-x-1/3 -translate-y-1/3 pointer-events-none"></div>
           <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start">
-            <img src={c.avatar} alt={c.name} className="w-32 h-32 rounded-full object-cover ring-4 ring-slate-700/50" />
+            <img src={c.avatar} alt={c.name} className="w-32 h-32 rounded-full object-cover ring-4 ring-line" />
             <div className="flex-1 space-y-3">
               <div>
-                <h1 className="text-4xl md:text-5xl font-bold text-white">{c.name}</h1>
-                <p className="text-lg text-slate-400 mt-1">{c.handle}</p>
+                <h1 className="text-4xl md:text-5xl font-bold text-heading">{c.name}</h1>
+                <p className="text-lg text-muted mt-1">{c.handle}</p>
               </div>
-              <p className="text-slate-300 leading-relaxed max-w-2xl">{c.bio}</p>
+              <p className="text-body leading-relaxed max-w-2xl">{c.bio}</p>
               <div className="flex flex-wrap items-center gap-3 pt-2">
-                <span className="flex items-center gap-1.5 text-sm text-slate-400"><Globe size={14} /> {c.location}</span>
+                <span className="flex items-center gap-1.5 text-sm text-muted"><Globe size={14} /> {c.location}</span>
                 {c.niche.map((n) => (
                   <span key={n} className="px-2.5 py-0.5 bg-purple-400/10 border border-purple-400/20 rounded-full text-xs font-semibold text-purple-300">{n}</span>
                 ))}
               </div>
               <div className="flex gap-4 pt-3">
-                <a href="#" className="flex items-center gap-2 text-slate-400 hover:text-white transition"><Instagram size={18} /><span className="text-sm font-semibold">{c.social.instagram}</span></a>
-                <a href="#" className="flex items-center gap-2 text-slate-400 hover:text-white transition"><Hash size={18} /><span className="text-sm font-semibold">{c.social.tiktok}</span></a>
-                <a href="#" className="flex items-center gap-2 text-slate-400 hover:text-white transition"><Youtube size={18} /><span className="text-sm font-semibold">{c.social.youtube}</span></a>
+                <a href="#" className="flex items-center gap-2 text-muted hover:text-heading transition"><Instagram size={18} /><span className="text-sm font-semibold">{c.social.instagram}</span></a>
+                <a href="#" className="flex items-center gap-2 text-muted hover:text-heading transition"><Hash size={18} /><span className="text-sm font-semibold">{c.social.tiktok}</span></a>
+                <a href="#" className="flex items-center gap-2 text-muted hover:text-heading transition"><Youtube size={18} /><span className="text-sm font-semibold">{c.social.youtube}</span></a>
               </div>
             </div>
             <button className="px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105 whitespace-nowrap">
@@ -1223,7 +1525,7 @@ function CreatorPublicProfile({ creatorId, onBack }: { creatorId: CreatorId; onB
           ].map((s, i) => (
             <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
               <s.icon size={20} className={s.color} />
-              <p className="text-xs text-slate-400 mt-3 mb-1">{s.label}</p>
+              <p className="text-xs text-muted mt-3 mb-1">{s.label}</p>
               <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
             </div>
           ))}
@@ -1231,14 +1533,14 @@ function CreatorPublicProfile({ creatorId, onBack }: { creatorId: CreatorId; onB
 
         {/* Sample work */}
         <div>
-          <h2 className="text-2xl font-bold text-white mb-5">Sample Work</h2>
+          <h2 className="text-2xl font-bold text-heading mb-5">Sample Work</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {c.sampleWork.map((src, i) => (
-              <div key={i} className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-slate-900 border border-slate-700/50 group cursor-pointer">
+              <div key={i} className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-surface border border-line group cursor-pointer">
                 <img src={src} alt={`Sample ${i + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent opacity-0 group-hover:opacity-100 transition" />
                 <div className="absolute bottom-3 left-3 right-3 opacity-0 group-hover:opacity-100 transition">
-                  <p className="text-xs text-slate-300">For brand campaign</p>
+                  <p className="text-xs text-body">For brand campaign</p>
                 </div>
               </div>
             ))}
@@ -1247,12 +1549,12 @@ function CreatorPublicProfile({ creatorId, onBack }: { creatorId: CreatorId; onB
 
         {/* Past brand collaborations */}
         <div>
-          <h2 className="text-2xl font-bold text-white mb-5">Brands worked with</h2>
+          <h2 className="text-2xl font-bold text-heading mb-5">Brands worked with</h2>
           <div className="flex flex-wrap gap-3">
             {Object.values(BRANDS).slice(0, 4).map((b) => (
-              <div key={b.id} className="flex items-center gap-2 px-3 py-2 bg-slate-900/60 border border-slate-700/50 rounded-lg">
+              <div key={b.id} className="flex items-center gap-2 px-3 py-2 bg-surface border border-line rounded-lg">
                 <BrandLogo brandId={b.id as BrandId} size={24} />
-                <span className="text-sm text-white font-medium">{b.name}</span>
+                <span className="text-sm text-heading font-medium">{b.name}</span>
               </div>
             ))}
           </div>
@@ -1269,17 +1571,17 @@ function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () 
   const b = BRANDS[brandId];
   const campaigns = SEED_CAMPAIGNS.filter(c => c.brandId === brandId);
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-      <div className="sticky top-0 z-40 backdrop-blur-md bg-slate-950/80 border-b border-slate-800/50 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-app">
+      <div className="sticky top-0 z-40 backdrop-blur-md bg-app/80 border-b border-line px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto h-16 flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-white transition">
+          <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-heading transition">
             <ChevronLeft size={20} /> Back
           </button>
           <div className="flex items-center gap-2">
             <KyroLogo size={28} />
             <span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
           </div>
-          <button onClick={() => mockApi.shareProfile(b.id)} className="flex items-center gap-2 px-3 py-1.5 text-slate-400 hover:text-white text-sm">
+          <button onClick={() => mockApi.shareProfile(b.id)} className="flex items-center gap-2 px-3 py-1.5 text-muted hover:text-heading text-sm">
             <Share2 size={14} /> Share
           </button>
         </div>
@@ -1287,15 +1589,15 @@ function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () 
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
         {/* Hero */}
-        <div className={`relative overflow-hidden rounded-3xl border border-slate-700/50 bg-gradient-to-br ${b.accent} p-8 md:p-12`}>
+        <div className={`relative overflow-hidden rounded-3xl border border-line bg-gradient-to-br ${b.accent} p-8 md:p-12`}>
           <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start">
             <BrandLogo brandId={brandId} size={120} />
             <div className="flex-1 space-y-3">
               <div>
-                <h1 className="text-4xl md:text-5xl font-bold text-white">{b.name}</h1>
-                <p className="text-lg text-slate-300 mt-1">{b.tagline}</p>
+                <h1 className="text-4xl md:text-5xl font-bold text-heading">{b.name}</h1>
+                <p className="text-lg text-body mt-1">{b.tagline}</p>
               </div>
-              <span className="inline-block px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-white">{b.category}</span>
+              <span className="inline-block px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-heading">{b.category}</span>
             </div>
             <button className="px-5 py-2.5 bg-white text-slate-900 rounded-lg font-semibold hover:bg-slate-100 transition transform hover:scale-105 whitespace-nowrap">
               Apply to work with us
@@ -1313,7 +1615,7 @@ function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () 
           ].map((s, i) => (
             <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
               <s.icon size={20} className={s.color} />
-              <p className="text-xs text-slate-400 mt-3 mb-1">{s.label}</p>
+              <p className="text-xs text-muted mt-3 mb-1">{s.label}</p>
               <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
             </div>
           ))}
@@ -1321,21 +1623,21 @@ function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () 
 
         {/* Active campaigns */}
         <div>
-          <h2 className="text-2xl font-bold text-white mb-5">Open Campaigns</h2>
+          <h2 className="text-2xl font-bold text-heading mb-5">Open Campaigns</h2>
           <div className="grid md:grid-cols-2 gap-5">
             {campaigns.map((c) => (
-              <div key={c.id} className="bg-slate-900/60 border border-slate-700/50 rounded-2xl overflow-hidden hover:border-slate-600/60 transition">
+              <div key={c.id} className="bg-surface border border-line rounded-2xl overflow-hidden hover:border-line transition">
                 <img src={c.cover} alt={c.name} className="w-full h-40 object-cover" />
                 <div className="p-5 space-y-3">
                   <div className="flex items-center gap-3">
-                    <h3 className="text-lg font-bold text-white">{c.name}</h3>
+                    <h3 className="text-lg font-bold text-heading">{c.name}</h3>
                     <StatusPill status={c.status} />
                   </div>
                   {c.status === 'live' && (
                     <div className="grid grid-cols-3 gap-3 text-sm">
-                      <div><p className="text-xs text-slate-500">Creators</p><p className="font-bold text-white">{c.creators}</p></div>
-                      <div><p className="text-xs text-slate-500">Conversions</p><p className="font-bold text-emerald-400">{c.conversions.toLocaleString()}</p></div>
-                      <div><p className="text-xs text-slate-500">ROAS</p><p className="font-bold text-purple-400">{c.roas}x</p></div>
+                      <div><p className="text-xs text-faint">Creators</p><p className="font-bold text-heading">{c.creators}</p></div>
+                      <div><p className="text-xs text-faint">Conversions</p><p className="font-bold text-emerald-400">{c.conversions.toLocaleString()}</p></div>
+                      <div><p className="text-xs text-faint">ROAS</p><p className="font-bold text-purple-400">{c.roas}x</p></div>
                     </div>
                   )}
                   <button className="w-full px-4 py-2 bg-gradient-kyro rounded-lg text-white text-sm font-semibold">Apply</button>
@@ -1347,14 +1649,14 @@ function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () 
 
         {/* Creator roster */}
         <div>
-          <h2 className="text-2xl font-bold text-white mb-5">Creators in {b.name}'s roster</h2>
+          <h2 className="text-2xl font-bold text-heading mb-5">Creators in {b.name}'s roster</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {Object.values(SEED_CREATORS).map((c) => (
-              <div key={c.id} className="flex items-center gap-3 p-4 bg-slate-900/60 border border-slate-700/50 rounded-2xl hover:border-slate-600/60 transition">
+              <div key={c.id} className="flex items-center gap-3 p-4 bg-surface border border-line rounded-2xl hover:border-line transition">
                 <img src={c.avatar} alt={c.name} className="w-12 h-12 rounded-full object-cover" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-white font-semibold truncate">{c.name}</p>
-                  <p className="text-xs text-slate-400 truncate">{c.handle}</p>
+                  <p className="text-heading font-semibold truncate">{c.name}</p>
+                  <p className="text-xs text-muted truncate">{c.handle}</p>
                 </div>
               </div>
             ))}
@@ -1370,10 +1672,10 @@ function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () 
    ───────────────────────────────────────────────────────────── */
 function AboutPage({ onBack, onSignIn }: { onBack: () => void; onSignIn: () => void }) {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-      <div className="sticky top-0 z-40 backdrop-blur-md bg-slate-950/80 border-b border-slate-800/50 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-app">
+      <div className="sticky top-0 z-40 backdrop-blur-md bg-app/80 border-b border-line px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto h-16 flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-white transition">
+          <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-heading transition">
             <ChevronLeft size={20} /> Back
           </button>
           <button onClick={onBack} className="flex items-center gap-2">
@@ -1388,52 +1690,52 @@ function AboutPage({ onBack, onSignIn }: { onBack: () => void; onSignIn: () => v
         <div className="text-center space-y-5">
           <KyroLogo size={80} className="mx-auto" />
           <h1 className="text-5xl md:text-6xl font-bold tracking-tight bg-gradient-kyro bg-clip-text text-transparent">About KYRO</h1>
-          <p className="text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-xl text-body max-w-2xl mx-auto leading-relaxed">
             We're building the operating system for creator programs — where brands and creators grow together, paid on real performance.
           </p>
         </div>
 
         <section className="space-y-5">
-          <h2 className="text-3xl font-bold text-white">Our mission</h2>
-          <p className="text-lg text-slate-300 leading-relaxed">
+          <h2 className="text-3xl font-bold text-heading">Our mission</h2>
+          <p className="text-lg text-body leading-relaxed">
             Creator marketing has always promised performance, and rarely delivered it. Flat fees, dark attribution, late invoices — the model was built for a media landscape that no longer exists. KYRO is what creator marketing looks like when you build it around the actual economics: creators earn from what their content actually drives, brands pay for outcomes, and a platform connects the two with the trust and transparency both sides need.
           </p>
-          <p className="text-lg text-slate-300 leading-relaxed">
+          <p className="text-lg text-body leading-relaxed">
             Built by Aragon Media, KYRO is the creator growth portal for the next decade of consumer brands.
           </p>
         </section>
 
         <section className="space-y-5">
-          <h2 className="text-3xl font-bold text-white">How it works</h2>
+          <h2 className="text-3xl font-bold text-heading">How it works</h2>
           <div className="grid md:grid-cols-3 gap-5">
             {[
               { num: '01', title: 'Brand creates a campaign', desc: 'Brands publish a brief, fund a campaign pool via Square, and define commission rules.' },
               { num: '02', title: 'Creators submit videos', desc: 'Approved creators upload short-form video, which becomes a distinct whitelisted ad on Meta.' },
               { num: '03', title: 'Performance pays out', desc: 'Real-time Meta Ads Insights track per-creator performance. Trolley auto-deposits payouts.' },
             ].map((s) => (
-              <div key={s.num} className="p-6 bg-slate-900/60 border border-slate-700/50 rounded-2xl space-y-3">
+              <div key={s.num} className="p-6 bg-surface border border-line rounded-2xl space-y-3">
                 <span className="text-3xl font-bold bg-gradient-kyro bg-clip-text text-transparent">{s.num}</span>
-                <h3 className="text-xl font-bold text-white">{s.title}</h3>
-                <p className="text-sm text-slate-400 leading-relaxed">{s.desc}</p>
+                <h3 className="text-xl font-bold text-heading">{s.title}</h3>
+                <p className="text-sm text-muted leading-relaxed">{s.desc}</p>
               </div>
             ))}
           </div>
         </section>
 
         <section className="space-y-5">
-          <h2 className="text-3xl font-bold text-white">Built by Aragon Media</h2>
-          <p className="text-lg text-slate-300 leading-relaxed">
+          <h2 className="text-3xl font-bold text-heading">Built by Aragon Media</h2>
+          <p className="text-lg text-body leading-relaxed">
             Aragon Media is a Canada-based studio building tools for creators and the brands that work with them. KYRO is our flagship product.
           </p>
           <div className="flex flex-wrap gap-3 pt-3">
-            <a href="mailto:hello@kyro.com" className="flex items-center gap-2 px-4 py-2 bg-slate-900/60 border border-slate-700/50 rounded-lg text-slate-300 hover:text-white transition"><Mail size={16} /> hello@kyro.com</a>
-            <a href="#" className="flex items-center gap-2 px-4 py-2 bg-slate-900/60 border border-slate-700/50 rounded-lg text-slate-300 hover:text-white transition"><Globe size={16} /> aragonmedia.com</a>
+            <a href="mailto:hello@kyro.com" className="flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-body hover:text-heading transition"><Mail size={16} /> hello@kyro.com</a>
+            <a href="#" className="flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-body hover:text-heading transition"><Globe size={16} /> aragonmedia.com</a>
           </div>
         </section>
 
-        <section className="text-center bg-slate-900/60 border border-slate-700/50 rounded-3xl p-10 space-y-5">
-          <h2 className="text-3xl font-bold text-white">Ready to scale with KYRO?</h2>
-          <p className="text-slate-400">Free to join. Brands and creators welcome.</p>
+        <section className="text-center bg-surface border border-line rounded-3xl p-10 space-y-5">
+          <h2 className="text-3xl font-bold text-heading">Ready to scale with KYRO?</h2>
+          <p className="text-muted">Free to join. Brands and creators welcome.</p>
           <button onClick={onSignIn} className="px-8 py-3 bg-gradient-kyro rounded-xl text-white font-semibold inline-flex items-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105">
             Get Started <ArrowRight size={18} />
           </button>
@@ -1448,10 +1750,10 @@ function AboutPage({ onBack, onSignIn }: { onBack: () => void; onSignIn: () => v
    ───────────────────────────────────────────────────────────── */
 function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-      <div className="sticky top-0 z-40 backdrop-blur-md bg-slate-950/80 border-b border-slate-800/50 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-app">
+      <div className="sticky top-0 z-40 backdrop-blur-md bg-app/80 border-b border-line px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto h-16 flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-white transition">
+          <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-heading transition">
             <ChevronLeft size={20} /> Back to dashboard
           </button>
           <div className="flex items-center gap-2">
@@ -1463,11 +1765,26 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
         <div>
-          <h1 className="text-3xl font-bold text-white">Account Settings</h1>
-          <p className="text-slate-400 mt-1">Manage your profile, payment, and notifications.</p>
+          <h1 className="text-3xl font-bold text-heading">Account Settings</h1>
+          <p className="text-muted mt-1">Manage your profile, payment, and notifications.</p>
         </div>
 
-        <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl divide-y divide-slate-800/60">
+        <div className="bg-surface border border-line rounded-2xl p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-surface-2 flex items-center justify-center">
+                <Sun size={18} className="text-body" />
+              </div>
+              <div>
+                <p className="text-heading font-semibold">Appearance</p>
+                <p className="text-xs text-faint">Choose how KYRO looks. Applies across the whole app.</p>
+              </div>
+            </div>
+            <ThemeSegmented />
+          </div>
+        </div>
+
+        <div className="bg-surface border border-line rounded-2xl divide-y divide-line">
           {[
             { label: 'Profile', icon: Users, sub: 'Name, email, bio' },
             { label: 'Payment Method', icon: Wallet, sub: role === 'creator' ? 'Trolley payout account' : 'Square billing on file' },
@@ -1475,15 +1792,15 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
             { label: 'Connected Accounts', icon: Heart, sub: 'Meta, Instagram, TikTok' },
             { label: 'Security', icon: ShieldCheck, sub: 'Password, 2FA, sessions' },
           ].map((row) => (
-            <button key={row.label} className="w-full p-5 flex items-center gap-4 hover:bg-slate-800/30 transition text-left">
-              <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center">
-                <row.icon size={18} className="text-slate-300" />
+            <button key={row.label} className="w-full p-5 flex items-center gap-4 hover:bg-surface-2 transition text-left">
+              <div className="w-10 h-10 rounded-lg bg-surface-2 flex items-center justify-center">
+                <row.icon size={18} className="text-body" />
               </div>
               <div className="flex-1">
-                <p className="text-white font-semibold">{row.label}</p>
-                <p className="text-xs text-slate-500">{row.sub}</p>
+                <p className="text-heading font-semibold">{row.label}</p>
+                <p className="text-xs text-faint">{row.sub}</p>
               </div>
-              <ChevronRight size={16} className="text-slate-600" />
+              <ChevronRight size={16} className="text-faint" />
             </button>
           ))}
         </div>
@@ -1500,23 +1817,55 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
 /* ─────────────────────────────────────────────────────────────
    ROOT APP
    ───────────────────────────────────────────────────────────── */
-type View = 'landing' | 'auth' | 'app' | 'about' | 'creator-profile' | 'brand-profile' | 'settings';
+type View = 'landing' | 'signin' | 'roles' | 'app' | 'about' | 'creator-profile' | 'brand-profile' | 'settings';
+
+function readRoute(): { view: View; admin: boolean } {
+  if (typeof window !== 'undefined') {
+    const path = window.location.pathname.replace(/\/+$/, '');
+    if (path === '/admin') return { view: 'signin', admin: true };
+    if (path === '/signin' || path === '/login') return { view: 'signin', admin: false };
+  }
+  return { view: 'landing', admin: false };
+}
 
 function App() {
-  const [view, setView] = useState<View>('landing');
-  const [role, setRole] = useState<Role>('brand');
+  const initial = readRoute();
+  const [view, setView] = useState<View>(initial.view);
+  const [adminEntry, setAdminEntry] = useState(initial.admin);
+  const [role, setRole] = useState<Role>(initial.admin ? 'admin' : 'brand');
   const [profileCreatorId, setProfileCreatorId] = useState<CreatorId>('maya');
   const [profileBrandId, setProfileBrandId] = useState<BrandId>('boldbuns');
 
-  if (view === 'landing') return <Landing onSignIn={() => setView('auth')} onAbout={() => setView('about')} />;
-  if (view === 'auth') return <RolePicker onPick={(r) => { setRole(r); setView('app'); }} onBack={() => setView('landing')} />;
-  if (view === 'about') return <AboutPage onBack={() => setView('landing')} onSignIn={() => setView('auth')} />;
+  // Keep in sync with browser back/forward
+  useEffect(() => {
+    const onPop = () => {
+      const r = readRoute();
+      setAdminEntry(r.admin);
+      setView(r.view);
+      if (r.admin) setRole('admin');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const nav = (path: string) => { try { window.history.pushState({}, '', path); } catch { /* noop */ } };
+  const goSignIn = (admin: boolean) => { setAdminEntry(admin); setView('signin'); nav(admin ? '/admin' : '/signin'); };
+  const goLanding = () => { setView('landing'); nav('/'); };
+  const onVerified = () => {
+    if (adminEntry) { setRole('admin'); setView('app'); nav('/admin'); }
+    else { setView('roles'); }
+  };
+
+  if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onAbout={() => setView('about')} />;
+  if (view === 'signin') return <SignIn adminMode={adminEntry} onVerified={onVerified} onBack={goLanding} />;
+  if (view === 'roles') return <RolePicker onPick={(r) => { setRole(r); setView('app'); }} onBack={() => goSignIn(false)} />;
+  if (view === 'about') return <AboutPage onBack={goLanding} onSignIn={() => goSignIn(false)} />;
   if (view === 'creator-profile') return <CreatorPublicProfile creatorId={profileCreatorId} onBack={() => setView('app')} />;
   if (view === 'brand-profile') return <BrandPublicProfile brandId={profileBrandId} onBack={() => setView('app')} />;
   if (view === 'settings') return <AccountSettings onBack={() => setView('app')} role={role} />;
 
   return (
-    <AppShell role={role} onSwitch={setRole} onSignOut={() => setView('landing')} onSettings={() => setView('settings')}>
+    <AppShell role={role} onSwitch={setRole} onSignOut={goLanding} onSettings={() => setView('settings')}>
       {role === 'brand' && <BrandDashboard onViewCreator={(id) => { setProfileCreatorId(id); setView('creator-profile'); }} />}
       {role === 'creator' && <CreatorDashboard onViewBrand={(id) => { setProfileBrandId(id); setView('brand-profile'); }} />}
       {role === 'admin' && <AdminDashboard onViewCreator={(id) => { setProfileCreatorId(id); setView('creator-profile'); }} />}

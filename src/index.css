@@ -2,9 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────
+   THEME TOKENS
+   Dark is the default (:root). Adding the `.light` class on <html>
+   flips every token to the light (Trybe-style) palette.
+   Values are space-separated RGB channels so Tailwind's
+   `rgb(var(--x) / <alpha-value>)` opacity syntax works.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --app: 2 6 23;          /* slate-950 */
+  --surface: 15 23 42;    /* slate-900 */
+  --surface-2: 30 41 59;  /* slate-800 */
+  --line: 51 65 85;       /* slate-700 */
+  --heading: 255 255 255; /* white */
+  --body: 203 213 225;    /* slate-300 */
+  --muted: 148 163 184;   /* slate-400 */
+  --faint: 100 116 139;   /* slate-500 */
+}
+
+.light {
+  --app: 244 245 248;     /* soft light gray */
+  --surface: 255 255 255; /* white cards */
+  --surface-2: 245 246 250;
+  --line: 226 228 235;
+  --heading: 15 18 26;    /* near-black */
+  --body: 51 55 66;
+  --muted: 90 96 110;
+  --faint: 140 146 158;
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-app text-body;
   }
 }
 
