@@ -343,7 +343,7 @@ function BrandLogo({ brandId, size = 40 }: { brandId: BrandId; size?: number }) 
 /* ─────────────────────────────────────────────────────────────
    LANDING PAGE
    ───────────────────────────────────────────────────────────── */
-function Landing({ onSignIn, onAbout }: { onSignIn: () => void; onAbout: () => void }) {
+function Landing({ onSignIn, onGetStarted, onAbout }: { onSignIn: () => void; onGetStarted: () => void; onAbout: () => void }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   return (
     <div className="min-h-screen bg-app text-body">
@@ -362,7 +362,7 @@ function Landing({ onSignIn, onAbout }: { onSignIn: () => void; onAbout: () => v
           <div className="hidden md:flex items-center gap-1.5">
             <ThemeToggle />
             <button onClick={onSignIn} className="px-4 py-2 text-sm font-semibold text-body hover:text-heading transition-colors">Sign In</button>
-            <button onClick={onSignIn} className="px-5 py-2 bg-gradient-kyro rounded-full text-white text-sm font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105">Get Started</button>
+            <button onClick={onGetStarted} className="px-5 py-2 bg-gradient-kyro rounded-full text-white text-sm font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105">Get Started</button>
           </div>
           <div className="md:hidden flex items-center gap-1">
             <ThemeToggle />
@@ -378,7 +378,7 @@ function Landing({ onSignIn, onAbout }: { onSignIn: () => void; onAbout: () => v
             <button onClick={onAbout} className="block w-full text-left py-2.5 text-body hover:text-heading font-medium">About</button>
             <div className="pt-2 space-y-2">
               <button onClick={onSignIn} className="w-full px-4 py-2.5 border border-line rounded-lg text-heading font-semibold hover:bg-surface-2 transition">Sign In</button>
-              <button onClick={onSignIn} className="w-full px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold transition">Get Started</button>
+              <button onClick={onGetStarted} className="w-full px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold transition">Get Started</button>
             </div>
           </div>
         )}
@@ -401,7 +401,7 @@ function Landing({ onSignIn, onAbout }: { onSignIn: () => void; onAbout: () => v
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button onClick={onSignIn} className="px-8 py-4 bg-gradient-kyro rounded-full text-white font-semibold flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105 text-lg">
+            <button onClick={onGetStarted} className="px-8 py-4 bg-gradient-kyro rounded-full text-white font-semibold flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105 text-lg">
               Join KYRO Free <ArrowRight size={20} />
             </button>
           </div>
@@ -511,7 +511,7 @@ function Landing({ onSignIn, onAbout }: { onSignIn: () => void; onAbout: () => v
         <div className="max-w-3xl mx-auto text-center rounded-3xl border border-line bg-surface p-10 md:p-14 space-y-5">
           <h2 className="text-3xl md:text-4xl font-bold text-heading">Ready to scale with KYRO?</h2>
           <p className="text-muted text-lg">Free to join. Brands and creators welcome.</p>
-          <button onClick={onSignIn} className="px-8 py-3.5 bg-gradient-kyro rounded-full text-white font-semibold inline-flex items-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105">
+          <button onClick={onGetStarted} className="px-8 py-3.5 bg-gradient-kyro rounded-full text-white font-semibold inline-flex items-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105">
             Join KYRO Free <ArrowRight size={18} />
           </button>
         </div>
@@ -542,12 +542,21 @@ function Landing({ onSignIn, onAbout }: { onSignIn: () => void; onAbout: () => v
 /* ─────────────────────────────────────────────────────────────
    SIGN IN — email + 6-digit OTP (real via Supabase, demo fallback)
    ───────────────────────────────────────────────────────────── */
-function SignIn({ adminMode, onVerified, onBack }: { adminMode: boolean; onVerified: () => void; onBack: () => void }) {
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ]);
+}
+
+function SignIn({ mode, signupRole, onVerified, onBack }: { mode: 'signin' | 'signup' | 'admin'; signupRole?: Role; onVerified: () => void; onBack: () => void }) {
+  const adminMode = mode === 'admin';
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [demo, setDemo] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
@@ -565,29 +574,58 @@ function SignIn({ adminMode, onVerified, onBack }: { adminMode: boolean; onVerif
     if (!emailValid || loading) return;
     setLoading(true);
     setError('');
-    const res = await sendEmailOtp(email.trim());
-    setLoading(false);
-    if (res.error) { setError(res.error.message || 'Could not send the code. Try again.'); return; }
-    setDemo(res.demo);
-    setStep('code');
-    setResendIn(30);
-    setDigits(['', '', '', '', '', '']);
-    setTimeout(() => inputsRef.current[0]?.focus(), 60);
+    setInfo('');
+    try {
+      const res = await withTimeout(sendEmailOtp(email.trim()), 15000);
+      if (res.error) {
+        setError(res.error.message || 'Could not send the code. Please try again.');
+        return;
+      }
+      setDemo(res.demo);
+      setStep('code');
+      setResendIn(30);
+      setDigits(['', '', '', '', '', '']);
+      setInfo(res.demo ? '' : `Code sent to ${email.trim()} — check your inbox and spam.`);
+      setTimeout(() => inputsRef.current[0]?.focus(), 60);
+    } catch (err) {
+      console.error('[kyro] sendEmailOtp failed', err);
+      setError(
+        err instanceof Error && err.message === 'timeout'
+          ? 'Timed out reaching the server. Check your connection / Supabase settings.'
+          : 'Something went wrong sending the code. Please try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleVerify() {
     if (code.length !== 6 || loading) return;
     setLoading(true);
     setError('');
-    if (demo) {
-      mockApi.logEvent('auth.otp.verify', { email: email.trim(), mode: 'demo', admin: adminMode });
-      setTimeout(() => { setLoading(false); onVerified(); }, 400);
-      return;
+    try {
+      if (demo) {
+        mockApi.logEvent('auth.otp.verify', { email: email.trim(), mode: 'demo', role: signupRole, admin: adminMode });
+        await new Promise((r) => setTimeout(r, 400));
+        onVerified();
+        return;
+      }
+      const res = await withTimeout(verifyEmailOtp(email.trim(), code), 15000);
+      if (res.error) {
+        setError(res.error.message || 'That code is invalid or expired.');
+        return;
+      }
+      onVerified();
+    } catch (err) {
+      console.error('[kyro] verifyEmailOtp failed', err);
+      setError(
+        err instanceof Error && err.message === 'timeout'
+          ? 'Timed out verifying. Please try again.'
+          : 'Something went wrong verifying the code. Please try again.'
+      );
+    } finally {
+      setLoading(false);
     }
-    const res = await verifyEmailOtp(email.trim(), code);
-    setLoading(false);
-    if (res.error) { setError(res.error.message || 'That code is invalid or expired.'); return; }
-    onVerified();
   }
 
   function onDigitChange(i: number, val: string) {
@@ -629,12 +667,17 @@ function SignIn({ adminMode, onVerified, onBack }: { adminMode: boolean; onVerif
                 <Shield size={12} /> Admin access
               </div>
             )}
+            {mode === 'signup' && signupRole && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-5 bg-kyro-600/10 border border-kyro-600/20 rounded-full text-xs font-semibold text-kyro-600">
+                {signupRole === 'brand' ? <Briefcase size={12} /> : <Camera size={12} />} Signing up as {signupRole === 'brand' ? 'a Brand' : 'a Creator'}
+              </div>
+            )}
 
             {step === 'email' && (
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <h1 className="text-2xl font-bold text-heading">{adminMode ? 'Admin sign in' : 'Sign in to KYRO'}</h1>
-                  <p className="text-muted text-sm">Enter your email and we'll send you a 6-digit sign-in code.</p>
+                  <h1 className="text-2xl font-bold text-heading">{adminMode ? 'Admin sign in' : mode === 'signup' ? 'Create your account' : 'Sign in to KYRO'}</h1>
+                  <p className="text-muted text-sm">{mode === 'signup' ? "Enter your email — we'll send a 6-digit code to confirm it." : "Enter your email and we'll send you a 6-digit sign-in code."}</p>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-muted uppercase tracking-wider">Email</label>
@@ -692,6 +735,12 @@ function SignIn({ adminMode, onVerified, onBack }: { adminMode: boolean; onVerif
                     <p className="text-xs text-amber-500">Demo mode — no real email sent. Enter any 6 digits to continue. Real codes send once Supabase is connected.</p>
                   </div>
                 )}
+                {info && !demo && (
+                  <div className="flex items-start gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                    <CheckCircle size={16} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-emerald-500">{info}</p>
+                  </div>
+                )}
                 {error && <p className="text-sm text-pink-500">{error}</p>}
                 <button
                   onClick={handleVerify}
@@ -701,7 +750,7 @@ function SignIn({ adminMode, onVerified, onBack }: { adminMode: boolean; onVerif
                   {loading ? 'Verifying…' : <>Verify &amp; continue <ArrowRight size={18} /></>}
                 </button>
                 <div className="flex items-center justify-between text-sm">
-                  <button onClick={() => { setStep('email'); setError(''); }} className="text-muted hover:text-heading transition">Use a different email</button>
+                  <button onClick={() => { setStep('email'); setError(''); setInfo(''); }} className="text-muted hover:text-heading transition">Use a different email</button>
                   <button onClick={handleSend} disabled={resendIn > 0 || loading} className="text-kyro-600 hover:text-kyro-700 font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed">
                     {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
                   </button>
@@ -710,7 +759,7 @@ function SignIn({ adminMode, onVerified, onBack }: { adminMode: boolean; onVerif
             )}
           </div>
           <p className="text-center text-xs text-faint mt-6">
-            {adminMode ? 'Admin portal · KYRO' : 'New to KYRO? Signing in creates your account.'}
+            {adminMode ? 'Admin portal · KYRO' : mode === 'signup' ? 'Creating your KYRO account' : 'Sign in to your KYRO account'}
           </p>
         </div>
       </div>
@@ -721,27 +770,46 @@ function SignIn({ adminMode, onVerified, onBack }: { adminMode: boolean; onVerif
 /* ─────────────────────────────────────────────────────────────
    ROLE PICKER
    ───────────────────────────────────────────────────────────── */
-function RolePicker({ onPick, onBack }: { onPick: (r: Role) => void; onBack: () => void }) {
+function RolePicker({
+  onPick,
+  onBack,
+  roles = ['brand', 'creator', 'admin'],
+  heading = 'Welcome to KYRO',
+  sub = 'Choose how you want to explore the platform.',
+  badge = 'Demo Mode',
+  cta = 'Enter',
+}: {
+  onPick: (r: Role) => void;
+  onBack: () => void;
+  roles?: Role[];
+  heading?: string;
+  sub?: string;
+  badge?: string;
+  cta?: string;
+}) {
+  const allOptions = [
+    { role: 'brand' as Role, icon: Briefcase, title: "I'm a Brand", desc: 'Launch creator-led ads on Meta, fund campaigns, see ROI in real time.', border: 'border-blue-400/30 hover:border-blue-400/60' },
+    { role: 'creator' as Role, icon: Camera, title: "I'm a Creator", desc: 'Apply to brand campaigns, submit videos, earn from ad performance.', border: 'border-purple-400/30 hover:border-purple-400/60' },
+    { role: 'admin' as Role, icon: Shield, title: 'Admin', desc: 'Oversee platform, curate matches, manage funding pools.', border: 'border-pink-400/30 hover:border-pink-400/60' },
+  ];
+  const options = allOptions.filter((o) => roles.includes(o.role));
   return (
     <div className="min-h-screen bg-app flex items-center justify-center px-4">
       <div className="max-w-3xl w-full">
         <div className="flex justify-between items-center mb-12">
           <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-heading transition">
-            <KyroLogo size={32} />
+            <ChevronLeft size={20} />
+            <KyroLogo size={30} />
             <span className="text-xl font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
           </button>
-          <span className="text-xs uppercase tracking-widest text-faint font-semibold">Demo Mode</span>
+          <span className="text-xs uppercase tracking-widest text-faint font-semibold">{badge}</span>
         </div>
         <div className="text-center mb-12 space-y-3">
-          <h1 className="text-4xl md:text-5xl font-bold text-heading">Welcome to KYRO</h1>
-          <p className="text-lg text-muted">Choose how you want to explore the platform.</p>
+          <h1 className="text-4xl md:text-5xl font-bold text-heading">{heading}</h1>
+          <p className="text-lg text-muted">{sub}</p>
         </div>
-        <div className="grid md:grid-cols-3 gap-5">
-          {[
-            { role: 'brand' as Role, icon: Briefcase, title: "I'm a Brand", desc: 'Launch creator-led ads on Meta, fund campaigns, see ROI in real time.', border: 'border-blue-400/30 hover:border-blue-400/60' },
-            { role: 'creator' as Role, icon: Camera, title: "I'm a Creator", desc: 'Apply to brand campaigns, submit videos, earn from ad performance.', border: 'border-purple-400/30 hover:border-purple-400/60' },
-            { role: 'admin' as Role, icon: Shield, title: 'Admin', desc: 'Oversee platform, curate matches, manage funding pools.', border: 'border-pink-400/30 hover:border-pink-400/60' },
-          ].map((opt) => (
+        <div className={`grid gap-5 ${options.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+          {options.map((opt) => (
             <button key={opt.role} onClick={() => onPick(opt.role)} className={`group relative overflow-hidden p-7 rounded-2xl border-2 ${opt.border} bg-surface hover:bg-surface/80 text-left transition-all duration-300 hover:scale-[1.02]`}>
               <div className="relative z-10 space-y-4">
                 <div className="w-12 h-12 rounded-xl bg-gradient-kyro flex items-center justify-center">
@@ -752,7 +820,7 @@ function RolePicker({ onPick, onBack }: { onPick: (r: Role) => void; onBack: () 
                   <p className="text-sm text-muted leading-relaxed">{opt.desc}</p>
                 </div>
                 <div className="flex items-center gap-1 text-sm font-semibold text-heading pt-2">
-                  Enter <ChevronRight size={16} className="group-hover:translate-x-1 transition" />
+                  {cta} <ChevronRight size={16} className="group-hover:translate-x-1 transition" />
                 </div>
               </div>
             </button>
@@ -1670,7 +1738,7 @@ function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () 
 /* ─────────────────────────────────────────────────────────────
    ABOUT KYRO PAGE
    ───────────────────────────────────────────────────────────── */
-function AboutPage({ onBack, onSignIn }: { onBack: () => void; onSignIn: () => void }) {
+function AboutPage({ onBack, onSignIn, onGetStarted }: { onBack: () => void; onSignIn: () => void; onGetStarted: () => void }) {
   return (
     <div className="min-h-screen bg-app">
       <div className="sticky top-0 z-40 backdrop-blur-md bg-app/80 border-b border-line px-4 sm:px-6 lg:px-8">
@@ -1736,7 +1804,7 @@ function AboutPage({ onBack, onSignIn }: { onBack: () => void; onSignIn: () => v
         <section className="text-center bg-surface border border-line rounded-3xl p-10 space-y-5">
           <h2 className="text-3xl font-bold text-heading">Ready to scale with KYRO?</h2>
           <p className="text-muted">Free to join. Brands and creators welcome.</p>
-          <button onClick={onSignIn} className="px-8 py-3 bg-gradient-kyro rounded-xl text-white font-semibold inline-flex items-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105">
+          <button onClick={onGetStarted} className="px-8 py-3 bg-gradient-kyro rounded-xl text-white font-semibold inline-flex items-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105">
             Get Started <ArrowRight size={18} />
           </button>
         </section>
@@ -1817,13 +1885,14 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
 /* ─────────────────────────────────────────────────────────────
    ROOT APP
    ───────────────────────────────────────────────────────────── */
-type View = 'landing' | 'signin' | 'roles' | 'app' | 'about' | 'creator-profile' | 'brand-profile' | 'settings';
+type View = 'landing' | 'signup-role' | 'signin' | 'app' | 'about' | 'creator-profile' | 'brand-profile' | 'settings';
 
 function readRoute(): { view: View; admin: boolean } {
   if (typeof window !== 'undefined') {
     const path = window.location.pathname.replace(/\/+$/, '');
     if (path === '/admin') return { view: 'signin', admin: true };
     if (path === '/signin' || path === '/login') return { view: 'signin', admin: false };
+    if (path === '/signup' || path === '/join') return { view: 'signup-role', admin: false };
   }
   return { view: 'landing', admin: false };
 }
@@ -1832,6 +1901,8 @@ function App() {
   const initial = readRoute();
   const [view, setView] = useState<View>(initial.view);
   const [adminEntry, setAdminEntry] = useState(initial.admin);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [signupRole, setSignupRole] = useState<Role>('brand');
   const [role, setRole] = useState<Role>(initial.admin ? 'admin' : 'brand');
   const [profileCreatorId, setProfileCreatorId] = useState<CreatorId>('maya');
   const [profileBrandId, setProfileBrandId] = useState<BrandId>('boldbuns');
@@ -1849,17 +1920,31 @@ function App() {
   }, []);
 
   const nav = (path: string) => { try { window.history.pushState({}, '', path); } catch { /* noop */ } };
-  const goSignIn = (admin: boolean) => { setAdminEntry(admin); setView('signin'); nav(admin ? '/admin' : '/signin'); };
+  const goSignIn = (admin: boolean) => { setAdminEntry(admin); setAuthMode('signin'); setView('signin'); nav(admin ? '/admin' : '/signin'); };
+  const goSignUp = () => { setAdminEntry(false); setView('signup-role'); nav('/signup'); };
   const goLanding = () => { setView('landing'); nav('/'); };
   const onVerified = () => {
-    if (adminEntry) { setRole('admin'); setView('app'); nav('/admin'); }
-    else { setView('roles'); }
+    if (adminEntry) { setRole('admin'); setView('app'); nav('/admin'); return; }
+    if (authMode === 'signup') { setRole(signupRole); }
+    setView('app');
   };
 
-  if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onAbout={() => setView('about')} />;
-  if (view === 'signin') return <SignIn adminMode={adminEntry} onVerified={onVerified} onBack={goLanding} />;
-  if (view === 'roles') return <RolePicker onPick={(r) => { setRole(r); setView('app'); }} onBack={() => goSignIn(false)} />;
-  if (view === 'about') return <AboutPage onBack={goLanding} onSignIn={() => goSignIn(false)} />;
+  const signInMode = adminEntry ? 'admin' : authMode;
+
+  if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} onAbout={() => setView('about')} />;
+  if (view === 'signup-role') return (
+    <RolePicker
+      roles={['brand', 'creator']}
+      heading="Create your KYRO account"
+      sub="First — are you a brand or a creator?"
+      badge="Sign up"
+      cta="Continue"
+      onPick={(r) => { setSignupRole(r); setAuthMode('signup'); setView('signin'); nav('/signup'); }}
+      onBack={goLanding}
+    />
+  );
+  if (view === 'signin') return <SignIn mode={signInMode} signupRole={signupRole} onVerified={onVerified} onBack={authMode === 'signup' && !adminEntry ? () => { setView('signup-role'); nav('/signup'); } : goLanding} />;
+  if (view === 'about') return <AboutPage onBack={goLanding} onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} />;
   if (view === 'creator-profile') return <CreatorPublicProfile creatorId={profileCreatorId} onBack={() => setView('app')} />;
   if (view === 'brand-profile') return <BrandPublicProfile brandId={profileBrandId} onBack={() => setView('app')} />;
   if (view === 'settings') return <AccountSettings onBack={() => setView('app')} role={role} />;
