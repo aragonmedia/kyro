@@ -1,0 +1,62 @@
+<!--
+  KYRO — Supabase email template (6-digit sign-in code)
+  Paste this HTML into Supabase → Authentication → Email Templates for BOTH
+  "Magic Link" and "Confirm signup". Suggested subject line:
+      Your KYRO sign-in code is {{ .Token }}
+  The {{ .Token }} variable renders the 6-digit code.
+-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#0b1020;">
+  <tr>
+    <td align="center" style="padding:32px 16px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#0f172a;border:1px solid #1f2a44;border-radius:16px;overflow:hidden;">
+
+        <!-- Header -->
+        <tr>
+          <td style="padding:26px 32px;border-bottom:1px solid #1f2a44;">
+            <img src="https://kyro-phi.vercel.app/kyro-logo.png" width="34" height="34" alt="KYRO" style="vertical-align:middle;border-radius:8px;display:inline-block;" />
+            <span style="vertical-align:middle;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:1px;margin-left:10px;">KYRO</span>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:34px 32px 28px;">
+            <h1 style="margin:0 0 8px;color:#ffffff;font-size:24px;font-weight:700;">Sign in to KYRO</h1>
+            <p style="margin:0 0 26px;color:#94a3b8;font-size:15px;line-height:1.6;">Use the code below to sign in to your KYRO account. It only works once.</p>
+
+            <!-- Code box -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b1224;border:1px solid #2a3352;border-radius:14px;">
+              <tr>
+                <td align="center" style="padding:28px 20px;">
+                  <div style="color:#a888ff;font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;margin-bottom:14px;">Your 6-digit code</div>
+                  <div style="color:#ffffff;font-size:40px;font-weight:700;letter-spacing:12px;font-family:'SFMono-Regular',Menlo,Consolas,monospace;">{{ .Token }}</div>
+                  <div style="color:#64748b;font-size:13px;margin-top:14px;">Expires in 1 hour</div>
+                </td>
+              </tr>
+            </table>
+
+            <p style="margin:26px 0 0;color:#64748b;font-size:13px;line-height:1.6;">If you didn't request this, you can safely ignore this email — your account stays untouched.</p>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:22px 32px;border-top:1px solid #1f2a44;">
+            <p style="margin:0 0 6px;color:#64748b;font-size:12px;">
+              <a href="https://kyro-phi.vercel.app/signin" style="color:#a888ff;text-decoration:none;">Sign in</a>
+              &nbsp;·&nbsp;
+              <a href="https://kyro-phi.vercel.app/about" style="color:#a888ff;text-decoration:none;">About</a>
+              &nbsp;·&nbsp;
+              <a href="https://kyro-phi.vercel.app" style="color:#a888ff;text-decoration:none;">Privacy</a>
+              &nbsp;·&nbsp;
+              <a href="https://kyro-phi.vercel.app" style="color:#a888ff;text-decoration:none;">Terms</a>
+            </p>
+            <p style="margin:0;color:#475569;font-size:12px;">© 2026 KYRO · Aragon Media. The Creator Growth Portal.</p>
+          </td>
+        </tr>
+
+      </table>
+      <p style="margin:16px 0 0;color:#334155;font-size:11px;">You're receiving this because a sign-in was requested for this email on KYRO.</p>
+    </td>
+  </tr>
+</table>

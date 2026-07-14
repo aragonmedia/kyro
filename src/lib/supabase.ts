@@ -16,21 +16,38 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 let _client: SupabaseClient | null = null;
 
+/**
+ * Normalize a pasted Supabase URL so common env-var mistakes don't crash the
+ * app: strip surrounding quotes/whitespace, add https:// if the protocol was
+ * omitted, and drop any trailing slash.
+ */
+function normalizeUrl(raw: string): string {
+  let url = raw.trim().replace(/^["']|["']$/g, '');
+  if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+  return url.replace(/\/+$/, '');
+}
+
 export function getSupabase(): SupabaseClient | null {
-  const url = import.meta.env.VITE_SUPABASE_URL;
+  const rawUrl = import.meta.env.VITE_SUPABASE_URL;
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
+  if (!rawUrl || !anonKey) {
     // Demo mode — no keys configured. Caller should fall back to mockApi.
     return null;
   }
   if (!_client) {
-    _client = createClient(url, anonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    });
+    try {
+      _client = createClient(normalizeUrl(rawUrl), anonKey.trim(), {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+      });
+    } catch (e) {
+      // Malformed URL / bad key — log and fall back to demo mode rather than crash.
+      console.error('[kyro] Supabase client init failed — check VITE_SUPABASE_URL', e);
+      return null;
+    }
   }
   return _client;
 }
