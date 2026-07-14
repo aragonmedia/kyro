@@ -120,6 +120,44 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
+/**
+ * Fetch the signed-in user's Kyro profile (see supabase/migrations/0001_profiles.sql).
+ * Returns null when there's no Supabase session (demo mode) so callers can fall
+ * back to the demo flow. Returns { role: null } for a real user who hasn't
+ * finished onboarding yet.
+ */
+export async function getMyProfile(): Promise<{ role: string | null; onboarded: boolean; email: string | null } | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u.user?.id;
+  if (!uid) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('role, onboarded, email')
+    .eq('id', uid)
+    .maybeSingle();
+  if (error) {
+    console.error('[kyro] getMyProfile failed (is the profiles table created?)', error);
+    return null;
+  }
+  return { role: data?.role ?? null, onboarded: data?.onboarded ?? false, email: data?.email ?? null };
+}
+
+/** Save the chosen role and mark onboarding complete for the signed-in user. */
+export async function saveMyProfile(role: string, fullName?: string): Promise<{ error: Error | null }> {
+  const supabase = getSupabase();
+  if (!supabase) return { error: null };
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u.user?.id;
+  if (!uid) return { error: new Error('No active session') };
+  const { error } = await supabase
+    .from('profiles')
+    .update({ role, onboarded: true, full_name: fullName ?? null })
+    .eq('id', uid);
+  return { error };
+}
+
 export async function getCurrentUser() {
   const supabase = getSupabase();
   if (!supabase) return null;

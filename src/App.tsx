@@ -10,7 +10,7 @@ import {
 import { useState, useEffect, useRef } from 'react';
 import { mockApi } from './lib/api';
 import { useTheme } from './lib/theme';
-import { sendEmailOtp, verifyEmailOtp } from './lib/supabase';
+import { sendEmailOtp, verifyEmailOtp, getMyProfile, saveMyProfile, isSupabaseConfigured } from './lib/supabase';
 
 /* ─────────────────────────────────────────────────────────────
    THEME TOGGLE — shared control (landing nav + settings)
@@ -549,7 +549,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
-function SignIn({ mode, signupRole, onVerified, onBack }: { mode: 'signin' | 'signup' | 'admin'; signupRole?: Role; onVerified: () => void; onBack: () => void }) {
+function SignIn({ mode, signupRole, onVerified, onBack }: { mode: 'signin' | 'signup' | 'admin'; signupRole?: Role; onVerified: () => void | Promise<void>; onBack: () => void }) {
   const adminMode = mode === 'admin';
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
@@ -607,7 +607,7 @@ function SignIn({ mode, signupRole, onVerified, onBack }: { mode: 'signin' | 'si
       if (demo) {
         mockApi.logEvent('auth.otp.verify', { email: email.trim(), mode: 'demo', role: signupRole, admin: adminMode });
         await new Promise((r) => setTimeout(r, 400));
-        onVerified();
+        await onVerified();
         return;
       }
       const res = await withTimeout(verifyEmailOtp(email.trim(), code), 15000);
@@ -615,14 +615,16 @@ function SignIn({ mode, signupRole, onVerified, onBack }: { mode: 'signin' | 'si
         setError(res.error.message || 'That code is invalid or expired.');
         return;
       }
-      onVerified();
+      await onVerified();
     } catch (err) {
-      console.error('[kyro] verifyEmailOtp failed', err);
-      setError(
-        err instanceof Error && err.message === 'timeout'
-          ? 'Timed out verifying. Please try again.'
-          : 'Something went wrong verifying the code. Please try again.'
-      );
+      console.error('[kyro] verify/onVerified failed', err);
+      if (err instanceof Error && err.message === 'timeout') {
+        setError('Timed out verifying. Please try again.');
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError('Something went wrong verifying the code. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -1885,7 +1887,7 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
 /* ─────────────────────────────────────────────────────────────
    ROOT APP
    ───────────────────────────────────────────────────────────── */
-type View = 'landing' | 'signup-role' | 'signin' | 'app' | 'about' | 'creator-profile' | 'brand-profile' | 'settings';
+type View = 'landing' | 'signup-role' | 'signin' | 'onboard' | 'app' | 'about' | 'creator-profile' | 'brand-profile' | 'settings';
 
 function readRoute(): { view: View; admin: boolean } {
   if (typeof window !== 'undefined') {
@@ -1923,10 +1925,53 @@ function App() {
   const goSignIn = (admin: boolean) => { setAdminEntry(admin); setAuthMode('signin'); setView('signin'); nav(admin ? '/admin' : '/signin'); };
   const goSignUp = () => { setAdminEntry(false); setView('signup-role'); nav('/signup'); };
   const goLanding = () => { setView('landing'); nav('/'); };
-  const onVerified = () => {
-    if (adminEntry) { setRole('admin'); setView('app'); nav('/admin'); return; }
-    if (authMode === 'signup') { setRole(signupRole); }
+  const onVerified = async () => {
+    if (adminEntry) {
+      // Demo mode (no Supabase keys) → allow, so the admin dashboard is viewable.
+      if (!isSupabaseConfigured()) { setRole('admin'); setView('app'); nav('/admin'); return; }
+      // Real mode → require an admin profile.
+      let adminProfile = null;
+      try { adminProfile = await getMyProfile(); } catch { adminProfile = null; }
+      if (adminProfile && adminProfile.role === 'admin') { setRole('admin'); setView('app'); nav('/admin'); return; }
+      throw new Error("This account doesn't have admin access.");
+    }
+
+    // Real mode: look up the user's profile to decide sign-in vs onboarding.
+    let profile: Awaited<ReturnType<typeof getMyProfile>> = null;
+    try { profile = await getMyProfile(); } catch { profile = null; }
+
+    if (profile && profile.role) {
+      // Existing, onboarded account → straight to their dashboard.
+      setRole(profile.role as Role);
+      setView('app');
+      nav('/');
+      return;
+    }
+    if (profile && !profile.role) {
+      // Real user with no role yet. If they picked one on the sign-up path, save it.
+      if (authMode === 'signup') {
+        try { await saveMyProfile(signupRole); } catch { /* table may not exist yet */ }
+        setRole(signupRole);
+        setView('app');
+        nav('/');
+        return;
+      }
+      // Came in via Sign In but has no profile → onboard them.
+      setView('onboard');
+      return;
+    }
+
+    // profile === null → demo mode / no Supabase / table missing: preserve prior behavior.
+    if (authMode === 'signup') setRole(signupRole);
     setView('app');
+    nav('/');
+  };
+
+  const finishOnboarding = async (r: Role) => {
+    try { await saveMyProfile(r); } catch { /* table may not exist yet */ }
+    setRole(r);
+    setView('app');
+    nav('/');
   };
 
   const signInMode = adminEntry ? 'admin' : authMode;
@@ -1944,6 +1989,17 @@ function App() {
     />
   );
   if (view === 'signin') return <SignIn mode={signInMode} signupRole={signupRole} onVerified={onVerified} onBack={authMode === 'signup' && !adminEntry ? () => { setView('signup-role'); nav('/signup'); } : goLanding} />;
+  if (view === 'onboard') return (
+    <RolePicker
+      roles={['brand', 'creator']}
+      heading="Welcome to KYRO"
+      sub="One last step — how will you use KYRO?"
+      badge="Set up"
+      cta="Continue"
+      onPick={finishOnboarding}
+      onBack={goLanding}
+    />
+  );
   if (view === 'about') return <AboutPage onBack={goLanding} onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} />;
   if (view === 'creator-profile') return <CreatorPublicProfile creatorId={profileCreatorId} onBack={() => setView('app')} />;
   if (view === 'brand-profile') return <BrandPublicProfile brandId={profileBrandId} onBack={() => setView('app')} />;

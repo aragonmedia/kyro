@@ -4,6 +4,22 @@ All notable changes since the initial Vercel deploy.
 
 ---
 
+## v0.4.0 — Auth hardening, profiles + onboarding workflow, branded email
+
+### 🔐 Auth reliability
+- `lib/supabase.ts` `getSupabase()` now normalizes `VITE_SUPABASE_URL` (adds `https://`, trims quotes/whitespace, drops trailing slash) and fails safe instead of crashing on a malformed URL. (Fixes "Invalid supabaseUrl" that blocked all OTP sends.)
+- Sign-in send/verify wrapped in try/catch + 15s timeout with explicit success ("Code sent…") and error messaging — no more silent "Sending code…" hang.
+
+### 👤 Profiles + onboarding workflow
+- `supabase/migrations/0001_profiles.sql` — `profiles` table (1:1 with `auth.users`), auto-provision trigger, RLS, `role`/`onboarded` columns.
+- `getMyProfile` / `saveMyProfile` helpers in `lib/supabase.ts`.
+- Unified post-verify routing: after OTP, existing users (profile has a role) go straight to their dashboard; new users land on an onboarding step to pick Brand/Creator, which is saved to their profile. Degrades gracefully to demo behavior when Supabase/table isn't present.
+
+### ✉️ Branded email
+- `email-templates/kyro-signin-code.html` — Kyro-branded 6-digit code email (`{{ .Token }}`) for Supabase Magic Link / Confirm signup templates.
+
+---
+
 ## v0.3.0 — Light/dark theming, rebuilt landing, Admin analytics
 
 ### 🌗 Light + dark theme system
