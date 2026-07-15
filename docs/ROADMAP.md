@@ -1,6 +1,6 @@
 # KYRO — Build Roadmap & Pillars
 
-**Vision:** KYRO is the operating system for creator programs — brands fund campaigns, creators submit UGC, approved videos run as whitelisted Meta ads, and everyone is paid on real performance. Trybe is the reference; Kyro is the Aragon Media build.
+**Vision:** KYRO is the operating system for creator programs — brands fund campaigns, creators submit UGC, approved videos run as whitelisted Meta ads, and everyone is paid on real performance. Trybe is the reference build.
 
 **Legend:** ✅ done · 🔨 in progress · ⬜ not started
 

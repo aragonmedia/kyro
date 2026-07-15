@@ -530,7 +530,7 @@ function Landing({ onSignIn, onGetStarted, onAbout }: { onSignIn: () => void; on
             <div><h4 className="text-heading font-semibold mb-4">Legal</h4><ul className="space-y-2 text-muted text-sm"><li><a href="#" className="hover:text-heading transition">Privacy</a></li><li><a href="#" className="hover:text-heading transition">Terms</a></li><li><a href="#" className="hover:text-heading transition">Contact</a></li></ul></div>
           </div>
           <div className="border-t border-line pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-muted text-sm">© 2026 KYRO · Aragon Media. All rights reserved.</p>
+            <p className="text-muted text-sm">© 2026 KYRO. All rights reserved.</p>
             <div className="flex gap-6"><a href="#" className="text-muted hover:text-heading transition">Twitter</a><a href="#" className="text-muted hover:text-heading transition">Discord</a><a href="#" className="text-muted hover:text-heading transition">GitHub</a></div>
           </div>
         </div>
@@ -1771,7 +1771,7 @@ function AboutPage({ onBack, onSignIn, onGetStarted }: { onBack: () => void; onS
             Creator marketing has always promised performance, and rarely delivered it. Flat fees, dark attribution, late invoices — the model was built for a media landscape that no longer exists. KYRO is what creator marketing looks like when you build it around the actual economics: creators earn from what their content actually drives, brands pay for outcomes, and a platform connects the two with the trust and transparency both sides need.
           </p>
           <p className="text-lg text-body leading-relaxed">
-            Built by Aragon Media, KYRO is the creator growth portal for the next decade of consumer brands.
+            KYRO is the creator growth portal for the next decade of consumer brands.
           </p>
         </section>
 
@@ -1793,13 +1793,12 @@ function AboutPage({ onBack, onSignIn, onGetStarted }: { onBack: () => void; onS
         </section>
 
         <section className="space-y-5">
-          <h2 className="text-3xl font-bold text-heading">Built by Aragon Media</h2>
+          <h2 className="text-3xl font-bold text-heading">Built for the creator economy</h2>
           <p className="text-lg text-body leading-relaxed">
-            Aragon Media is a Canada-based studio building tools for creators and the brands that work with them. KYRO is our flagship product.
+            KYRO is built by a team obsessed with performance marketing — giving creators and the brands they love the tools to grow together, paid on real results.
           </p>
           <div className="flex flex-wrap gap-3 pt-3">
             <a href="mailto:hello@kyro.com" className="flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-body hover:text-heading transition"><Mail size={16} /> hello@kyro.com</a>
-            <a href="#" className="flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-body hover:text-heading transition"><Globe size={16} /> aragonmedia.com</a>
           </div>
         </section>
 

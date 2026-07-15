@@ -69,4 +69,4 @@ create trigger profiles_touch_updated_at
 
 -- To make yourself an admin after signing up once:
 --   update public.profiles set role = 'admin', onboarded = true
---   where email = 'aragonkevin239@gmail.com';
+--   where email = 'you@example.com';

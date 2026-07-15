@@ -77,7 +77,7 @@ Brand carousel added to lander ("The fastest growing consumer brands choose KYRO
 
 - **Creator Public Profile** (`/creator-profile` view) — hero with avatar/bio/socials, stats (campaigns / earnings / ROAS / orders), sample work grid, brands worked with. Triggered from BrandDashboard leaderboard + AdminDashboard curation queue.
 - **Brand Public Profile** (`/brand-profile` view) — hero with logo/tagline, stats (active campaigns / creators / lifetime spend / ROAS), open campaigns grid, creator roster. Triggered from CreatorDashboard submission cards + marketplace browse.
-- **About KYRO** (`/about` view) — mission, how-it-works expanded, Aragon Media credit, contact CTAs. Linked from lander nav + footer.
+- **About KYRO** (`/about` view) — mission, how-it-works expanded, contact CTAs. Linked from lander nav + footer.
 - **Account Settings** (`/settings` view, stub) — profile, payment method, notifications, connected accounts, security. UI shell only; full editing in V1.
 
 ### 🏆 Trybe-aligned features
