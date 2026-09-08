@@ -7,10 +7,20 @@ import {
   Instagram, Youtube, ShieldCheck, Cpu, Layers, Heart,
   ChevronLeft, Share2, Sun, Moon, BarChart3, PieChart, Calendar, ArrowDownRight
 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { mockApi } from './lib/api';
 import { useTheme } from './lib/theme';
-import { sendEmailOtp, verifyEmailOtp, getMyProfile, saveMyProfile, isSupabaseConfigured } from './lib/supabase';
+import { sendEmailOtp, verifyEmailOtp, getMyProfile, isSupabaseConfigured } from './lib/supabase';
+import { useSession } from './lib/session';
+import {
+  centsToDollars,
+  createCampaign,
+  listCampaignsWithStats,
+  parseMoneyToCents,
+  parsePercentToFraction,
+} from './lib/db';
+import type { CampaignWithStats } from './lib/db';
+import type { CommissionType } from './lib/types';
 
 /* ─────────────────────────────────────────────────────────────
    THEME TOGGLE — shared control (landing nav + settings)
@@ -312,6 +322,10 @@ function StatusPill({ status }: { status: string }) {
     live: { label: 'Live', cls: 'bg-emerald-400/15 text-emerald-300 border-emerald-400/30' },
     in_review: { label: 'In Review', cls: 'bg-amber-400/15 text-amber-300 border-amber-400/30' },
     pending_fund: { label: 'Awaiting Funding', cls: 'bg-blue-400/15 text-blue-300 border-blue-400/30' },
+    draft: { label: 'Draft', cls: 'bg-line text-muted border-line' },
+    paused: { label: 'Paused', cls: 'bg-amber-400/15 text-amber-300 border-amber-400/30' },
+    complete: { label: 'Complete', cls: 'bg-purple-400/15 text-purple-300 border-purple-400/30' },
+    archived: { label: 'Archived', cls: 'bg-line text-faint border-line' },
     approved: { label: 'Approved', cls: 'bg-purple-400/15 text-purple-300 border-purple-400/30' },
     paid: { label: 'Paid', cls: 'bg-emerald-400/15 text-emerald-300 border-emerald-400/30' },
   };
@@ -336,6 +350,30 @@ function BrandLogo({ brandId, size = 40 }: { brandId: BrandId; size?: number }) 
           e.currentTarget.parentElement!.innerHTML = `<span class="text-sm font-bold text-heading">${brand.name.charAt(0)}</span>`;
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * Logo for a brand that came out of the database, where the only assets we have
+ * are a name and maybe a URL. Falls back to a gradient initial so a brand that
+ * hasn't uploaded a logo still looks deliberate rather than broken.
+ */
+function BrandAvatar({ name, logoUrl, size = 40 }: { name: string; logoUrl?: string | null; size?: number }) {
+  const [broken, setBroken] = useState(false);
+  const showImage = Boolean(logoUrl) && !broken;
+  return (
+    <div
+      className="rounded-lg bg-surface-2 border border-line flex items-center justify-center overflow-hidden flex-shrink-0"
+      style={{ width: size, height: size }}
+    >
+      {showImage ? (
+        <img src={logoUrl as string} alt={name} className="w-full h-full object-cover" onError={() => setBroken(true)} />
+      ) : (
+        <span className="font-bold text-white w-full h-full flex items-center justify-center bg-gradient-kyro" style={{ fontSize: size * 0.4 }}>
+          {name.trim().charAt(0).toUpperCase() || 'K'}
+        </span>
+      )}
     </div>
   );
 }
@@ -837,7 +875,7 @@ function RolePicker({
 /* ─────────────────────────────────────────────────────────────
    APP SHELL
    ───────────────────────────────────────────────────────────── */
-function AppShell({ role, onSwitch, onSignOut, onSettings, children }: { role: Role; onSwitch: (r: Role) => void; onSignOut: () => void; onSettings: () => void; children: React.ReactNode }) {
+function AppShell({ role, onSwitch, onSignOut, onSettings, showDemoSwitch = true, children }: { role: Role; onSwitch: (r: Role) => void; onSignOut: () => void; onSettings: () => void; showDemoSwitch?: boolean; children: React.ReactNode }) {
   const roleLabels: Record<Role, string> = { brand: 'Brand', creator: 'Creator', admin: 'Admin' };
   const roleIcons: Record<Role, typeof Briefcase> = { brand: Briefcase, creator: Camera, admin: Shield };
   const Icon = roleIcons[role];
@@ -857,14 +895,16 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, children }: { role: R
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <div className="hidden md:flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg">
-                <span className="text-xs text-faint px-2">Demo as:</span>
-                {(['brand', 'creator', 'admin'] as Role[]).map(r => (
-                  <button key={r} onClick={() => onSwitch(r)} className={`text-xs font-semibold px-2.5 py-1 rounded transition ${r === role ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}>
-                    {roleLabels[r]}
-                  </button>
-                ))}
-              </div>
+              {showDemoSwitch && (
+                <div className="hidden md:flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg">
+                  <span className="text-xs text-faint px-2">Demo as:</span>
+                  {(['brand', 'creator', 'admin'] as Role[]).map(r => (
+                    <button key={r} onClick={() => onSwitch(r)} className={`text-xs font-semibold px-2.5 py-1 rounded transition ${r === role ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}>
+                      {roleLabels[r]}
+                    </button>
+                  ))}
+                </div>
+              )}
               <button className="relative p-2 text-muted hover:text-heading transition" title="Notifications">
                 <Bell size={18} />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-pink-500 rounded-full"></span>
@@ -888,34 +928,184 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, children }: { role: R
 /* ─────────────────────────────────────────────────────────────
    BRAND DASHBOARD
    ───────────────────────────────────────────────────────────── */
+
+/**
+ * One shape for a campaign row, whichever source it came from. The dashboard
+ * renders `CampaignCard[]` and never branches on "is this real data?" below the
+ * top of the component — that decision gets made once and then forgotten.
+ */
+interface CampaignCard {
+  id: string;
+  name: string;
+  status: string;
+  brandName: string;
+  seedBrandId: BrandId | null;
+  logoUrl: string | null;
+  cover: string | null;
+  poolDollars: number;
+  spentDollars: number;
+  creators: number;
+  submissions: number;
+  orders: number;
+  impressions: number;
+  roas: number | null;
+}
+
+function seedCampaignCards(): CampaignCard[] {
+  return SEED_CAMPAIGNS.map((c) => ({
+    id: c.id,
+    name: c.name,
+    status: c.status,
+    brandName: BRANDS[c.brandId].name,
+    seedBrandId: c.brandId,
+    logoUrl: null,
+    cover: c.cover,
+    poolDollars: c.pool,
+    spentDollars: c.spent,
+    creators: c.creators,
+    submissions: c.submissions,
+    orders: c.conversions,
+    impressions: c.impressions,
+    roas: c.roas || null,
+  }));
+}
+
+function dbCampaignCards(rows: CampaignWithStats[], brandName: string, logoUrl: string | null): CampaignCard[] {
+  return rows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    status: c.status,
+    brandName,
+    seedBrandId: null,
+    logoUrl,
+    cover: c.coverUrl,
+    poolDollars: centsToDollars(c.poolTargetCents),
+    spentDollars: centsToDollars(c.stats.spentCents),
+    creators: c.stats.creators,
+    submissions: c.stats.submissions,
+    orders: c.stats.orders,
+    impressions: c.stats.impressions,
+    roas: c.stats.roas,
+  }));
+}
+
+function CampaignRowSkeleton() {
+  return (
+    <div className="p-5 animate-pulse">
+      <div className="flex flex-col lg:flex-row gap-5">
+        <div className="w-full lg:w-48 h-32 rounded-xl bg-surface-2 flex-shrink-0" />
+        <div className="flex-1 space-y-3 py-1">
+          <div className="h-5 w-2/5 rounded bg-surface-2" />
+          <div className="h-3 w-1/3 rounded bg-surface-2" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3">
+            {[0, 1, 2, 3].map((i) => <div key={i} className="h-9 rounded bg-surface-2" />)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => void }) {
+  const { brand, configured, workspaceLoading, workspaceError } = useSession();
+
+  // Live mode means real keys AND a brands row we own. Anything short of that
+  // (no keys, demo role switcher, workspace still provisioning) shows SEED.
+  const liveMode = configured && Boolean(brand);
+  const brandId = brand?.id ?? null;
+
   const [showCreate, setShowCreate] = useState(false);
-  const totalSpent = SEED_CAMPAIGNS.reduce((s, c) => s + c.spent, 0);
-  const totalPool = SEED_CAMPAIGNS.reduce((s, c) => s + c.pool, 0);
-  const totalConv = SEED_CAMPAIGNS.reduce((s, c) => s + c.conversions, 0);
-  const totalImpr = SEED_CAMPAIGNS.reduce((s, c) => s + c.impressions, 0);
+  const [rows, setRows] = useState<CampaignWithStats[]>([]);
+  const [loading, setLoading] = useState(liveMode);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    if (!brandId) return;
+    setLoading(true);
+    const res = await listCampaignsWithStats(brandId);
+    setRows(res.data);
+    setLoadError(res.error);
+    setLoading(false);
+  }, [brandId]);
+
+  useEffect(() => {
+    if (!brandId) {
+      setLoading(false);
+      return;
+    }
+    void reload();
+  }, [brandId, reload]);
+
+  const cards = brand && configured
+    ? dbCampaignCards(rows, brand.name, brand.logoUrl || null)
+    : seedCampaignCards();
+
+  const totalPool = cards.reduce((s, c) => s + c.poolDollars, 0);
+  const totalSpent = cards.reduce((s, c) => s + c.spentDollars, 0);
+  const totalOrders = cards.reduce((s, c) => s + c.orders, 0);
+  const totalImpr = cards.reduce((s, c) => s + c.impressions, 0);
+  const totalSubs = cards.reduce((s, c) => s + c.submissions, 0);
+  const poolUsedPct = totalPool > 0 ? Math.round((totalSpent / totalPool) * 100) : 0;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+  const busy = loading || workspaceLoading;
+  const isEmpty = liveMode && !busy && !loadError && cards.length === 0;
+
+  // In live mode every sub-label is derived from real rows. The demo keeps its
+  // original illustrative copy.
+  const kpis = liveMode
+    ? [
+        { label: 'Pool Budget', value: fmt(totalPool), sub: `across ${plural(cards.length, 'campaign')}`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
+        { label: 'Spend to Date', value: fmt(totalSpent), sub: `${poolUsedPct}% of budget`, icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
+        { label: 'Conversions', value: totalOrders.toLocaleString(), sub: `from ${plural(totalSubs, 'submission')}`, icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
+        { label: 'Impressions', value: fmtK(totalImpr), sub: 'from live ads', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
+      ]
+    : [
+        { label: 'Total Pool Funded', value: fmt(totalPool), sub: `across ${cards.length} campaigns`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
+        { label: 'Spend to Date', value: fmt(totalSpent), sub: `${poolUsedPct}% of pool`, icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
+        { label: 'Conversions', value: totalOrders.toLocaleString(), sub: '+18% vs last week', icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
+        { label: 'Impressions', value: fmtK(totalImpr), sub: 'organic reach via creators', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
+      ];
+
   return (
     <div className="max-w-7xl mx-auto space-y-8">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div className="flex items-center gap-4">
-          <BrandLogo brandId="boldbuns" size={56} />
+          {liveMode && brand
+            ? <BrandAvatar name={brand.name} logoUrl={brand.logoUrl} size={56} />
+            : <BrandLogo brandId="boldbuns" size={56} />}
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-heading">Welcome back, Bold Buns</h1>
-            <p className="text-muted mt-1">Here's how your campaigns are performing right now.</p>
+            <h1 className="text-3xl md:text-4xl font-bold text-heading">
+              Welcome back, {liveMode && brand ? brand.name : 'Bold Buns'}
+            </h1>
+            <p className="text-muted mt-1">
+              {isEmpty
+                ? 'Create your first campaign to start working with creators.'
+                : "Here's how your campaigns are performing right now."}
+            </p>
           </div>
         </div>
-        <button onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105">
+        <button
+          onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
+          disabled={workspaceLoading}
+          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+        >
           <Plus size={18} /> Create Campaign
         </button>
       </div>
 
+      {workspaceError && (
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-pink-400/30 bg-pink-400/10">
+          <AlertCircle size={18} className="text-pink-400 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-semibold text-heading">We couldn't finish setting up your brand workspace.</p>
+            <p className="text-muted mt-0.5">{workspaceError}</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Pool Funded', value: fmt(totalPool), sub: `across ${SEED_CAMPAIGNS.length} campaigns`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-          { label: 'Spend to Date', value: fmt(totalSpent), sub: `${Math.round(totalSpent / totalPool * 100)}% of pool`, icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-          { label: 'Conversions', value: totalConv.toLocaleString(), sub: '+18% vs last week', icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-          { label: 'Impressions', value: fmtK(totalImpr), sub: 'organic reach via creators', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
-        ].map((s, i) => (
+        {kpis.map((s, i) => (
           <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
             <div className="flex items-center justify-between mb-3"><s.icon size={20} className={s.color} /><span className="text-xs text-faint">Last 30d</span></div>
             <p className="text-xs text-muted mb-1">{s.label}</p>
@@ -933,122 +1123,339 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
             <h2 className="text-xl font-bold text-heading">Creator Leaderboard</h2>
             <span className="text-xs text-faint ml-2">Last 7 days</span>
           </div>
-          <button className="text-xs text-muted hover:text-heading">View all</button>
+          {!liveMode && <button className="text-xs text-muted hover:text-heading">View all</button>}
         </div>
-        <div className="divide-y divide-line">
-          {SEED_LEADERBOARD.map((l, i) => {
-            const c = SEED_CREATORS[l.creatorId];
-            const brand = BRANDS[l.brandId];
-            return (
-              <button key={l.creatorId} onClick={() => onViewCreator(l.creatorId)} className="w-full p-4 flex items-center gap-4 hover:bg-surface-2 transition text-left">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-kyro text-white font-bold text-sm">{i + 1}</div>
-                <img src={c.avatar} alt={c.name} className="w-10 h-10 rounded-full object-cover" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-heading truncate">{c.name}</p>
-                  <p className="text-xs text-muted">{c.handle} · for {brand.name}</p>
-                </div>
-                <div className="grid grid-cols-3 gap-6 text-right">
-                  <div><p className="text-xs text-faint">Orders</p><p className="text-sm font-bold text-emerald-400">{l.orders}</p></div>
-                  <div className="hidden sm:block"><p className="text-xs text-faint">Ads</p><p className="text-sm font-bold text-heading">{l.ads}</p></div>
-                  <div className="hidden sm:block"><p className="text-xs text-faint">Views</p><p className="text-sm font-bold text-heading">{fmtK(l.views)}</p></div>
-                </div>
-                <ChevronRight size={16} className="text-faint" />
-              </button>
-            );
-          })}
-        </div>
+        {liveMode ? (
+          <div className="p-10 text-center">
+            <Trophy size={28} className="mx-auto text-faint mb-3" />
+            <p className="text-sm text-muted">No performance data yet.</p>
+            <p className="text-xs text-faint mt-1">Creators rank here once their approved videos are running as ads.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-line">
+            {SEED_LEADERBOARD.map((l, i) => {
+              const c = SEED_CREATORS[l.creatorId];
+              const brandRef = BRANDS[l.brandId];
+              return (
+                <button key={l.creatorId} onClick={() => onViewCreator(l.creatorId)} className="w-full p-4 flex items-center gap-4 hover:bg-surface-2 transition text-left">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-kyro text-white font-bold text-sm">{i + 1}</div>
+                  <img src={c.avatar} alt={c.name} className="w-10 h-10 rounded-full object-cover" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-heading truncate">{c.name}</p>
+                    <p className="text-xs text-muted">{c.handle} · for {brandRef.name}</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-6 text-right">
+                    <div><p className="text-xs text-faint">Orders</p><p className="text-sm font-bold text-emerald-400">{l.orders}</p></div>
+                    <div className="hidden sm:block"><p className="text-xs text-faint">Ads</p><p className="text-sm font-bold text-heading">{l.ads}</p></div>
+                    <div className="hidden sm:block"><p className="text-xs text-faint">Views</p><p className="text-sm font-bold text-heading">{fmtK(l.views)}</p></div>
+                  </div>
+                  <ChevronRight size={16} className="text-faint" />
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="bg-surface border border-line rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between p-5 border-b border-line">
           <h2 className="text-xl font-bold text-heading">Active Campaigns</h2>
           <div className="flex items-center gap-2">
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-muted">
-              <Search size={14} /><span>Search</span>
-            </div>
-            <button className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-body hover:text-heading">
-              <Filter size={14} /> Filter
-            </button>
+            {liveMode && (
+              <button onClick={() => void reload()} disabled={busy} className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-body hover:text-heading disabled:opacity-50" title="Refresh">
+                <RefreshCw size={14} className={busy ? 'animate-spin' : ''} /> Refresh
+              </button>
+            )}
+            {!liveMode && (
+              <>
+                <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-muted">
+                  <Search size={14} /><span>Search</span>
+                </div>
+                <button className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-body hover:text-heading">
+                  <Filter size={14} /> Filter
+                </button>
+              </>
+            )}
           </div>
         </div>
-        <div className="divide-y divide-line">
-          {SEED_CAMPAIGNS.map((c) => {
-            const poolPct = c.pool ? Math.round((c.spent / c.pool) * 100) : 0;
-            const brand = BRANDS[c.brandId];
-            return (
-              <div key={c.id} className="p-5 hover:bg-surface-2 transition cursor-pointer">
-                <div className="flex flex-col lg:flex-row gap-5">
-                  <img src={c.cover} alt={c.name} className="w-full lg:w-48 h-32 rounded-xl object-cover flex-shrink-0" />
-                  <div className="flex-1 min-w-0 space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <BrandLogo brandId={c.brandId} size={36} />
-                        <div>
-                          <div className="flex items-center gap-3 mb-1.5">
-                            <h3 className="text-lg font-bold text-heading">{c.name}</h3>
-                            <StatusPill status={c.status} />
+
+        {busy && (
+          <div className="divide-y divide-line">
+            {[0, 1, 2].map((i) => <CampaignRowSkeleton key={i} />)}
+          </div>
+        )}
+
+        {!busy && loadError && (
+          <div className="p-10 text-center">
+            <AlertCircle size={28} className="mx-auto text-pink-400 mb-3" />
+            <p className="text-sm text-heading font-semibold">Couldn't load your campaigns.</p>
+            <p className="text-xs text-muted mt-1">{loadError}</p>
+            <button onClick={() => void reload()} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-surface-2 border border-line rounded-lg text-sm text-body hover:text-heading">
+              <RefreshCw size={14} /> Try again
+            </button>
+          </div>
+        )}
+
+        {isEmpty && (
+          <div className="p-12 text-center">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-kyro flex items-center justify-center mb-4">
+              <FileVideo size={24} className="text-white" />
+            </div>
+            <p className="text-lg font-bold text-heading">No campaigns yet</p>
+            <p className="text-sm text-muted mt-1.5 max-w-sm mx-auto">
+              A campaign is where you set the budget, the commission, and what you want creators to make.
+            </p>
+            <button onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }} className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition">
+              <Plus size={18} /> Create your first campaign
+            </button>
+          </div>
+        )}
+
+        {!busy && !loadError && cards.length > 0 && (
+          <div className="divide-y divide-line">
+            {cards.map((c) => {
+              const poolPct = c.poolDollars ? Math.round((c.spentDollars / c.poolDollars) * 100) : 0;
+              return (
+                <div key={c.id} className="p-5 hover:bg-surface-2 transition cursor-pointer">
+                  <div className="flex flex-col lg:flex-row gap-5">
+                    {c.cover
+                      ? <img src={c.cover} alt={c.name} className="w-full lg:w-48 h-32 rounded-xl object-cover flex-shrink-0" />
+                      : <div className="w-full lg:w-48 h-32 rounded-xl flex-shrink-0 bg-surface-2 border border-line flex items-center justify-center"><FileVideo size={22} className="text-faint" /></div>}
+                    <div className="flex-1 min-w-0 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          {c.seedBrandId
+                            ? <BrandLogo brandId={c.seedBrandId} size={36} />
+                            : <BrandAvatar name={c.brandName} logoUrl={c.logoUrl} size={36} />}
+                          <div>
+                            <div className="flex items-center gap-3 mb-1.5">
+                              <h3 className="text-lg font-bold text-heading">{c.name}</h3>
+                              <StatusPill status={c.status} />
+                            </div>
+                            <p className="text-sm text-muted">{c.brandName} · {plural(c.creators, 'creator')} · {plural(c.submissions, 'submission')}</p>
                           </div>
-                          <p className="text-sm text-muted">{brand.name} · {c.creators} creators · {c.submissions} submissions</p>
                         </div>
+                        <button className="text-muted hover:text-heading"><ExternalLink size={16} /></button>
                       </div>
-                      <button className="text-muted hover:text-heading"><ExternalLink size={16} /></button>
+                      {c.status === 'live' && (
+                        <>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div><p className="text-xs text-faint">Spend</p><p className="text-sm font-bold text-heading">{fmt(c.spentDollars)}</p></div>
+                            <div><p className="text-xs text-faint">Pool</p><p className="text-sm font-bold text-heading">{fmt(c.poolDollars)}</p></div>
+                            <div><p className="text-xs text-faint">Conversions</p><p className="text-sm font-bold text-emerald-400">{c.orders.toLocaleString()}</p></div>
+                            <div><p className="text-xs text-faint">ROAS</p><p className="text-sm font-bold text-purple-400">{c.roas === null ? '—' : `${c.roas}x`}</p></div>
+                          </div>
+                          <div>
+                            <div className="flex justify-between text-xs text-faint mb-1.5"><span>Pool depletion</span><span>{poolPct}%</span></div>
+                            <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden"><div className={`h-full ${poolPct > 80 ? 'bg-pink-500' : 'bg-gradient-kyro'} rounded-full transition-all`} style={{ width: `${Math.min(poolPct, 100)}%` }}></div></div>
+                          </div>
+                        </>
+                      )}
+                      {c.status === 'pending_fund' && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-blue-400/10 border border-blue-400/20 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <AlertCircle size={18} className="text-blue-400 flex-shrink-0" />
+                            <p className="text-sm text-blue-300">
+                              {liveMode
+                                ? `Budget set at ${fmt(c.poolDollars)}. Fund the pool to launch on Meta.`
+                                : 'Fund this campaign pool to launch on Meta.'}
+                            </p>
+                          </div>
+                          {liveMode ? (
+                            <span className="text-xs font-semibold px-3 py-1.5 bg-surface-2 border border-line text-faint rounded-lg" title="Square funding is wired up in Phase 2">
+                              Funding coming soon
+                            </span>
+                          ) : (
+                            <button onClick={() => mockApi.fundCampaign(c.id)} className="text-xs font-semibold px-3 py-1.5 bg-blue-400/20 text-blue-200 rounded-lg hover:bg-blue-400/30 transition">Fund via Square</button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {c.status === 'live' && (
-                      <>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <div><p className="text-xs text-faint">Spend</p><p className="text-sm font-bold text-heading">{fmt(c.spent)}</p></div>
-                          <div><p className="text-xs text-faint">Pool</p><p className="text-sm font-bold text-heading">{fmt(c.pool)}</p></div>
-                          <div><p className="text-xs text-faint">Conversions</p><p className="text-sm font-bold text-emerald-400">{c.conversions.toLocaleString()}</p></div>
-                          <div><p className="text-xs text-faint">ROAS</p><p className="text-sm font-bold text-purple-400">{c.roas}x</p></div>
-                        </div>
-                        <div>
-                          <div className="flex justify-between text-xs text-faint mb-1.5"><span>Pool depletion</span><span>{poolPct}%</span></div>
-                          <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden"><div className={`h-full ${poolPct > 80 ? 'bg-pink-500' : 'bg-gradient-kyro'} rounded-full transition-all`} style={{ width: `${poolPct}%` }}></div></div>
-                        </div>
-                      </>
-                    )}
-                    {c.status === 'pending_fund' && (
-                      <div className="flex items-center justify-between p-3 bg-blue-400/10 border border-blue-400/20 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <AlertCircle size={18} className="text-blue-400" />
-                          <p className="text-sm text-blue-300">Fund this campaign pool to launch on Meta.</p>
-                        </div>
-                        <button onClick={() => mockApi.fundCampaign(c.id)} className="text-xs font-semibold px-3 py-1.5 bg-blue-400/20 text-blue-200 rounded-lg hover:bg-blue-400/30 transition">Fund via Square</button>
-                      </div>
-                    )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {showCreate && <CreateCampaignModal onClose={() => setShowCreate(false)} />}
+      {showCreate && (
+        <CreateCampaignModal
+          brandId={liveMode ? brandId : null}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => void reload()}
+        />
+      )}
     </div>
   );
 }
 
-function CreateCampaignModal({ onClose }: { onClose: () => void }) {
+/**
+ * Create-campaign form. Writes a real `campaigns` row when the user has a brand
+ * workspace, and falls back to the logged mock in demo mode so the public demo
+ * keeps working without keys.
+ *
+ * New campaigns are created as `pending_fund` with a zero balance on purpose:
+ * the pool target is an intent, the balance is money that actually arrived, and
+ * only Square (Phase 2) may credit it.
+ */
+function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string | null; onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState('');
+  const [pool, setPool] = useState('');
+  const [commissionType, setCommissionType] = useState<CommissionType>('percent_spend');
+  const [percent, setPercent] = useState('');
+  const [perConversion, setPerConversion] = useState('');
+  const [deliverable, setDeliverable] = useState('');
+  const [brief, setBrief] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const wantsPercent = commissionType === 'percent_spend' || commissionType === 'hybrid';
+  const wantsPerConversion = commissionType === 'per_conversion' || commissionType === 'hybrid';
+
+  const field = 'w-full px-4 py-2.5 bg-surface-2 border rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500';
+  const borderFor = (key: string) => (errors[key] ? 'border-pink-400/60' : 'border-line');
+  const label = 'text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block';
+
+  const submit = async () => {
+    const next: Record<string, string> = {};
+    if (!name.trim()) next.name = 'Give the campaign a name.';
+
+    const poolCents = parseMoneyToCents(pool);
+    if (poolCents === null) next.pool = 'Enter a budget, like 25,000.';
+
+    let percentFraction: number | null = null;
+    if (wantsPercent) {
+      percentFraction = parsePercentToFraction(percent);
+      if (percentFraction === null) next.percent = 'Enter a rate between 0 and 100.';
+    }
+
+    let perConversionCents: number | null = null;
+    if (wantsPerConversion) {
+      perConversionCents = parseMoneyToCents(perConversion);
+      if (perConversionCents === null) next.perConversion = 'Enter an amount, like 8.';
+    }
+
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
+    if (poolCents === null) return;
+
+    setSaving(true);
+    setSubmitError(null);
+
+    if (!brandId) {
+      await mockApi.createCampaign({ name: name.trim(), poolTargetCents: poolCents });
+      setSaving(false);
+      onClose();
+      return;
+    }
+
+    const res = await createCampaign(brandId, {
+      name: name.trim(),
+      brief: brief.trim(),
+      deliverableSpec: deliverable.trim(),
+      poolTargetCents: poolCents,
+      commissionType,
+      commissionPercentSpend: percentFraction,
+      commissionPerConversionCents: perConversionCents,
+    });
+
+    setSaving(false);
+    if (res.error) {
+      setSubmitError(res.error);
+      return;
+    }
+    mockApi.logEvent('campaign.created', { id: res.data?.id, name: res.data?.name });
+    onCreated();
+    onClose();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-app/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-surface border border-line rounded-2xl max-w-lg w-full p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-app/80 backdrop-blur-sm" onClick={() => { if (!saving) onClose(); }}>
+      <div className="bg-surface border border-line rounded-2xl max-w-lg w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-heading">New Campaign</h2>
-          <button onClick={onClose} className="text-muted hover:text-heading"><X size={20} /></button>
+          <button onClick={onClose} disabled={saving} className="text-muted hover:text-heading disabled:opacity-40"><X size={20} /></button>
         </div>
-        <div className="space-y-4">
-          <div><label className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block">Campaign Name</label><input className="w-full px-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500" placeholder="Summer Drop 2026" /></div>
-          <div><label className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block">Pool Budget</label><div className="relative"><span className="absolute left-4 top-2.5 text-muted">$</span><input className="w-full pl-8 pr-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500" placeholder="25,000" /></div></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block">Commission Type</label><select className="w-full px-3 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500"><option>% of ad spend</option><option>Per conversion</option><option>Hybrid</option></select></div>
-            <div><label className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block">Rate</label><input className="w-full px-3 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500" placeholder="15%" /></div>
+
+        {submitError && (
+          <div className="flex items-start gap-2.5 p-3 rounded-lg border border-pink-400/30 bg-pink-400/10">
+            <AlertCircle size={16} className="text-pink-400 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-pink-200">{submitError}</p>
           </div>
-          <div><label className="text-xs font-semibold text-muted uppercase tracking-wider mb-1.5 block">Brief</label><textarea rows={3} className="w-full px-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500" placeholder="What creators should know about the brand, the product, and the vibe..." /></div>
+        )}
+
+        <div className="space-y-4">
+          <div>
+            <label className={label}>Campaign Name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} className={`${field} ${borderFor('name')}`} placeholder="Summer Drop 2026" />
+            {errors.name && <p className="text-xs text-pink-300 mt-1.5">{errors.name}</p>}
+          </div>
+
+          <div>
+            <label className={label}>Pool Budget</label>
+            <div className="relative">
+              <span className="absolute left-4 top-2.5 text-muted">$</span>
+              <input value={pool} onChange={(e) => setPool(e.target.value)} inputMode="decimal" className={`${field} pl-8 ${borderFor('pool')}`} placeholder="25,000" />
+            </div>
+            {errors.pool
+              ? <p className="text-xs text-pink-300 mt-1.5">{errors.pool}</p>
+              : <p className="text-xs text-faint mt-1.5">What you plan to spend. You fund the pool separately before the campaign goes live.</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={label}>Commission Type</label>
+              <select
+                value={commissionType}
+                onChange={(e) => setCommissionType(e.target.value as CommissionType)}
+                className="w-full px-3 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500"
+              >
+                <option value="percent_spend">% of ad spend</option>
+                <option value="per_conversion">Per conversion</option>
+                <option value="hybrid">Hybrid</option>
+              </select>
+            </div>
+            {wantsPercent && (
+              <div>
+                <label className={label}>Rate</label>
+                <div className="relative">
+                  <input value={percent} onChange={(e) => setPercent(e.target.value)} inputMode="decimal" className={`${field} pr-8 ${borderFor('percent')}`} placeholder="15" />
+                  <span className="absolute right-4 top-2.5 text-muted">%</span>
+                </div>
+                {errors.percent && <p className="text-xs text-pink-300 mt-1.5">{errors.percent}</p>}
+              </div>
+            )}
+            {wantsPerConversion && (
+              <div>
+                <label className={label}>Per Conversion</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-2.5 text-muted">$</span>
+                  <input value={perConversion} onChange={(e) => setPerConversion(e.target.value)} inputMode="decimal" className={`${field} pl-8 ${borderFor('perConversion')}`} placeholder="8" />
+                </div>
+                {errors.perConversion && <p className="text-xs text-pink-300 mt-1.5">{errors.perConversion}</p>}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className={label}>Deliverable</label>
+            <input value={deliverable} onChange={(e) => setDeliverable(e.target.value)} className={`${field} ${borderFor('deliverable')}`} placeholder="1 vertical video, 15–30s" />
+          </div>
+
+          <div>
+            <label className={label}>Brief</label>
+            <textarea value={brief} onChange={(e) => setBrief(e.target.value)} rows={3} className={`${field} ${borderFor('brief')}`} placeholder="What creators should know about the brand, the product, and the vibe..." />
+          </div>
         </div>
+
         <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-line rounded-lg text-body hover:bg-surface-2 font-semibold">Cancel</button>
-          <button onClick={() => { mockApi.createCampaign({}); onClose(); }} className="flex-1 px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition">Launch & Fund</button>
+          <button onClick={onClose} disabled={saving} className="flex-1 px-4 py-2.5 border border-line rounded-lg text-body hover:bg-surface-2 font-semibold disabled:opacity-50">Cancel</button>
+          <button onClick={() => void submit()} disabled={saving} className="flex-1 px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition disabled:opacity-60 flex items-center justify-center gap-2">
+            {saving && <RefreshCw size={16} className="animate-spin" />}
+            {saving ? 'Creating…' : 'Create Campaign'}
+          </button>
         </div>
       </div>
     </div>
@@ -1898,8 +2305,22 @@ function readRoute(): { view: View; admin: boolean } {
   return { view: 'landing', admin: false };
 }
 
+/** Shown while the persisted Supabase session is being rehydrated. */
+function BootScreen() {
+  return (
+    <div className="min-h-screen bg-app flex flex-col items-center justify-center gap-4">
+      <KyroLogo size={44} />
+      <div className="flex items-center gap-2 text-sm text-muted">
+        <RefreshCw size={14} className="animate-spin" />
+        <span>Loading your workspace…</span>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const initial = readRoute();
+  const session = useSession();
   const [view, setView] = useState<View>(initial.view);
   const [adminEntry, setAdminEntry] = useState(initial.admin);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -1907,6 +2328,7 @@ function App() {
   const [role, setRole] = useState<Role>(initial.admin ? 'admin' : 'brand');
   const [profileCreatorId, setProfileCreatorId] = useState<CreatorId>('maya');
   const [profileBrandId, setProfileBrandId] = useState<BrandId>('boldbuns');
+  const [restored, setRestored] = useState(false);
 
   // Keep in sync with browser back/forward
   useEffect(() => {
@@ -1921,9 +2343,41 @@ function App() {
   }, []);
 
   const nav = (path: string) => { try { window.history.pushState({}, '', path); } catch { /* noop */ } };
+
+  /**
+   * Session restore. Supabase keeps the session in localStorage, so a signed-in
+   * user who reloads (or deep-links to a public route) should land back in their
+   * dashboard rather than on the marketing page. Runs once, and only from a
+   * public entry point so it never yanks someone out of a page they navigated to.
+   */
+  useEffect(() => {
+    if (!session.ready || restored) return;
+    setRestored(true);
+    if (!session.userId) return;
+    if (view !== 'landing' && view !== 'signin' && view !== 'signup-role') return;
+    if (session.role) {
+      setRole(session.role as Role);
+      setView('app');
+      nav(session.role === 'admin' ? '/admin' : '/');
+    } else {
+      setView('onboard');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.ready, session.userId, session.role, restored]);
+
   const goSignIn = (admin: boolean) => { setAdminEntry(admin); setAuthMode('signin'); setView('signin'); nav(admin ? '/admin' : '/signin'); };
   const goSignUp = () => { setAdminEntry(false); setView('signup-role'); nav('/signup'); };
   const goLanding = () => { setView('landing'); nav('/'); };
+
+  /** Real sign-out: end the Supabase session, not just navigate away. */
+  const doSignOut = async () => {
+    try { await session.signOut(); } catch { /* already signed out */ }
+    setRole('brand');
+    setAdminEntry(false);
+    setView('landing');
+    nav('/');
+  };
+
   const onVerified = async () => {
     if (adminEntry) {
       // Demo mode (no Supabase keys) → allow, so the admin dashboard is viewable.
@@ -1931,7 +2385,11 @@ function App() {
       // Real mode → require an admin profile.
       let adminProfile = null;
       try { adminProfile = await getMyProfile(); } catch { adminProfile = null; }
-      if (adminProfile && adminProfile.role === 'admin') { setRole('admin'); setView('app'); nav('/admin'); return; }
+      if (adminProfile && adminProfile.role === 'admin') {
+        await session.refresh();
+        setRole('admin'); setView('app'); nav('/admin');
+        return;
+      }
       throw new Error("This account doesn't have admin access.");
     }
 
@@ -1940,7 +2398,9 @@ function App() {
     try { profile = await getMyProfile(); } catch { profile = null; }
 
     if (profile && profile.role) {
-      // Existing, onboarded account → straight to their dashboard.
+      // Existing, onboarded account → straight to their dashboard. refresh()
+      // also provisions the brand/creator row their dashboard reads from.
+      await session.refresh();
       setRole(profile.role as Role);
       setView('app');
       nav('/');
@@ -1949,7 +2409,7 @@ function App() {
     if (profile && !profile.role) {
       // Real user with no role yet. If they picked one on the sign-up path, save it.
       if (authMode === 'signup') {
-        try { await saveMyProfile(signupRole); } catch { /* table may not exist yet */ }
+        await session.adoptRole(signupRole);
         setRole(signupRole);
         setView('app');
         nav('/');
@@ -1967,13 +2427,17 @@ function App() {
   };
 
   const finishOnboarding = async (r: Role) => {
-    try { await saveMyProfile(r); } catch { /* table may not exist yet */ }
+    await session.adoptRole(r);
     setRole(r);
     setView('app');
     nav('/');
   };
 
   const signInMode = adminEntry ? 'admin' : authMode;
+
+  // Hold the first paint until we know whether someone is signed in — otherwise
+  // a returning user sees the marketing page flash before their dashboard.
+  if (!session.ready) return <BootScreen />;
 
   if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} onAbout={() => setView('about')} />;
   if (view === 'signup-role') return (
@@ -2004,8 +2468,12 @@ function App() {
   if (view === 'brand-profile') return <BrandPublicProfile brandId={profileBrandId} onBack={() => setView('app')} />;
   if (view === 'settings') return <AccountSettings onBack={() => setView('app')} role={role} />;
 
+  // The "Demo as" switcher is for exploring the demo. A real signed-in brand or
+  // creator shouldn't be able to flip into someone else's portal; admins keep it.
+  const showDemoSwitch = !session.configured || !session.userId || session.role === 'admin';
+
   return (
-    <AppShell role={role} onSwitch={setRole} onSignOut={goLanding} onSettings={() => setView('settings')}>
+    <AppShell role={role} onSwitch={setRole} onSignOut={() => void doSignOut()} onSettings={() => setView('settings')} showDemoSwitch={showDemoSwitch}>
       {role === 'brand' && <BrandDashboard onViewCreator={(id) => { setProfileCreatorId(id); setView('creator-profile'); }} />}
       {role === 'creator' && <CreatorDashboard onViewBrand={(id) => { setProfileBrandId(id); setView('brand-profile'); }} />}
       {role === 'admin' && <AdminDashboard onViewCreator={(id) => { setProfileCreatorId(id); setView('creator-profile'); }} />}
