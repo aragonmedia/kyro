@@ -5,12 +5,22 @@ import {
   Sparkles, Bell, LogOut, Filter, Search, ExternalLink, Award, Target,
   ArrowUpRight, RefreshCw, MessageSquare, Globe, Mail, Trophy, Hash,
   Instagram, Youtube, ShieldCheck, Cpu, Layers, Heart,
-  ChevronLeft, Share2, Sun, Moon, BarChart3, PieChart, Calendar, ArrowDownRight
+  ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3, PieChart, Calendar, ArrowDownRight
 } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { mockApi } from './lib/api';
 import { useTheme } from './lib/theme';
-import { sendEmailOtp, verifyEmailOtp, getMyProfile, isSupabaseConfigured } from './lib/supabase';
+import {
+  describeAuthError,
+  getCurrentUser,
+  getMyProfile,
+  isSupabaseConfigured,
+  saveMyProfile,
+  sendPasswordReset,
+  signInWithPassword,
+  signUpWithPassword,
+  updatePassword,
+} from './lib/supabase';
 import { useSession } from './lib/session';
 import {
   centsToDollars,
@@ -578,232 +588,482 @@ function Landing({ onSignIn, onGetStarted, onAbout }: { onSignIn: () => void; on
 }
 
 /* ─────────────────────────────────────────────────────────────
-   SIGN IN — email + 6-digit OTP (real via Supabase, demo fallback)
+   AUTH — email + password (sign in, sign up, forgot, reset)
    ───────────────────────────────────────────────────────────── */
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
-  ]);
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 6;
+
+/** Shared chrome for every auth screen: logo, card, footnote. */
+function AuthShell({
+  title,
+  sub,
+  children,
+  footer,
+  onBack,
+}: {
+  title: string;
+  sub?: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  onBack: () => void;
+}) {
+  return (
+    <div className="min-h-screen bg-app flex flex-col items-center justify-center px-4 py-10">
+      <button onClick={onBack} className="flex items-center gap-2.5 mb-8 group">
+        <KyroLogo size={40} />
+        <span className="text-2xl font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
+      </button>
+
+      <div className="w-full max-w-md bg-surface border border-line rounded-3xl p-8 shadow-xl shadow-black/5">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold text-heading">{title}</h1>
+          {sub && <p className="text-sm text-muted mt-1.5">{sub}</p>}
+        </div>
+        {children}
+      </div>
+
+      {footer && <div className="mt-6 text-center text-sm">{footer}</div>}
+
+      <button onClick={onBack} className="mt-8 flex items-center gap-1.5 text-xs text-faint hover:text-muted transition">
+        <ChevronLeft size={14} /> Back to home
+      </button>
+    </div>
+  );
 }
 
-function SignIn({ mode, signupRole, onVerified, onBack }: { mode: 'signin' | 'signup' | 'admin'; signupRole?: Role; onVerified: () => void | Promise<void>; onBack: () => void }) {
+const authField =
+  'w-full px-5 py-3 bg-surface-2 border rounded-full text-heading placeholder-faint focus:outline-none focus:border-purple-500 transition';
+
+function AuthError({ message }: { message: string }) {
+  return (
+    <div className="flex items-start gap-2.5 p-3 mb-4 rounded-xl border border-pink-400/30 bg-pink-400/10">
+      <AlertCircle size={16} className="text-pink-400 flex-shrink-0 mt-0.5" />
+      <p className="text-sm text-pink-200">{message}</p>
+    </div>
+  );
+}
+
+/** Password input with a show/hide toggle. */
+function PasswordField({
+  value,
+  onChange,
+  placeholder,
+  invalid,
+  autoComplete,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  invalid?: boolean;
+  autoComplete?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className={`${authField} pr-12 ${invalid ? 'border-pink-400/60' : 'border-line'}`}
+      />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-faint hover:text-muted transition"
+        title={show ? 'Hide password' : 'Show password'}
+      >
+        {show ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
+}
+
+function SubmitButton({ loading, disabled, children }: { loading: boolean; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="submit"
+      disabled={loading || disabled}
+      className="w-full py-3 rounded-full bg-gradient-kyro text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none flex items-center justify-center gap-2"
+    >
+      {loading && <RefreshCw size={16} className="animate-spin" />}
+      {children}
+    </button>
+  );
+}
+
+/* ─── Sign in ─────────────────────────────────────────────── */
+
+function SignIn({
+  mode,
+  onDone,
+  onBack,
+  onForgot,
+  onGoSignUp,
+}: {
+  mode: 'signin' | 'admin';
+  onDone: () => void | Promise<void>;
+  onBack: () => void;
+  onForgot: () => void;
+  onGoSignUp: () => void;
+}) {
   const adminMode = mode === 'admin';
-  const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
-  const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
-  const [loading, setLoading] = useState(false);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
-  const [demo, setDemo] = useState(false);
-  const [resendIn, setResendIn] = useState(0);
-  const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (resendIn <= 0) return;
-    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
-    return () => clearTimeout(t);
-  }, [resendIn]);
-
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const code = digits.join('');
-
-  async function handleSend() {
-    if (!emailValid || loading) return;
-    setLoading(true);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError('');
-    setInfo('');
+    if (!EMAIL_RE.test(email.trim())) return setError('Enter a valid email address.');
+    if (!password) return setError('Enter your password.');
+
+    setLoading(true);
     try {
-      const res = await withTimeout(sendEmailOtp(email.trim()), 15000);
+      const res = await signInWithPassword(email, password);
       if (res.error) {
-        setError(res.error.message || 'Could not send the code. Please try again.');
+        setError(res.error);
+        setLoading(false);
         return;
       }
-      setDemo(res.demo);
-      setStep('code');
-      setResendIn(30);
-      setDigits(['', '', '', '', '', '']);
-      setInfo(res.demo ? '' : `Code sent to ${email.trim()} — check your inbox and spam.`);
-      setTimeout(() => inputsRef.current[0]?.focus(), 60);
+      // res.demo === true means no Supabase keys; fall through to the demo app.
+      await onDone();
     } catch (err) {
-      console.error('[kyro] sendEmailOtp failed', err);
-      setError(
-        err instanceof Error && err.message === 'timeout'
-          ? 'Timed out reaching the server. Check your connection / Supabase settings.'
-          : 'Something went wrong sending the code. Please try again.'
-      );
+      setError(describeAuthError(err));
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function handleVerify() {
-    if (code.length !== 6 || loading) return;
-    setLoading(true);
+  return (
+    <AuthShell
+      title={adminMode ? 'Admin sign in' : 'Welcome back'}
+      sub={adminMode ? 'Restricted to KYRO administrators.' : 'Sign in to your account'}
+      onBack={onBack}
+      footer={
+        adminMode ? null : (
+          <span className="text-muted">
+            Don't have an account?{' '}
+            <button onClick={onGoSignUp} className="font-semibold text-purple-400 hover:text-purple-300">Sign up</button>
+          </span>
+        )
+      }
+    >
+      <form onSubmit={submit} className="space-y-3">
+        {error && <AuthError message={error} />}
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email address"
+          autoComplete="email"
+          autoFocus
+          className={`${authField} border-line`}
+        />
+        <PasswordField value={password} onChange={setPassword} placeholder="Password" autoComplete="current-password" />
+        <div className="pt-0.5 pb-1">
+          <button type="button" onClick={onForgot} className="text-sm font-semibold text-purple-400 hover:text-purple-300">
+            Forgot your password?
+          </button>
+        </div>
+        <SubmitButton loading={loading}>Sign in</SubmitButton>
+      </form>
+    </AuthShell>
+  );
+}
+
+/* ─── Sign up ─────────────────────────────────────────────── */
+
+function SignUp({
+  onDone,
+  onBack,
+  onGoSignIn,
+}: {
+  onDone: (role: Role) => void | Promise<void>;
+  onBack: () => void;
+  onGoSignIn: () => void;
+}) {
+  const [role, setRole] = useState<Role>('brand');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [agreed, setAgreed] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [checkInbox, setCheckInbox] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError('');
+    if (!fullName.trim()) return setError('Enter your name.');
+    if (!EMAIL_RE.test(email.trim())) return setError('Enter a valid email address.');
+    if (password.length < MIN_PASSWORD) return setError(`Use a password of at least ${MIN_PASSWORD} characters.`);
+    if (password !== confirm) return setError("Those passwords don't match.");
+
+    setLoading(true);
     try {
-      if (demo) {
-        mockApi.logEvent('auth.otp.verify', { email: email.trim(), mode: 'demo', role: signupRole, admin: adminMode });
-        await new Promise((r) => setTimeout(r, 400));
-        await onVerified();
-        return;
-      }
-      const res = await withTimeout(verifyEmailOtp(email.trim(), code), 15000);
+      const res = await signUpWithPassword(email, password, { fullName, role });
       if (res.error) {
-        setError(res.error.message || 'That code is invalid or expired.');
+        setError(res.error);
+        setLoading(false);
         return;
       }
-      await onVerified();
-    } catch (err) {
-      console.error('[kyro] verify/onVerified failed', err);
-      if (err instanceof Error && err.message === 'timeout') {
-        setError('Timed out verifying. Please try again.');
-      } else if (err instanceof Error && err.message) {
-        setError(err.message);
-      } else {
-        setError('Something went wrong verifying the code. Please try again.');
+      if (res.demo) {
+        await onDone(role);
+        return;
       }
+      if (!res.session) {
+        // Email confirmation is switched on in Supabase — no session yet.
+        setCheckInbox(true);
+        setLoading(false);
+        return;
+      }
+      // Session is live: record the role and name on the profile row before routing.
+      await saveMyProfile(role, fullName);
+      await onDone(role);
+    } catch (err) {
+      setError(describeAuthError(err));
     } finally {
       setLoading(false);
     }
+  };
+
+  if (checkInbox) {
+    return (
+      <AuthShell title="Confirm your email" sub={`We sent a confirmation link to ${email.trim()}.`} onBack={onBack}>
+        <div className="text-center py-4">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-kyro flex items-center justify-center mb-4">
+            <Mail size={24} className="text-white" />
+          </div>
+          <p className="text-sm text-muted">Click the link in that email to finish setting up your account, then come back and sign in.</p>
+          <button onClick={onGoSignIn} className="mt-5 text-sm font-semibold text-purple-400 hover:text-purple-300">
+            Back to sign in
+          </button>
+        </div>
+      </AuthShell>
+    );
   }
 
-  function onDigitChange(i: number, val: string) {
-    const clean = val.replace(/\D/g, '');
-    if (!clean) { setDigits((d) => { const n = [...d]; n[i] = ''; return n; }); return; }
-    setDigits((d) => {
-      const n = [...d];
-      let idx = i;
-      for (const ch of clean.split('')) { if (idx > 5) break; n[idx] = ch; idx++; }
-      const focusTo = Math.min(idx, 5);
-      setTimeout(() => inputsRef.current[focusTo]?.focus(), 0);
-      return n;
-    });
-  }
+  const roleTab = (r: Role) =>
+    `flex-1 py-2.5 text-sm font-semibold rounded-full transition ${
+      role === r ? 'bg-gradient-kyro text-white shadow' : 'text-muted hover:text-heading'
+    }`;
 
-  function onDigitKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Backspace' && !digits[i] && i > 0) inputsRef.current[i - 1]?.focus();
-    if (e.key === 'Enter') handleVerify();
+  return (
+    <AuthShell
+      title="Create your account"
+      sub="Join KYRO and start working with creators"
+      onBack={onBack}
+      footer={
+        <span className="text-muted">
+          Already have an account?{' '}
+          <button onClick={onGoSignIn} className="font-semibold text-purple-400 hover:text-purple-300">Sign in</button>
+        </span>
+      }
+    >
+      <form onSubmit={submit} className="space-y-3">
+        {error && <AuthError message={error} />}
+
+        <div className="flex gap-1 p-1 bg-surface-2 border border-line rounded-full mb-1">
+          <button type="button" onClick={() => setRole('brand')} className={roleTab('brand')}>I'm a Brand</button>
+          <button type="button" onClick={() => setRole('creator')} className={roleTab('creator')}>I'm a Creator</button>
+        </div>
+
+        <input
+          type="text"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          placeholder={role === 'brand' ? 'Your name' : 'Full name'}
+          autoComplete="name"
+          className={`${authField} border-line`}
+        />
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email address"
+          autoComplete="email"
+          className={`${authField} border-line`}
+        />
+        <PasswordField value={password} onChange={setPassword} placeholder="Password" autoComplete="new-password" />
+        <PasswordField
+          value={confirm}
+          onChange={setConfirm}
+          placeholder="Confirm password"
+          autoComplete="new-password"
+          invalid={Boolean(confirm) && confirm !== password}
+        />
+
+        <label className="flex items-start gap-2.5 py-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            className="mt-0.5 w-4 h-4 rounded border-line accent-purple-500 flex-shrink-0"
+          />
+          <span className="text-xs text-muted leading-relaxed">
+            I agree to the Terms of Service and Privacy Policy.
+          </span>
+        </label>
+
+        <SubmitButton loading={loading} disabled={!agreed}>Create account</SubmitButton>
+      </form>
+    </AuthShell>
+  );
+}
+
+/* ─── Forgot password ─────────────────────────────────────── */
+
+function ForgotPassword({ onBack, onGoSignIn }: { onBack: () => void; onGoSignIn: () => void }) {
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
+  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!EMAIL_RE.test(email.trim())) return setError('Enter a valid email address.');
+    setLoading(true);
+    const res = await sendPasswordReset(email);
+    setLoading(false);
+    if (res.error) return setError(res.error);
+    // Deliberately shown whether or not the address has an account.
+    setSent(true);
+  };
+
+  if (sent) {
+    return (
+      <AuthShell title="Check your email" sub={`If an account exists for ${email.trim()}, a reset link is on its way.`} onBack={onBack}>
+        <div className="text-center py-4">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-kyro flex items-center justify-center mb-4">
+            <Mail size={24} className="text-white" />
+          </div>
+          <p className="text-sm text-muted">The link expires in about an hour. Check your spam folder if it doesn't arrive.</p>
+          <button onClick={onGoSignIn} className="mt-5 text-sm font-semibold text-purple-400 hover:text-purple-300">
+            Back to sign in
+          </button>
+        </div>
+      </AuthShell>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-app text-body flex flex-col">
-      <div className="px-4 sm:px-6 lg:px-8 py-5 flex items-center justify-between">
-        <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-heading transition">
-          <ChevronLeft size={20} /> Back
+    <AuthShell
+      title="Reset your password"
+      sub="We'll email you a link to set a new one."
+      onBack={onBack}
+      footer={
+        <button onClick={onGoSignIn} className="font-semibold text-purple-400 hover:text-purple-300">
+          Back to sign in
         </button>
-        <button onClick={onBack} className="flex items-center gap-2">
-          <KyroLogo size={28} />
-          <span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
-        </button>
-        <ThemeToggle />
-      </div>
+      }
+    >
+      <form onSubmit={submit} className="space-y-3">
+        {error && <AuthError message={error} />}
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email address"
+          autoComplete="email"
+          autoFocus
+          className={`${authField} border-line`}
+        />
+        <SubmitButton loading={loading}>Send reset link</SubmitButton>
+      </form>
+    </AuthShell>
+  );
+}
 
-      <div className="flex-1 flex items-center justify-center px-4 pb-20">
-        <div className="w-full max-w-md">
-          <div className="bg-surface border border-line rounded-3xl p-8 md:p-10 shadow-xl shadow-black/5">
-            {adminMode && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-5 bg-purple-500/10 border border-purple-500/20 rounded-full text-xs font-semibold text-purple-500">
-                <Shield size={12} /> Admin access
-              </div>
-            )}
-            {mode === 'signup' && signupRole && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-5 bg-kyro-600/10 border border-kyro-600/20 rounded-full text-xs font-semibold text-kyro-600">
-                {signupRole === 'brand' ? <Briefcase size={12} /> : <Camera size={12} />} Signing up as {signupRole === 'brand' ? 'a Brand' : 'a Creator'}
-              </div>
-            )}
+/* ─── Set a new password (landing spot for the reset link) ── */
 
-            {step === 'email' && (
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <h1 className="text-2xl font-bold text-heading">{adminMode ? 'Admin sign in' : mode === 'signup' ? 'Create your account' : 'Sign in to KYRO'}</h1>
-                  <p className="text-muted text-sm">{mode === 'signup' ? "Enter your email — we'll send a 6-digit code to confirm it." : "Enter your email and we'll send you a 6-digit sign-in code."}</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted uppercase tracking-wider">Email</label>
-                  <div className="relative">
-                    <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
-                    <input
-                      type="email"
-                      autoFocus
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
-                      placeholder="you@company.com"
-                      className="w-full pl-10 pr-4 py-3 bg-surface-2 border border-line rounded-xl text-heading placeholder-faint focus:outline-none focus:ring-2 focus:ring-kyro-600/40 focus:border-kyro-600 transition"
-                    />
-                  </div>
-                </div>
-                {error && <p className="text-sm text-pink-500">{error}</p>}
-                <button
-                  onClick={handleSend}
-                  disabled={!emailValid || loading}
-                  className="w-full px-4 py-3 bg-gradient-kyro rounded-xl text-white font-semibold flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-purple-600/40"
-                >
-                  {loading ? 'Sending code…' : <>Continue <ArrowRight size={18} /></>}
-                </button>
-                <p className="text-center text-xs text-faint">By continuing you agree to KYRO's Terms &amp; Privacy Policy.</p>
-              </div>
-            )}
+function ResetPassword({ onDone, onBack, onGoSignIn }: { onDone: () => void | Promise<void>; onBack: () => void; onGoSignIn: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [validLink, setValidLink] = useState(false);
 
-            {step === 'code' && (
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <h1 className="text-2xl font-bold text-heading">Enter your code</h1>
-                  <p className="text-muted text-sm">We sent a 6-digit code to <span className="text-heading font-semibold">{email.trim()}</span>.</p>
-                </div>
-                <div
-                  className="flex items-center justify-between gap-2"
-                  onPaste={(e) => { const t = e.clipboardData.getData('text').replace(/\D/g, ''); if (t) { e.preventDefault(); onDigitChange(0, t); } }}
-                >
-                  {digits.map((d, i) => (
-                    <input
-                      key={i}
-                      ref={(el) => { inputsRef.current[i] = el; }}
-                      value={d}
-                      inputMode="numeric"
-                      maxLength={1}
-                      onChange={(e) => onDigitChange(i, e.target.value)}
-                      onKeyDown={(e) => onDigitKeyDown(i, e)}
-                      className="w-12 h-14 text-center text-2xl font-bold bg-surface-2 border border-line rounded-xl text-heading focus:outline-none focus:ring-2 focus:ring-kyro-600/40 focus:border-kyro-600 transition"
-                    />
-                  ))}
-                </div>
-                {demo && (
-                  <div className="flex items-start gap-2 p-3 bg-amber-400/10 border border-amber-400/20 rounded-lg">
-                    <AlertCircle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-amber-500">Demo mode — no real email sent. Enter any 6 digits to continue. Real codes send once Supabase is connected.</p>
-                  </div>
-                )}
-                {info && !demo && (
-                  <div className="flex items-start gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                    <CheckCircle size={16} className="text-emerald-500 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs text-emerald-500">{info}</p>
-                  </div>
-                )}
-                {error && <p className="text-sm text-pink-500">{error}</p>}
-                <button
-                  onClick={handleVerify}
-                  disabled={code.length !== 6 || loading}
-                  className="w-full px-4 py-3 bg-gradient-kyro rounded-xl text-white font-semibold flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-purple-600/40"
-                >
-                  {loading ? 'Verifying…' : <>Verify &amp; continue <ArrowRight size={18} /></>}
-                </button>
-                <div className="flex items-center justify-between text-sm">
-                  <button onClick={() => { setStep('email'); setError(''); setInfo(''); }} className="text-muted hover:text-heading transition">Use a different email</button>
-                  <button onClick={handleSend} disabled={resendIn > 0 || loading} className="text-kyro-600 hover:text-kyro-700 font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed">
-                    {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-          <p className="text-center text-xs text-faint mt-6">
-            {adminMode ? 'Admin portal · KYRO' : mode === 'signup' ? 'Creating your KYRO account' : 'Sign in to your KYRO account'}
-          </p>
+  // Supabase turns the token in the URL into a session before we get here.
+  // No session means the link was bad, already used, or expired.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!isSupabaseConfigured()) {
+        if (alive) { setValidLink(true); setChecking(false); }
+        return;
+      }
+      try {
+        const user = await getCurrentUser();
+        if (alive) setValidLink(Boolean(user));
+      } catch {
+        if (alive) setValidLink(false);
+      } finally {
+        if (alive) setChecking(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (password.length < MIN_PASSWORD) return setError(`Use a password of at least ${MIN_PASSWORD} characters.`);
+    if (password !== confirm) return setError("Those passwords don't match.");
+    setLoading(true);
+    const res = await updatePassword(password);
+    setLoading(false);
+    if (res.error) return setError(res.error);
+    await onDone();
+  };
+
+  if (checking) {
+    return (
+      <AuthShell title="Checking your link" onBack={onBack}>
+        <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted">
+          <RefreshCw size={16} className="animate-spin" /> One moment…
         </div>
-      </div>
-    </div>
+      </AuthShell>
+    );
+  }
+
+  if (!validLink) {
+    return (
+      <AuthShell title="This link has expired" sub="Reset links are single-use and last about an hour." onBack={onBack}>
+        <div className="text-center py-4">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-pink-400/15 border border-pink-400/30 flex items-center justify-center mb-4">
+            <AlertCircle size={24} className="text-pink-400" />
+          </div>
+          <p className="text-sm text-muted">Request a fresh one and it'll work.</p>
+          <button onClick={onGoSignIn} className="mt-5 text-sm font-semibold text-purple-400 hover:text-purple-300">
+            Back to sign in
+          </button>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  return (
+    <AuthShell title="Set a new password" sub="Choose something you'll remember." onBack={onBack}>
+      <form onSubmit={submit} className="space-y-3">
+        {error && <AuthError message={error} />}
+        <PasswordField value={password} onChange={setPassword} placeholder="New password" autoComplete="new-password" />
+        <PasswordField
+          value={confirm}
+          onChange={setConfirm}
+          placeholder="Confirm new password"
+          autoComplete="new-password"
+          invalid={Boolean(confirm) && confirm !== password}
+        />
+        <SubmitButton loading={loading}>Update password</SubmitButton>
+      </form>
+    </AuthShell>
   );
 }
 
@@ -2293,14 +2553,28 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
 /* ─────────────────────────────────────────────────────────────
    ROOT APP
    ───────────────────────────────────────────────────────────── */
-type View = 'landing' | 'signup-role' | 'signin' | 'onboard' | 'app' | 'about' | 'creator-profile' | 'brand-profile' | 'settings';
+type View =
+  | 'landing'
+  | 'signin'
+  | 'signup'
+  | 'forgot'
+  | 'reset-password'
+  | 'onboard'
+  | 'app'
+  | 'about'
+  | 'creator-profile'
+  | 'brand-profile'
+  | 'settings';
 
 function readRoute(): { view: View; admin: boolean } {
   if (typeof window !== 'undefined') {
     const path = window.location.pathname.replace(/\/+$/, '');
     if (path === '/admin') return { view: 'signin', admin: true };
     if (path === '/signin' || path === '/login') return { view: 'signin', admin: false };
-    if (path === '/signup' || path === '/join') return { view: 'signup-role', admin: false };
+    if (path === '/signup' || path === '/join') return { view: 'signup', admin: false };
+    if (path === '/forgot-password') return { view: 'forgot', admin: false };
+    // Supabase sends password-reset links back here with a token in the hash.
+    if (path === '/reset-password') return { view: 'reset-password', admin: false };
   }
   return { view: 'landing', admin: false };
 }
@@ -2323,8 +2597,6 @@ function App() {
   const session = useSession();
   const [view, setView] = useState<View>(initial.view);
   const [adminEntry, setAdminEntry] = useState(initial.admin);
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [signupRole, setSignupRole] = useState<Role>('brand');
   const [role, setRole] = useState<Role>(initial.admin ? 'admin' : 'brand');
   const [profileCreatorId, setProfileCreatorId] = useState<CreatorId>('maya');
   const [profileBrandId, setProfileBrandId] = useState<BrandId>('boldbuns');
@@ -2346,15 +2618,18 @@ function App() {
 
   /**
    * Session restore. Supabase keeps the session in localStorage, so a signed-in
-   * user who reloads (or deep-links to a public route) should land back in their
-   * dashboard rather than on the marketing page. Runs once, and only from a
-   * public entry point so it never yanks someone out of a page they navigated to.
+   * user who reloads should land back in their dashboard rather than on the
+   * marketing page. Runs once, and only from a public entry point.
+   *
+   * Note the deliberate omission of 'reset-password': clicking a reset link
+   * creates a live session, and restoring off that would skip the user past the
+   * screen where they actually set the new password.
    */
   useEffect(() => {
     if (!session.ready || restored) return;
     setRestored(true);
     if (!session.userId) return;
-    if (view !== 'landing' && view !== 'signin' && view !== 'signup-role') return;
+    if (view !== 'landing' && view !== 'signin' && view !== 'signup') return;
     if (session.role) {
       setRole(session.role as Role);
       setView('app');
@@ -2365,9 +2640,10 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.ready, session.userId, session.role, restored]);
 
-  const goSignIn = (admin: boolean) => { setAdminEntry(admin); setAuthMode('signin'); setView('signin'); nav(admin ? '/admin' : '/signin'); };
-  const goSignUp = () => { setAdminEntry(false); setView('signup-role'); nav('/signup'); };
+  const goSignIn = (admin: boolean) => { setAdminEntry(admin); setView('signin'); nav(admin ? '/admin' : '/signin'); };
+  const goSignUp = () => { setAdminEntry(false); setView('signup'); nav('/signup'); };
   const goLanding = () => { setView('landing'); nav('/'); };
+  const goForgot = () => { setView('forgot'); nav('/forgot-password'); };
 
   /** Real sign-out: end the Supabase session, not just navigate away. */
   const doSignOut = async () => {
@@ -2378,11 +2654,12 @@ function App() {
     nav('/');
   };
 
-  const onVerified = async () => {
+  /** Called by <SignIn> once Supabase has accepted the password. */
+  const handleSignedIn = async () => {
     if (adminEntry) {
       // Demo mode (no Supabase keys) → allow, so the admin dashboard is viewable.
       if (!isSupabaseConfigured()) { setRole('admin'); setView('app'); nav('/admin'); return; }
-      // Real mode → require an admin profile.
+
       let adminProfile = null;
       try { adminProfile = await getMyProfile(); } catch { adminProfile = null; }
       if (adminProfile && adminProfile.role === 'admin') {
@@ -2390,16 +2667,16 @@ function App() {
         setRole('admin'); setView('app'); nav('/admin');
         return;
       }
+      // Correct password, wrong privileges. Don't leave them holding a session
+      // on the admin route — drop it, then surface the refusal.
+      try { await session.signOut(); } catch { /* noop */ }
       throw new Error("This account doesn't have admin access.");
     }
 
-    // Real mode: look up the user's profile to decide sign-in vs onboarding.
     let profile: Awaited<ReturnType<typeof getMyProfile>> = null;
     try { profile = await getMyProfile(); } catch { profile = null; }
 
     if (profile && profile.role) {
-      // Existing, onboarded account → straight to their dashboard. refresh()
-      // also provisions the brand/creator row their dashboard reads from.
       await session.refresh();
       setRole(profile.role as Role);
       setView('app');
@@ -2407,23 +2684,37 @@ function App() {
       return;
     }
     if (profile && !profile.role) {
-      // Real user with no role yet. If they picked one on the sign-up path, save it.
-      if (authMode === 'signup') {
-        await session.adoptRole(signupRole);
-        setRole(signupRole);
-        setView('app');
-        nav('/');
-        return;
-      }
-      // Came in via Sign In but has no profile → onboard them.
+      // Signed in, but never picked a role (e.g. an account from the old OTP flow).
       setView('onboard');
       return;
     }
 
-    // profile === null → demo mode / no Supabase / table missing: preserve prior behavior.
-    if (authMode === 'signup') setRole(signupRole);
+    // profile === null → demo mode / no Supabase: preserve demo behavior.
     setView('app');
     nav('/');
+  };
+
+  /** Called by <SignUp> after the account and profile row are created. */
+  const handleSignedUp = async (r: Role) => {
+    await session.refresh();
+    setRole(r);
+    setView('app');
+    nav('/');
+  };
+
+  /** Called by <ResetPassword> once the new password is saved. */
+  const handlePasswordReset = async () => {
+    await session.refresh();
+    let profile: Awaited<ReturnType<typeof getMyProfile>> = null;
+    try { profile = await getMyProfile(); } catch { profile = null; }
+    if (profile && profile.role) {
+      setRole(profile.role as Role);
+      setView('app');
+      nav('/');
+    } else {
+      setView('onboard');
+      nav('/');
+    }
   };
 
   const finishOnboarding = async (r: Role) => {
@@ -2433,25 +2724,25 @@ function App() {
     nav('/');
   };
 
-  const signInMode = adminEntry ? 'admin' : authMode;
-
   // Hold the first paint until we know whether someone is signed in — otherwise
   // a returning user sees the marketing page flash before their dashboard.
   if (!session.ready) return <BootScreen />;
 
   if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} onAbout={() => setView('about')} />;
-  if (view === 'signup-role') return (
-    <RolePicker
-      roles={['brand', 'creator']}
-      heading="Create your KYRO account"
-      sub="First — are you a brand or a creator?"
-      badge="Sign up"
-      cta="Continue"
-      onPick={(r) => { setSignupRole(r); setAuthMode('signup'); setView('signin'); nav('/signup'); }}
+  if (view === 'signin') return (
+    <SignIn
+      mode={adminEntry ? 'admin' : 'signin'}
+      onDone={handleSignedIn}
       onBack={goLanding}
+      onForgot={goForgot}
+      onGoSignUp={goSignUp}
     />
   );
-  if (view === 'signin') return <SignIn mode={signInMode} signupRole={signupRole} onVerified={onVerified} onBack={authMode === 'signup' && !adminEntry ? () => { setView('signup-role'); nav('/signup'); } : goLanding} />;
+  if (view === 'signup') return <SignUp onDone={handleSignedUp} onBack={goLanding} onGoSignIn={() => goSignIn(false)} />;
+  if (view === 'forgot') return <ForgotPassword onBack={goLanding} onGoSignIn={() => goSignIn(false)} />;
+  if (view === 'reset-password') return (
+    <ResetPassword onDone={handlePasswordReset} onBack={goLanding} onGoSignIn={() => goSignIn(false)} />
+  );
   if (view === 'onboard') return (
     <RolePicker
       roles={['brand', 'creator']}

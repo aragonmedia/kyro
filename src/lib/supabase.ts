@@ -1,15 +1,12 @@
 /**
- * Kyro — Supabase Client
+ * Kyro — Supabase Client + Auth
  *
- * Initializes the Supabase client used by the entire app for auth, DB reads
- * (via RLS), and Storage access.
- *
- * For V1 wiring: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your
- * Vercel environment (and .env.local for local dev). The current demo is
- * mocked, so the client is initialized lazily and used only when keys exist.
+ * Auth is email + password (Supabase GoTrue). The earlier 6-digit email OTP
+ * flow has been removed: one password field beats waiting on an inbox, and it
+ * matches how the rest of the category signs people in.
  *
  * The service_role key MUST NEVER be referenced from this file — it only
- * lives in server-side Vercel functions.
+ * lives in server-side functions.
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -31,7 +28,7 @@ export function getSupabase(): SupabaseClient | null {
   const rawUrl = import.meta.env.VITE_SUPABASE_URL;
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   if (!rawUrl || !anonKey) {
-    // Demo mode — no keys configured. Caller should fall back to mockApi.
+    // Demo mode — no keys configured. Caller should fall back to the demo flow.
     return null;
   }
   if (!_client) {
@@ -44,7 +41,6 @@ export function getSupabase(): SupabaseClient | null {
         },
       });
     } catch (e) {
-      // Malformed URL / bad key — log and fall back to demo mode rather than crash.
       console.error('[kyro] Supabase client init failed — check VITE_SUPABASE_URL', e);
       return null;
     }
@@ -58,60 +54,133 @@ export function isSupabaseConfigured(): boolean {
   );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Error copy
+   ───────────────────────────────────────────────────────────── */
+
 /**
- * Convenience: sign up a new user with email/password.
- * Returns { user, error }.
+ * GoTrue's messages are written for developers. Anything a normal person can
+ * trigger by typing the wrong thing gets replaced with copy that says what to
+ * do next; anything else falls through so real bugs stay visible.
  */
-export async function signUp(email: string, password: string, role: 'creator' | 'brand') {
+export function describeAuthError(e: unknown): string {
+  const raw = (e as { message?: string } | null)?.message ?? '';
+  const m = raw.toLowerCase();
+  if (!raw) return 'Something went wrong. Please try again.';
+  if (m.includes('invalid login credentials')) return "That email or password isn't right.";
+  if (m.includes('email not confirmed')) return 'Confirm your email address first, then sign in.';
+  if (m.includes('user already registered') || m.includes('already been registered')) {
+    return 'An account with that email already exists. Sign in instead.';
+  }
+  if (m.includes('password should be at least')) return 'Use a password of at least 6 characters.';
+  if (m.includes('weak password')) return 'That password is too weak. Try a longer one.';
+  if (m.includes('unable to validate email') || m.includes('invalid email')) {
+    return 'That email address looks invalid.';
+  }
+  if (m.includes('rate limit') || m.includes('too many requests') || m.includes('for security purposes')) {
+    return 'Too many attempts. Wait a minute and try again.';
+  }
+  if (m.includes('same password')) return 'That is already your password. Choose a different one.';
+  if (m.includes('failed to fetch') || m.includes('network')) {
+    return "Couldn't reach the server. Check your connection and try again.";
+  }
+  return raw;
+}
+
+/** Where Supabase should send a user back to after they click a reset link. */
+function resetRedirectUrl(): string {
+  if (typeof window === 'undefined') return '';
+  return `${window.location.origin}/reset-password`;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Auth — email + password
+   ───────────────────────────────────────────────────────────── */
+
+export interface AuthResult {
+  /** True when a session now exists (the user is signed in). */
+  session: boolean;
+  error: string | null;
+  /** True when there are no Supabase keys, so the caller runs the demo flow. */
+  demo: boolean;
+}
+
+/**
+ * Create an account. With "Confirm email" off in Supabase (the current setting)
+ * this returns a live session immediately, so the caller can route straight
+ * into the app. If confirmation is ever turned on, `session` comes back false
+ * and the caller should tell the user to check their inbox.
+ */
+export async function signUpWithPassword(
+  email: string,
+  password: string,
+  meta?: { fullName?: string; role?: string }
+): Promise<AuthResult> {
   const supabase = getSupabase();
-  if (!supabase) return { user: null, error: new Error('Supabase not configured') };
+  if (!supabase) return { session: false, error: null, demo: true };
 
   const { data, error } = await supabase.auth.signUp({
-    email,
+    email: email.trim(),
     password,
     options: {
-      data: { role },
+      // Mirrored into the profile row right after sign-up; kept on the auth
+      // user too so the data survives even if the profile write fails.
+      data: {
+        full_name: meta?.fullName?.trim() || null,
+        role: meta?.role || null,
+      },
     },
   });
-  return { user: data.user, error };
+
+  if (error) return { session: false, error: describeAuthError(error), demo: false };
+  return { session: Boolean(data.session), error: null, demo: false };
 }
 
-export async function signIn(email: string, password: string) {
+export async function signInWithPassword(email: string, password: string): Promise<AuthResult> {
   const supabase = getSupabase();
-  if (!supabase) return { user: null, error: new Error('Supabase not configured') };
+  if (!supabase) return { session: false, error: null, demo: true };
 
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  return { user: data.user, error };
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  });
+
+  if (error) return { session: false, error: describeAuthError(error), demo: false };
+  return { session: Boolean(data.session), error: null, demo: false };
 }
 
 /**
- * Passwordless email OTP — step 1: send a 6-digit code to the email.
- * Real when Supabase is configured; `demo: true` signals the caller to
- * run the demo flow (no real email sent).
+ * Email a password-reset link.
  *
- * NOTE for V1: in the Supabase dashboard, set the "Magic Link" email
- * template to send `{{ .Token }}` so users receive a 6-digit code
- * instead of a magic link.
+ * Always reports success to the caller even when the address has no account.
+ * Confirming which emails are registered turns this form into a way to
+ * enumerate a platform's users.
  */
-export async function sendEmailOtp(email: string): Promise<{ error: Error | null; demo: boolean }> {
+export async function sendPasswordReset(email: string): Promise<{ error: string | null; demo: boolean }> {
   const supabase = getSupabase();
   if (!supabase) return { error: null, demo: true };
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: true },
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: resetRedirectUrl(),
   });
-  return { error, demo: false };
+
+  if (error) {
+    const message = (error.message || '').toLowerCase();
+    // Rate limiting is worth surfacing; "no such user" is not.
+    if (message.includes('rate limit') || message.includes('for security purposes')) {
+      return { error: describeAuthError(error), demo: false };
+    }
+    console.error('[kyro] password reset failed', error);
+  }
+  return { error: null, demo: false };
 }
 
-/** Passwordless email OTP — step 2: verify the 6-digit code. */
-export async function verifyEmailOtp(
-  email: string,
-  token: string
-): Promise<{ error: Error | null; demo: boolean }> {
+/** Set a new password for the signed-in user (used by the reset screen). */
+export async function updatePassword(password: string): Promise<{ error: string | null }> {
   const supabase = getSupabase();
-  if (!supabase) return { error: null, demo: true };
-  const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
-  return { error, demo: false };
+  if (!supabase) return { error: null };
+  const { error } = await supabase.auth.updateUser({ password });
+  return { error: error ? describeAuthError(error) : null };
 }
 
 export async function signOut() {
@@ -151,10 +220,10 @@ export async function saveMyProfile(role: string, fullName?: string): Promise<{ 
   const { data: u } = await supabase.auth.getUser();
   const uid = u.user?.id;
   if (!uid) return { error: new Error('No active session') };
-  const { error } = await supabase
-    .from('profiles')
-    .update({ role, onboarded: true, full_name: fullName ?? null })
-    .eq('id', uid);
+  const patch: Record<string, unknown> = { role, onboarded: true };
+  // Don't blank an existing name when the caller didn't supply one.
+  if (fullName && fullName.trim()) patch.full_name = fullName.trim();
+  const { error } = await supabase.from('profiles').update(patch).eq('id', uid);
   return { error };
 }
 
