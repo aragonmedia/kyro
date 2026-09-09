@@ -31,6 +31,8 @@ import {
 } from './lib/db';
 import type { CampaignWithStats } from './lib/db';
 import type { CommissionType } from './lib/types';
+import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
+import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
    THEME TOGGLE — shared control (landing nav + settings)
@@ -391,7 +393,7 @@ function BrandAvatar({ name, logoUrl, size = 40 }: { name: string; logoUrl?: str
 /* ─────────────────────────────────────────────────────────────
    LANDING PAGE
    ───────────────────────────────────────────────────────────── */
-function Landing({ onSignIn, onGetStarted, onAbout }: { onSignIn: () => void; onGetStarted: () => void; onAbout: () => void }) {
+function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () => void; onGetStarted: () => void; onAbout: () => void; onLegal: (doc: 'privacy' | 'terms') => void }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   return (
     <div className="min-h-screen bg-app text-body">
@@ -403,8 +405,8 @@ function Landing({ onSignIn, onGetStarted, onAbout }: { onSignIn: () => void; on
             <span className="text-xl font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
           </button>
           <div className="hidden md:flex items-center gap-7 text-sm font-medium">
-            <a href="#creators" className="text-body hover:text-heading transition-colors">For Creators</a>
-            <a href="#brands" className="text-body hover:text-heading transition-colors">For Brands</a>
+            <a href="#how-it-works" className="text-body hover:text-heading transition-colors">For Creators</a>
+            <a href="#features" className="text-body hover:text-heading transition-colors">For Brands</a>
             <button onClick={onAbout} className="text-body hover:text-heading transition-colors">About</button>
           </div>
           <div className="hidden md:flex items-center gap-1.5">
@@ -421,8 +423,8 @@ function Landing({ onSignIn, onGetStarted, onAbout }: { onSignIn: () => void; on
         </div>
         {mobileMenuOpen && (
           <div className="md:hidden max-w-5xl mx-auto mt-2 rounded-2xl border border-line bg-surface/95 backdrop-blur-md p-4 space-y-1 shadow-lg">
-            <a href="#creators" className="block py-2.5 text-body hover:text-heading font-medium">For Creators</a>
-            <a href="#brands" className="block py-2.5 text-body hover:text-heading font-medium">For Brands</a>
+            <a href="#how-it-works" className="block py-2.5 text-body hover:text-heading font-medium">For Creators</a>
+            <a href="#features" className="block py-2.5 text-body hover:text-heading font-medium">For Brands</a>
             <button onClick={onAbout} className="block w-full text-left py-2.5 text-body hover:text-heading font-medium">About</button>
             <div className="pt-2 space-y-2">
               <button onClick={onSignIn} className="w-full px-4 py-2.5 border border-line rounded-lg text-heading font-semibold hover:bg-surface-2 transition">Sign In</button>
@@ -504,7 +506,7 @@ function Landing({ onSignIn, onGetStarted, onAbout }: { onSignIn: () => void; on
       </section>
 
       {/* Feature grid */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-line">
+      <section id="features" className="py-20 px-4 sm:px-6 lg:px-8 border-t border-line">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14 space-y-3">
             <h2 className="text-4xl md:text-5xl font-bold text-heading">The operating system for creator programs</h2>
@@ -573,13 +575,32 @@ function Landing({ onSignIn, onGetStarted, onAbout }: { onSignIn: () => void; on
               <div className="flex items-center gap-2 mb-4"><KyroLogo size={28} /><span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span></div>
               <p className="text-muted text-sm">The Creator Growth Portal. Scale your performance with KYRO.</p>
             </div>
-            <div><h4 className="text-heading font-semibold mb-4">Platform</h4><ul className="space-y-2 text-muted text-sm"><li><a href="#creators" className="hover:text-heading transition">For Creators</a></li><li><a href="#brands" className="hover:text-heading transition">For Brands</a></li><li><a href="#how-it-works" className="hover:text-heading transition">How it Works</a></li></ul></div>
-            <div><h4 className="text-heading font-semibold mb-4">Company</h4><ul className="space-y-2 text-muted text-sm"><li><button onClick={onAbout} className="hover:text-heading transition">About</button></li><li><a href="#" className="hover:text-heading transition">Blog</a></li><li><a href="#" className="hover:text-heading transition">Careers</a></li></ul></div>
-            <div><h4 className="text-heading font-semibold mb-4">Legal</h4><ul className="space-y-2 text-muted text-sm"><li><a href="#" className="hover:text-heading transition">Privacy</a></li><li><a href="#" className="hover:text-heading transition">Terms</a></li><li><a href="#" className="hover:text-heading transition">Contact</a></li></ul></div>
+            <div>
+              <h4 className="text-heading font-semibold mb-4">Platform</h4>
+              <ul className="space-y-2 text-muted text-sm">
+                <li><a href="#how-it-works" className="hover:text-heading transition">How it Works</a></li>
+                <li><a href="#features" className="hover:text-heading transition">Features</a></li>
+                <li><button onClick={onGetStarted} className="hover:text-heading transition">Get Started</button></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-heading font-semibold mb-4">Company</h4>
+              <ul className="space-y-2 text-muted text-sm">
+                <li><button onClick={onAbout} className="hover:text-heading transition">About</button></li>
+                <li><a href="mailto:chatwithkyro@gmail.com" className="hover:text-heading transition">Contact</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-heading font-semibold mb-4">Legal</h4>
+              <ul className="space-y-2 text-muted text-sm">
+                <li><button onClick={() => onLegal('privacy')} className="hover:text-heading transition">Privacy Policy</button></li>
+                <li><button onClick={() => onLegal('terms')} className="hover:text-heading transition">Terms of Service</button></li>
+              </ul>
+            </div>
           </div>
-          <div className="border-t border-line pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="border-t border-line pt-8 flex flex-col md:flex-row justify-between items-center gap-3">
             <p className="text-muted text-sm">© 2026 KYRO. All rights reserved.</p>
-            <div className="flex gap-6"><a href="#" className="text-muted hover:text-heading transition">Twitter</a><a href="#" className="text-muted hover:text-heading transition">Discord</a><a href="#" className="text-muted hover:text-heading transition">GitHub</a></div>
+            <p className="text-faint text-xs">KYRO is operated by Kyvo LLC, 131 Continental Drive, Suite 305, Newark, DE 19713.</p>
           </div>
         </div>
       </footer>
@@ -2553,12 +2574,51 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
 /* ─────────────────────────────────────────────────────────────
    ROOT APP
    ───────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────
+   LEGAL PAGES — /privacy and /terms
+   Rendered from the markdown in docs/legal/, so the published page and the
+   document counsel reviews can never drift apart.
+   ───────────────────────────────────────────────────────────── */
+function LegalPage({ doc, onBack, onOther }: { doc: 'privacy' | 'terms'; onBack: () => void; onOther: () => void }) {
+  const source = doc === 'privacy' ? PRIVACY_POLICY_MD : TERMS_OF_SERVICE_MD;
+  useEffect(() => { window.scrollTo(0, 0); }, [doc]);
+  return (
+    <div className="min-h-screen bg-app">
+      <header className="sticky top-0 z-40 backdrop-blur-md bg-app/85 border-b border-line">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <button onClick={onBack} className="flex items-center gap-2.5">
+            <KyroLogo size={30} />
+            <span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
+          </button>
+          <div className="flex items-center gap-5 text-sm">
+            <button onClick={onOther} className="text-muted hover:text-heading transition">
+              {doc === 'privacy' ? 'Terms of Service' : 'Privacy Policy'}
+            </button>
+            <button onClick={onBack} className="flex items-center gap-1.5 text-muted hover:text-heading transition">
+              <ChevronLeft size={16} /> Home
+            </button>
+          </div>
+        </div>
+      </header>
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-14">
+        <Markdown source={source} />
+        <div className="mt-16 pt-8 border-t border-line flex flex-wrap items-center justify-between gap-4">
+          <p className="text-faint text-xs">Kyvo LLC · 131 Continental Drive, Suite 305, Newark, DE 19713</p>
+          <a href="mailto:chatwithkyro@gmail.com" className="text-sm text-purple-400 hover:text-purple-300">chatwithkyro@gmail.com</a>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 type View =
   | 'landing'
   | 'signin'
   | 'signup'
   | 'forgot'
   | 'reset-password'
+  | 'privacy'
+  | 'terms'
   | 'onboard'
   | 'app'
   | 'about'
@@ -2573,6 +2633,8 @@ function readRoute(): { view: View; admin: boolean } {
     if (path === '/signin' || path === '/login') return { view: 'signin', admin: false };
     if (path === '/signup' || path === '/join') return { view: 'signup', admin: false };
     if (path === '/forgot-password') return { view: 'forgot', admin: false };
+    if (path === '/privacy' || path === '/privacy-policy') return { view: 'privacy', admin: false };
+    if (path === '/terms' || path === '/terms-of-service') return { view: 'terms', admin: false };
     // Supabase sends password-reset links back here with a token in the hash.
     if (path === '/reset-password') return { view: 'reset-password', admin: false };
   }
@@ -2644,6 +2706,7 @@ function App() {
   const goSignUp = () => { setAdminEntry(false); setView('signup'); nav('/signup'); };
   const goLanding = () => { setView('landing'); nav('/'); };
   const goForgot = () => { setView('forgot'); nav('/forgot-password'); };
+  const goLegal = (d: 'privacy' | 'terms') => { setView(d); nav('/' + d); };
 
   /** Real sign-out: end the Supabase session, not just navigate away. */
   const doSignOut = async () => {
@@ -2728,7 +2791,9 @@ function App() {
   // a returning user sees the marketing page flash before their dashboard.
   if (!session.ready) return <BootScreen />;
 
-  if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} onAbout={() => setView('about')} />;
+  if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} onAbout={() => setView('about')} onLegal={goLegal} />;
+  if (view === 'privacy') return <LegalPage doc="privacy" onBack={goLanding} onOther={() => goLegal('terms')} />;
+  if (view === 'terms') return <LegalPage doc="terms" onBack={goLanding} onOther={() => goLegal('privacy')} />;
   if (view === 'signin') return (
     <SignIn
       mode={adminEntry ? 'admin' : 'signin'}
