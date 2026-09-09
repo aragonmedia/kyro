@@ -1,7 +1,7 @@
 <!--
   DRAFT — NOT YET REVIEWED BY COUNSEL. Do not publish as-is.
-  Placeholders to fill: [ENTITY] [DOMAIN] [CONTACT_EMAIL] [PRIVACY_EMAIL]
-  [MAILING_ADDRESS] [EFFECTIVE_DATE]
+  Placeholders to fill: Kyvo LLC [DOMAIN] chatwithkyro@gmail.com chatwithkyro@gmail.com
+  131 Continental Drive, Suite 305, Newark, DE 19713 August 31, 2026
   Note: §4 (order data) and §12 (Shopify) exist because KYRO receives end-customer
   personal data from connected Shopify stores. Shopify app review and Meta app review
   both check for this. Do not delete them to make the document shorter.
@@ -9,9 +9,9 @@
 
 # KYRO — Privacy Policy
 
-**Effective date:** [EFFECTIVE_DATE]
+**Effective date:** August 31, 2026
 
-[ENTITY] ("KYRO," "we," "us") operates the KYRO platform at [DOMAIN]. This policy explains
+Kyvo LLC ("KYRO," "we," "us") operates the KYRO platform at [DOMAIN]. This policy explains
 what we collect, why, who we share it with, and what you can do about it.
 
 It covers three groups: **Brands** (businesses using KYRO), **Creators** (people producing
@@ -65,7 +65,7 @@ Creators see that an order occurred and what they earned. They do not see who bo
 **Roles.** For this data the Brand is the controller and KYRO is a processor acting on the
 Brand's instructions. If you are a Customer and want your data accessed or deleted, contact
 the store you purchased from; we will act on their instruction, and you can also reach us
-directly at [PRIVACY_EMAIL].
+directly at chatwithkyro@gmail.com.
 
 ## 5. Payment and tax information
 
@@ -128,7 +128,7 @@ a copy of your personal information, to object to or restrict certain processing
 withdraw consent.
 
 **Account holders** can update most information in Settings, disconnect Meta or Shopify at
-any time, and request deletion of the account by writing to [PRIVACY_EMAIL]. We respond
+any time, and request deletion of the account by writing to chatwithkyro@gmail.com. We respond
 within 45 days.
 
 **California residents.** Under the CCPA/CPRA you have the rights above plus the right not
@@ -183,7 +183,7 @@ take effect, and the effective date above will change.
 
 ## 16. Contact
 
-[ENTITY]
-[MAILING_ADDRESS]
-Privacy: [PRIVACY_EMAIL]
-General: [CONTACT_EMAIL]
+Kyvo LLC
+131 Continental Drive, Suite 305, Newark, DE 19713
+Privacy: chatwithkyro@gmail.com
+General: chatwithkyro@gmail.com

@@ -4,9 +4,10 @@ _Last updated: 2026-09-09. This is the source of truth for how money moves throu
 `docs/legal/TERMS_OF_SERVICE.md` is this document written in legal language; if the two
 ever disagree, fix both._
 
-> **Fill before publishing anything:** `[ENTITY]` (registered legal entity name),
-> `[DOMAIN]`, `[CONTACT_EMAIL]`, `[SUPPORT_EMAIL]`, `[MAILING_ADDRESS]`.
-> These appear as placeholders throughout the legal docs.
+> **Operating entity:** Kyvo LLC · 131 Continental Drive, Suite 305, Newark, DE 19713 ·
+> chatwithkyro@gmail.com · governing law Delaware · effective 31 Aug 2026.
+>
+> **Still open:** `[DOMAIN]`, in both legal docs, until the domain is bought.
 
 ---
 
@@ -18,8 +19,14 @@ orders those ads drive through the brand's Shopify store, and settles commission
 brand and creator.
 
 **Scope boundary:** KYRO is off-platform only — Meta ads plus Shopify. TikTok Shop is
-Kyvo's lane, as a separate registered TikTok Shop partner. Keep the entities, the data,
-and the compliance surfaces separate.
+Kyvo's lane, as a registered TikTok Shop partner. Keep the products, the data and the
+compliance surfaces separate.
+
+**Note on the entity:** KYRO currently operates under **Kyvo LLC**, the same entity behind
+Kyvo. So KYRO and Kyvo are separate *products* of one company, not separate companies.
+That is workable, but it means TikTok Shop partner obligations and the Meta/Shopify
+business share a balance sheet and a liability surface. Worth asking counsel whether KYRO
+should be its own entity, or at minimum a registered DBA, before real money moves.
 
 ---
 
@@ -201,11 +208,41 @@ defining the deal so they aren't KYRO's problem.
 
 ## 11. Open items
 
-- [ ] Register the legal entity; fill every `[ENTITY]` placeholder
+- [x] Entity, addresses, contact, governing law and effective date filled in both legal docs
 - [ ] Buy the domain; fill `[DOMAIN]`, update Supabase Site URL, redirect URLs and email
       templates (currently hardcoded to `kyro-phi.vercel.app`)
+- [ ] Decide whether KYRO needs its own entity or a DBA rather than sitting inside Kyvo LLC
+- [ ] Re-check the Delaware choice of law and forum (see below)
 - [ ] Have counsel review both legal docs, especially the funds-flow structure
 - [ ] Confirm money-transmission posture: structure so the payment processor holds and
       moves funds, not KYRO
 - [ ] Confirm Vercel plan permits commercial use (currently Hobby)
 - [ ] Decide the extended-usage-rights price list (the licensing upsell in §8)
+- [x] Migration `0003_commercial_model.sql` written — connections, orders, attributions,
+      earnings state machine, billing runs, licences and agreements
+
+---
+
+## 12. Choice of law — resolved, with one open question
+
+The entity is a **Delaware** company at a Delaware registered address, and the Terms name
+Delaware law and Delaware as the forum. Law and entity now match, which is the normal,
+defensible setup. The earlier concern about picking Delaware law for a Wyoming entity is
+gone.
+
+**Still worth one question to counsel:** the forum clause is *exclusive*, so KYRO has to
+litigate in Delaware, including when chasing an unpaid brand, while the operator is in
+Washington. That is standard for a Delaware company and not a defect, but it does make a
+small collections claim uneconomic to pursue in person — which is the case the
+attorneys'-fees clause in §8 exists to make viable.
+
+A common fix is to keep Delaware law and the Delaware forum for substantive disputes, and
+add an arbitration clause with a **small-claims carve-out** so low-value collections can be
+brought somewhere cheap. Ask counsel whether that is worth adding.
+
+### Note on the registered-agent phone
+The company record carries a phone number at the registered agent. It is deliberately
+**not** printed in the public Terms or Privacy Policy: creators and customers reading those
+documents would be calling the agent, not KYRO. Public contact stays as
+chatwithkyro@gmail.com plus the registered address. Add a real business line later if you
+want a phone published.

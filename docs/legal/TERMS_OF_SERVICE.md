@@ -1,7 +1,7 @@
 <!--
   DRAFT — NOT YET REVIEWED BY COUNSEL. Do not publish as-is.
-  Placeholders to fill: [ENTITY] [DOMAIN] [CONTACT_EMAIL] [SUPPORT_EMAIL]
-  [MAILING_ADDRESS] [STATE] [EFFECTIVE_DATE]
+  Placeholders to fill: Kyvo LLC [DOMAIN] chatwithkyro@gmail.com chatwithkyro@gmail.com
+  131 Continental Drive, Suite 305, Newark, DE 19713 Delaware August 31, 2026
   Mirrors docs/KYRO_MODEL.md. If you change one, change both.
   Have counsel review §7 (billing), §9 (license), §11 (termination and remedies)
   and the overall funds-flow structure before going live with real money.
@@ -9,9 +9,9 @@
 
 # KYRO — Terms of Service
 
-**Effective date:** [EFFECTIVE_DATE]
+**Effective date:** August 31, 2026
 
-These Terms govern your use of KYRO, operated by [ENTITY] ("KYRO," "we," "us"). By
+These Terms govern your use of KYRO, operated by Kyvo LLC ("KYRO," "we," "us"). By
 creating an account you agree to them. If you are agreeing on behalf of a company, you
 confirm you are authorized to bind it.
 
@@ -277,12 +277,12 @@ scope for a Campaign already running are fixed at the terms in force when it lau
 
 ### 21. Governing law and disputes
 
-These Terms are governed by the laws of the State of [STATE], without regard to conflict
+These Terms are governed by the laws of the State of Delaware, without regard to conflict
 of laws rules. The parties submit to the exclusive jurisdiction of the state and federal
 courts located there.
 
 ### 22. Contact
 
-[ENTITY]
-[MAILING_ADDRESS]
-[CONTACT_EMAIL]
+Kyvo LLC
+131 Continental Drive, Suite 305, Newark, DE 19713
+chatwithkyro@gmail.com
