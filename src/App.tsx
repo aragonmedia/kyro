@@ -24,12 +24,19 @@ import {
 import { useSession } from './lib/session';
 import {
   centsToDollars,
+  connectProvider,
   createCampaign,
+  ensureBrandBilling,
+  getBrandUnbilled,
+  getOnboardingStatus,
   listCampaignsWithStats,
+  normalizeMetaAdAccount,
+  normalizeShopifyDomain,
   parseMoneyToCents,
   parsePercentToFraction,
+  signCampaignAgreement,
 } from './lib/db';
-import type { CampaignWithStats } from './lib/db';
+import type { BrandBilling, BrandUnbilled, CampaignWithStats, OnboardingStatus } from './lib/db';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { Markdown } from './lib/markdown';
@@ -1207,6 +1214,304 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, showDemoSwitch = true
 }
 
 /* ─────────────────────────────────────────────────────────────
+   BRAND ONBOARDING GATES
+   docs/KYRO_MODEL.md §4. A brand connects Meta and Shopify, adds payment,
+   and signs the Campaign Agreement before a campaign may launch.
+   ───────────────────────────────────────────────────────────── */
+
+function GateStep({
+  index,
+  title,
+  blurb,
+  done,
+  doneLabel,
+  optional,
+  icon: Icon,
+  children,
+}: {
+  index: number;
+  title: string;
+  blurb: string;
+  done: boolean;
+  doneLabel?: string;
+  optional?: boolean;
+  icon: typeof Target;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className={`p-5 rounded-2xl border transition ${done ? 'border-emerald-400/30 bg-emerald-400/5' : 'border-line bg-surface'}`}>
+      <div className="flex items-start gap-4">
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${done ? 'bg-emerald-400/15 text-emerald-400' : 'bg-surface-2 text-muted'}`}>
+          {done ? <CheckCircle size={18} /> : <Icon size={17} />}
+        </div>
+        <div className="flex-1 min-w-0 space-y-3">
+          <div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-xs font-mono text-faint">{String(index).padStart(2, '0')}</span>
+              <h3 className="font-semibold text-heading">{title}</h3>
+              {optional && <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-surface-2 border border-line text-faint">Not yet available</span>}
+              {done && doneLabel && <span className="text-xs text-emerald-400 font-medium">{doneLabel}</span>}
+            </div>
+            <p className="text-sm text-muted mt-1">{blurb}</p>
+          </div>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Text input + connect button used by the Meta and Shopify steps. */
+function ConnectField({
+  placeholder,
+  hint,
+  cta,
+  onConnect,
+}: {
+  placeholder: string;
+  hint: string;
+  cta: string;
+  onConnect: (value: string) => Promise<string | null>;
+}) {
+  const [value, setValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    setSaving(true);
+    const err = await onConnect(value);
+    setSaving(false);
+    if (err) setError(err);
+    else setValue('');
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
+          placeholder={placeholder}
+          className={`flex-1 px-4 py-2.5 bg-surface-2 border rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500 ${error ? 'border-pink-400/60' : 'border-line'}`}
+        />
+        <button
+          onClick={() => void submit()}
+          disabled={saving || !value.trim()}
+          className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
+        >
+          {saving && <RefreshCw size={14} className="animate-spin" />}
+          {cta}
+        </button>
+      </div>
+      <p className={`text-xs ${error ? 'text-pink-300' : 'text-faint'}`}>{error || hint}</p>
+    </div>
+  );
+}
+
+function OnboardingGates({
+  brandId,
+  status,
+  onChanged,
+}: {
+  brandId: string;
+  status: OnboardingStatus;
+  onChanged: () => void;
+}) {
+  const [agreed, setAgreed] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [signError, setSignError] = useState<string | null>(null);
+
+  const doneCount = [status.meta, status.shopify, status.agreementSignedAt].filter(Boolean).length;
+
+  const sign = async () => {
+    setSignError(null);
+    setSigning(true);
+    const res = await signCampaignAgreement(brandId);
+    setSigning(false);
+    if (res.error) setSignError(res.error);
+    else onChanged();
+  };
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="p-5 border-b border-line flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-heading">Finish setting up</h2>
+          <p className="text-sm text-muted mt-0.5">Connect your accounts and sign the agreement before launching a campaign.</p>
+        </div>
+        <span className="text-sm font-mono text-muted whitespace-nowrap">{doneCount} of 3 done</span>
+      </div>
+
+      <div className="p-5 space-y-3">
+        <GateStep
+          index={1}
+          icon={Target}
+          title="Connect your Meta ad account"
+          blurb="Approved creator videos run as partnership ads here, and nowhere else. The licence you grant is scoped to this account."
+          done={Boolean(status.meta)}
+          doneLabel={status.meta ? status.meta.externalId : undefined}
+        >
+          {!status.meta && (
+            <ConnectField
+              placeholder="act_1234567890"
+              hint="Find this in Meta Ads Manager, top left, next to your account name."
+              cta="Connect"
+              onConnect={async (v) => {
+                const id = normalizeMetaAdAccount(v);
+                if (!id) return 'That does not look like an ad account ID. It should be act_ followed by digits.';
+                const res = await connectProvider(brandId, 'meta', id);
+                if (res.error) return res.error;
+                onChanged();
+                return null;
+              }}
+            />
+          )}
+        </GateStep>
+
+        <GateStep
+          index={2}
+          icon={Globe}
+          title="Connect your Shopify store"
+          blurb="Your store is the source of truth for orders, and therefore for what you owe. Meta's numbers are used for optimisation only."
+          done={Boolean(status.shopify)}
+          doneLabel={status.shopify ? status.shopify.externalId : undefined}
+        >
+          {!status.shopify && (
+            <ConnectField
+              placeholder="your-store.myshopify.com"
+              hint="Your permanent .myshopify.com domain, not your custom domain."
+              cta="Connect"
+              onConnect={async (v) => {
+                const domain = normalizeShopifyDomain(v);
+                if (!domain) return 'Enter your store as your-store.myshopify.com.';
+                const res = await connectProvider(brandId, 'shopify', domain);
+                if (res.error) return res.error;
+                onChanged();
+                return null;
+              }}
+            />
+          )}
+        </GateStep>
+
+        <GateStep
+          index={3}
+          icon={Wallet}
+          title="Add payment methods"
+          blurb="A card holds the $2,500 refundable deposit. Commission is billed to your bank account by ACH, never to the card."
+          done={status.paymentReady}
+          optional={!status.paymentReady}
+        >
+          {!status.paymentReady && (
+            <p className="text-xs text-faint">
+              Card and bank setup arrives with payment processing. Until then you can create campaigns for testing, but nothing can be billed.
+            </p>
+          )}
+        </GateStep>
+
+        <GateStep
+          index={4}
+          icon={ShieldCheck}
+          title="Sign the Campaign Agreement"
+          blurb="Covers commission, billing, and the licence you receive to each approved video."
+          done={Boolean(status.agreementSignedAt)}
+          doneLabel={status.agreementSignedAt ? `Signed ${new Date(status.agreementSignedAt).toLocaleDateString()}` : undefined}
+        >
+          {!status.agreementSignedAt && (
+            <div className="space-y-3">
+              {signError && (
+                <div className="flex items-start gap-2 p-2.5 rounded-lg border border-pink-400/30 bg-pink-400/10">
+                  <AlertCircle size={14} className="text-pink-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-pink-200">{signError}</p>
+                </div>
+              )}
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-line accent-purple-500 flex-shrink-0"
+                />
+                <span className="text-xs text-muted leading-relaxed">
+                  I have read and agree to the{' '}
+                  <a href="/terms" target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="/privacy" target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">Privacy Policy</a>.
+                </span>
+              </label>
+              <button
+                onClick={() => void sign()}
+                disabled={!agreed || signing}
+                className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {signing && <RefreshCw size={14} className="animate-spin" />}
+                Sign agreement
+              </button>
+            </div>
+          )}
+        </GateStep>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Deposit usage. Brands are billed when unbilled accrual reaches the trigger
+ * (30% of deposit by default), so this is the number they should be able to
+ * see at any moment without asking.
+ */
+function DepositTracker({ billing, unbilled }: { billing: BrandBilling; unbilled: BrandUnbilled }) {
+  const deposit = billing.depositCents;
+  const used = unbilled.totalCents;
+  const pct = deposit > 0 ? Math.min(100, Math.round((used / deposit) * 100)) : 0;
+  const triggerPct = Math.round(billing.billingTriggerBps / 100);
+  const triggerCents = Math.round((deposit * billing.billingTriggerBps) / 10000);
+  const overTrigger = used >= triggerCents && triggerCents > 0;
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-heading">Accrued this cycle</h2>
+          <p className="text-sm text-muted mt-0.5">
+            Billed at {triggerPct}% of your deposit ({fmt(centsToDollars(triggerCents))}) or monthly, whichever comes first.
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-bold text-heading tabular-nums">{fmt(centsToDollars(used))}</p>
+          <p className="text-xs text-faint">of {fmt(centsToDollars(deposit))} deposit</p>
+        </div>
+      </div>
+
+      <div>
+        <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${overTrigger ? 'bg-amber-400' : 'bg-gradient-kyro'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-xs text-faint mt-1.5">
+          <span>{pct}% used</span>
+          <span>{overTrigger ? 'Above billing threshold' : `Bills at ${triggerPct}%`}</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 pt-1 border-t border-line">
+        <div className="pt-3">
+          <p className="text-xs text-faint">Creator commission</p>
+          <p className="text-sm font-bold text-heading tabular-nums">{fmt(centsToDollars(unbilled.commissionCents))}</p>
+        </div>
+        <div className="pt-3">
+          <p className="text-xs text-faint">KYRO fee</p>
+          <p className="text-sm font-bold text-heading tabular-nums">{fmt(centsToDollars(unbilled.feeCents))}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
    BRAND DASHBOARD
    ───────────────────────────────────────────────────────────── */
 
@@ -1299,6 +1604,25 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   const [rows, setRows] = useState<CampaignWithStats[]>([]);
   const [loading, setLoading] = useState(liveMode);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
+  const [billing, setBilling] = useState<BrandBilling | null>(null);
+  const [unbilled, setUnbilled] = useState<BrandUnbilled | null>(null);
+
+  // Onboarding gates + deposit usage. Loaded alongside campaigns rather than
+  // inside reload() so signing the agreement doesn't refetch the campaign list.
+  const loadGates = useCallback(async () => {
+    if (!brandId) return;
+    const [status, bill, owed] = await Promise.all([
+      getOnboardingStatus(brandId),
+      ensureBrandBilling(brandId),
+      getBrandUnbilled(brandId),
+    ]);
+    setOnboarding(status.data);
+    setBilling(bill.data);
+    setUnbilled(owed.data);
+  }, [brandId]);
+
+  useEffect(() => { void loadGates(); }, [loadGates]);
 
   const reload = useCallback(async () => {
     if (!brandId) return;
@@ -1331,6 +1655,8 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
 
   const busy = loading || workspaceLoading;
   const isEmpty = liveMode && !busy && !loadError && cards.length === 0;
+  // Campaigns can only launch once the gates in docs/KYRO_MODEL.md §4 pass.
+  const gatesBlocked = liveMode && onboarding !== null && !onboarding.complete;
 
   // In live mode every sub-label is derived from real rows. The demo keeps its
   // original illustrative copy.
@@ -1368,12 +1694,21 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
         </div>
         <button
           onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
-          disabled={workspaceLoading}
+          disabled={workspaceLoading || gatesBlocked}
+          title={gatesBlocked ? 'Connect Meta and Shopify and sign the agreement first' : undefined}
           className="flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
         >
           <Plus size={18} /> Create Campaign
         </button>
       </div>
+
+      {liveMode && brandId && onboarding && !onboarding.complete && (
+        <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
+      )}
+
+      {liveMode && onboarding?.complete && billing && unbilled && (
+        <DepositTracker billing={billing} unbilled={unbilled} />
+      )}
 
       {workspaceError && (
         <div className="flex items-start gap-3 p-4 rounded-xl border border-pink-400/30 bg-pink-400/10">
@@ -1486,7 +1821,12 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
             <p className="text-sm text-muted mt-1.5 max-w-sm mx-auto">
               A campaign is where you set the budget, the commission, and what you want creators to make.
             </p>
-            <button onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }} className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition">
+            <button
+              onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
+              disabled={gatesBlocked}
+              title={gatesBlocked ? 'Connect Meta and Shopify and sign the agreement first' : undefined}
+              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Plus size={18} /> Create your first campaign
             </button>
           </div>

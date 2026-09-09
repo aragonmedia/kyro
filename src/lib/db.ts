@@ -670,3 +670,324 @@ export function totalsFor(campaigns: CampaignWithStats[]): BrandTotals {
     }
   );
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Brand onboarding — connections, billing, agreement
+   A brand cannot launch a campaign until the gates in
+   docs/KYRO_MODEL.md §4 are satisfied. This is where that is enforced
+   in data rather than in the UI, so the check can't be skipped by
+   navigating around the wizard.
+   ───────────────────────────────────────────────────────────── */
+
+export type ConnectionProvider = 'meta' | 'shopify';
+
+export interface BrandConnection {
+  id: string;
+  provider: ConnectionProvider;
+  externalId: string;
+  displayName: string | null;
+  status: 'active' | 'disconnected' | 'error';
+  connectedAt: string;
+}
+
+export interface BrandBilling {
+  brandId: string;
+  depositCents: Cents;
+  depositStatus: 'none' | 'held' | 'released';
+  achMandateRef: string | null;
+  billingTriggerBps: number;
+  accrualCapCents: Cents;
+  completedCampaigns: number;
+  state: 'active' | 'paused' | 'suspended';
+}
+
+export interface BrandUnbilled {
+  commissionCents: Cents;
+  feeCents: Cents;
+  totalCents: Cents;
+}
+
+export interface OnboardingStatus {
+  meta: BrandConnection | null;
+  shopify: BrandConnection | null;
+  paymentReady: boolean;
+  agreementSignedAt: string | null;
+  /** True when a campaign may be launched. */
+  complete: boolean;
+}
+
+/** The Campaign Agreement version a signature is recorded against. */
+export const CAMPAIGN_AGREEMENT_VERSION = '2026-08-31';
+
+function toConnection(row: {
+  id: string;
+  provider: ConnectionProvider;
+  external_id: string;
+  display_name: string | null;
+  status: 'active' | 'disconnected' | 'error';
+  connected_at: string;
+}): BrandConnection {
+  return {
+    id: row.id,
+    provider: row.provider,
+    externalId: row.external_id,
+    displayName: row.display_name,
+    status: row.status,
+    connectedAt: row.connected_at,
+  };
+}
+
+/** Meta ad accounts are conventionally written `act_<digits>`. */
+export function normalizeMetaAdAccount(input: string): string | null {
+  const raw = input.trim().replace(/\s+/g, '');
+  if (!raw) return null;
+  const digits = raw.replace(/^act_/i, '');
+  if (!/^\d{6,20}$/.test(digits)) return null;
+  return `act_${digits}`;
+}
+
+/** Accept `store`, `store.myshopify.com`, or a pasted admin URL. */
+export function normalizeShopifyDomain(input: string): string | null {
+  let raw = input.trim().toLowerCase();
+  if (!raw) return null;
+  raw = raw.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  if (!raw.includes('.')) raw = `${raw}.myshopify.com`;
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(raw)) return null;
+  return raw;
+}
+
+export async function listConnections(brandId: string): Promise<Result<BrandConnection[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('brand_connections')
+      .select('id, provider, external_id, display_name, status, connected_at')
+      .eq('brand_id', brandId);
+    if (error) return fail([], describeError(error, 'Could not load your connections.'));
+    return ok((data ?? []).map((r) => toConnection(r as Parameters<typeof toConnection>[0])));
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your connections.'));
+  }
+}
+
+/**
+ * Record a platform connection. Until the Meta and Shopify OAuth apps are
+ * approved there is no token exchange to perform, so this stores the account
+ * identifier the brand supplies. The row shape is already what OAuth will
+ * write, so switching over later is a change of caller, not of schema.
+ */
+export async function connectProvider(
+  brandId: string,
+  provider: ConnectionProvider,
+  externalId: string,
+  displayName?: string
+): Promise<Result<BrandConnection | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb
+      .from('brand_connections')
+      .upsert(
+        {
+          brand_id: brandId,
+          provider,
+          external_id: externalId,
+          display_name: displayName?.trim() || null,
+          status: 'active',
+          disconnected_at: null,
+          last_error: null,
+        },
+        { onConflict: 'brand_id,provider' }
+      )
+      .select('id, provider, external_id, display_name, status, connected_at')
+      .single();
+    if (error) return fail(null, describeError(error, 'Could not save that connection.'));
+    return ok(toConnection(data as Parameters<typeof toConnection>[0]));
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not save that connection.'));
+  }
+}
+
+/**
+ * Disconnecting is not a neutral act: per the Terms it pauses campaigns and
+ * suspends every licence granted to this brand. The row is marked rather than
+ * deleted so that history survives.
+ */
+export async function disconnectProvider(
+  brandId: string,
+  provider: ConnectionProvider
+): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+  try {
+    const { error } = await sb
+      .from('brand_connections')
+      .update({ status: 'disconnected', disconnected_at: new Date().toISOString() })
+      .eq('brand_id', brandId)
+      .eq('provider', provider);
+    if (error) return fail(false, describeError(error, 'Could not disconnect.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not disconnect.'));
+  }
+}
+
+/** Read the brand's billing profile, creating the default row if missing. */
+export async function ensureBrandBilling(brandId: string): Promise<Result<BrandBilling | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb
+      .from('brand_billing')
+      .select('*')
+      .eq('brand_id', brandId)
+      .maybeSingle();
+    if (error) return fail(null, describeError(error, 'Could not load billing.'));
+
+    let row = data;
+    if (!row) {
+      const created = await sb
+        .from('brand_billing')
+        .insert({ brand_id: brandId })
+        .select()
+        .single();
+      // A concurrent tab may have created it first; re-read rather than fail.
+      if (created.error) {
+        const retry = await sb.from('brand_billing').select('*').eq('brand_id', brandId).maybeSingle();
+        if (retry.error || !retry.data) {
+          return fail(null, describeError(created.error, 'Could not set up billing.'));
+        }
+        row = retry.data;
+      } else {
+        row = created.data;
+      }
+    }
+
+    const r = row as Record<string, unknown>;
+    return ok({
+      brandId: r.brand_id as string,
+      depositCents: (r.deposit_cents as number) ?? 0,
+      depositStatus: (r.deposit_status as BrandBilling['depositStatus']) ?? 'none',
+      achMandateRef: (r.ach_mandate_ref as string | null) ?? null,
+      billingTriggerBps: (r.billing_trigger_bps as number) ?? 3000,
+      accrualCapCents: (r.accrual_cap_cents as number) ?? 0,
+      completedCampaigns: (r.completed_campaigns as number) ?? 0,
+      state: (r.state as BrandBilling['state']) ?? 'active',
+    });
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not load billing.'));
+  }
+}
+
+/** What the brand has accrued but not yet been charged for. */
+export async function getBrandUnbilled(brandId: string): Promise<Result<BrandUnbilled>> {
+  const zero: BrandUnbilled = { commissionCents: 0, feeCents: 0, totalCents: 0 };
+  const sb = client();
+  if (!sb) return ok(zero);
+  try {
+    const { data, error } = await sb
+      .from('brand_unbilled')
+      .select('unbilled_commission_cents, unbilled_fee_cents, unbilled_total_cents')
+      .eq('brand_id', brandId)
+      .maybeSingle();
+    if (error) return fail(zero, describeError(error, 'Could not load your balance.'));
+    if (!data) return ok(zero);
+    const r = data as Record<string, number>;
+    return ok({
+      commissionCents: r.unbilled_commission_cents ?? 0,
+      feeCents: r.unbilled_fee_cents ?? 0,
+      totalCents: r.unbilled_total_cents ?? 0,
+    });
+  } catch (e) {
+    return fail(zero, describeError(e, 'Could not load your balance.'));
+  }
+}
+
+export async function getLatestAgreement(
+  brandId: string,
+  docType = 'campaign_agreement'
+): Promise<Result<string | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb
+      .from('agreements')
+      .select('signed_at')
+      .eq('brand_id', brandId)
+      .eq('doc_type', docType)
+      .order('signed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return fail(null, describeError(error, 'Could not check the agreement.'));
+    return ok((data as { signed_at?: string } | null)?.signed_at ?? null);
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not check the agreement.'));
+  }
+}
+
+export async function signCampaignAgreement(brandId: string): Promise<Result<string | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data: auth } = await sb.auth.getUser();
+    const uid = auth.user?.id;
+    if (!uid) return fail(null, 'No active session.');
+    const { data, error } = await sb
+      .from('agreements')
+      .insert({
+        brand_id: brandId,
+        user_id: uid,
+        doc_type: 'campaign_agreement',
+        version: CAMPAIGN_AGREEMENT_VERSION,
+        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 400) : null,
+      })
+      .select('signed_at')
+      .single();
+    if (error) return fail(null, describeError(error, 'Could not record your signature.'));
+    return ok((data as { signed_at: string }).signed_at);
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not record your signature.'));
+  }
+}
+
+/**
+ * One round of queries, one answer: may this brand launch a campaign?
+ *
+ * `paymentReady` is false for now by design — card and ACH setup needs a
+ * payment processor and server-side endpoints that don't exist yet. It is
+ * deliberately NOT part of `complete`, so testing isn't blocked on it, but it
+ * is surfaced in the UI so nobody forgets it is missing.
+ */
+export async function getOnboardingStatus(brandId: string): Promise<Result<OnboardingStatus>> {
+  const empty: OnboardingStatus = {
+    meta: null,
+    shopify: null,
+    paymentReady: false,
+    agreementSignedAt: null,
+    complete: false,
+  };
+  const sb = client();
+  if (!sb) return ok(empty);
+
+  const [connections, agreement, billing] = await Promise.all([
+    listConnections(brandId),
+    getLatestAgreement(brandId),
+    ensureBrandBilling(brandId),
+  ]);
+
+  const error = connections.error || agreement.error || billing.error;
+  const active = connections.data.filter((c) => c.status === 'active');
+  const meta = active.find((c) => c.provider === 'meta') ?? null;
+  const shopify = active.find((c) => c.provider === 'shopify') ?? null;
+  const paymentReady = Boolean(billing.data?.achMandateRef);
+
+  const status: OnboardingStatus = {
+    meta,
+    shopify,
+    paymentReady,
+    agreementSignedAt: agreement.data,
+    complete: Boolean(meta && shopify && agreement.data),
+  };
+  return error ? fail(status, error) : ok(status);
+}
