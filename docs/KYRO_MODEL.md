@@ -130,18 +130,66 @@ Notes:
 
 ## 7. Attribution
 
-- **Source of truth is the connected Shopify store**, not Meta.
-- Meta's conversion numbers are attributed and partly modeled. They will not match
-  Shopify's order count. Use Meta for ad performance and optimization, never as the
-  billing number.
-- The join is KYRO's own: each approved video becomes its own ad with its own ad ID, and
-  KYRO stores that ad ID against the submission (`submissions.meta_ad_id`).
-- Per-creator UTM parameters and/or discount codes provide a second signal.
-- **Publish the attribution rule before the campaign runs** — which window, which source,
-  how ties break between creators who both touched a buyer. Most disputes in this business
-  are really about a rule nobody stated.
+Full write-up: `KYRO-Order-Attribution-Model.docx` (v1.0, 16 Sep 2026). This is the
+short form. If the two disagree, fix both.
 
----
+### What can and cannot be proven
+KYRO cannot prove causation; no ad platform can. What it proves is a **chain of
+custody on a tracking token**: this order carried this identifier, that identifier
+was attached to exactly one ad, that ad ran exactly one creator's video. The Terms
+therefore owe commission on *tracked orders attributed under the published rule*,
+not on "sales the video caused".
+
+### The hinge
+Approved videos run as Partnership Ads **inside the brand's own ad account**, billed
+by Meta to the brand, published under the creator's handle. KYRO creates the ad, so
+**KYRO controls its destination URL** — which is where the token goes. If a brand
+built the ad themselves there would be nowhere to inject an identifier and the whole
+chain would not exist.
+
+### The flow
+1. Submission gets an id.
+2. Brand approves; a per-video licence attaches.
+3. KYRO pushes it to Meta, setting the link itself:
+   `store.com/p/x?utm_source=kyro&utm_medium=paid&utm_content=<submission_id>`
+4. Meta returns an ad id → stored in `submissions.meta_ad_id`.
+5. Shopper clicks, lands carrying the token. Shopify records it natively; no script
+   injection needed.
+6. Order webhook fires → token read → `order_attributions` row → `earnings` accrue.
+
+### Reading it back from Shopify
+**`landing_site` is deprecated** (REST Admin API retired 1 Oct 2024). Use the GraphQL
+`customerJourneySummary` / `customerVisit` objects, which expose `utmParameters`,
+`source` and `referrerUrl` **per visit** — multiple touchpoints, not just the last.
+
+> **Dependency:** customer journey data is customer browsing behaviour and sits behind
+> Shopify's **protected customer data** approval. Attribution does not work until that
+> request is granted. It is a prerequisite, not side paperwork.
+
+### Orders from other channels
+An order with no KYRO token **is not a KYRO order**: no attribution row, no accrual,
+no bill. The default is to claim nothing, so the exposure is **under-claiming, never
+over-claiming**. That is the correct direction to be wrong in when creator trust is
+the scarce asset.
+
+### The published rule
+> Last click within 7 days. One creator credited per order. Ties broken by most recent
+> touch. The connected Shopify store is the source of truth.
+
+Goes in the campaign brief (so creators see it before applying) and the brand
+agreement (so it is fixed, not discretionary).
+
+**Meta's conversion numbers are a cross-check, never the bill.** They are modelled and
+will not match Shopify. Use them to optimise ads; bill from the store.
+
+### Deliberately not used: discount codes
+Codes leak to coupon sites, which means paying commission on traffic no video touched.
+One clean signal beats two muddy ones. `order_attributions.method` keeps the
+`discount_code` enum value for future use; nothing writes it.
+
+### Known gaps
+Cross-device buyers, purchases after the window, ad blockers, and click-then-return-
+direct. Most tracked orders are captured, not all. The contract already covers it.
 
 ## 8. Content licensing
 
