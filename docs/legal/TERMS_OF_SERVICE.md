@@ -244,7 +244,46 @@ We may withhold or reverse earnings obtained this way, and close accounts for it
 
 ## Part D — General
 
-### 17. Disclaimers
+### 17. Privacy and data protection
+
+Our [Privacy Policy](/privacy) explains what we collect and why, and forms part of these
+Terms.
+
+**Store customer data.** Where a Brand connects a Shopify store, KYRO receives order and
+customer-journey data from that store. As to that data the Brand is the controller (or
+"business") and KYRO is a processor (or "service provider") acting on the Brand's
+instructions. We agree that we:
+
+- process that data only to provide KYRO — matching orders to Approved Videos, computing
+  Commissionable Value, and settling amounts between Brand and Creator — and for no other
+  purpose;
+- do not sell it, do not share it for cross-context behavioural advertising, and do not
+  combine it with data from other sources except as permitted by law;
+- request only the Shopify scopes those functions require, and request no protected
+  customer fields (name, email, phone or address);
+- keep it confidential and restrict access to personnel who need it;
+- encrypt it in transit and at rest, and hold connected-account credentials under
+  additional application-level encryption;
+- engage sub-processors only under equivalent obligations. Our current sub-processors are
+  listed in the Privacy Policy;
+- assist the Brand, at the Brand's reasonable request, in responding to a customer's
+  access, correction or deletion request;
+- notify the Brand without undue delay on becoming aware of a breach affecting that data;
+- honour Shopify's mandatory customer data request, customer redact and shop redact
+  webhooks; and
+- stop accessing store data when the app is uninstalled, and delete or anonymise it within
+  90 days, except where law requires us to retain it.
+
+**Brand responsibilities.** The Brand is responsible for having a lawful basis to collect
+its customers' data and to have KYRO process it, for its own privacy notices, and for
+honouring its customers' consent and opt-out decisions in its storefront. KYRO does not
+place any script, pixel or cookie on a Brand's storefront; attribution reads data Shopify
+has already recorded.
+
+**Term.** These obligations last as long as we hold the Brand's store data and survive
+termination until that data is deleted.
+
+### 18. Disclaimers
 
 KYRO is provided "as is." We do not guarantee any level of sales, ad performance,
 earnings, or that any Campaign will be approved or filled. Attribution is inherently
@@ -254,7 +293,7 @@ amounts shown before a billing cycle closes are estimates.
 We are not responsible for the acts or omissions of Brands, Creators, Meta, Shopify, or
 any payment provider.
 
-### 18. Limitation of liability
+### 19. Limitation of liability
 
 To the extent the law allows, neither party is liable for indirect, incidental, special,
 consequential or punitive damages, or lost profits. Our total liability for any claim is
@@ -264,24 +303,24 @@ claim.
 Nothing in this section limits a Brand's obligation to pay accrued Creator Commission, or
 liability for infringing use of a Creator's work.
 
-### 19. Indemnity
+### 20. Indemnity
 
 You will indemnify KYRO against claims arising from your content, your use of the
 platform, your breach of these Terms, or your violation of law or third-party rights.
 
-### 20. Changes
+### 21. Changes
 
 We may update these Terms. Material changes will be notified at least 14 days before they
 take effect. Continuing to use KYRO after that means you accept them. Rates and licence
 scope for a Campaign already running are fixed at the terms in force when it launched.
 
-### 21. Governing law and disputes
+### 22. Governing law and disputes
 
 These Terms are governed by the laws of the State of Delaware, without regard to conflict
 of laws rules. The parties submit to the exclusive jurisdiction of the state and federal
 courts located there.
 
-### 22. Contact
+### 23. Contact
 
 Kyvo LLC
 131 Continental Drive, Suite 305, Newark, DE 19713

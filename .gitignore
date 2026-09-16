@@ -29,3 +29,6 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Local deletion staging (device bridge cannot rm)
+_to_delete/
