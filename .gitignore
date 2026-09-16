@@ -32,3 +32,6 @@ pnpm-debug.log*
 
 # Local deletion staging (device bridge cannot rm)
 _to_delete/
+
+# Shopify CLI
+.shopify/

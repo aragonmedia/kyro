@@ -1,0 +1,51 @@
+# KYRO — Shopify app configuration
+#
+# The Dev Dashboard UI cannot set the three mandatory privacy compliance
+# webhook URLs. Nothing in that screen accepts them, and an app without them
+# fails App Store review. This file is the only way to declare them:
+#
+#   shopify app config link      (once, links this folder to the app)
+#   shopify app deploy           (publishes a new version with these values)
+#
+# Everything above the webhooks block mirrors version kyro-3 exactly. If it
+# drifts, `shopify app deploy` will silently change the live configuration to
+# whatever is written here, so treat this file as the source of truth and edit
+# the dashboard through it rather than the other way round.
+
+client_id = "df3d593d79cf8787c3a6d8db517efe38"
+name = "KYRO"
+handle = "kyro"
+application_url = "https://kyro-phi.vercel.app"
+
+# KYRO has no App Bridge surface. It is not an embedded admin app; merchants
+# use kyro-phi.vercel.app directly. Setting this true breaks the install and
+# adds review requirements for UI we do not have.
+embedded = false
+
+[access_scopes]
+# read_orders covers the last 60 days. Full order history needs the
+# `read_all_orders` grant, requested separately in the Partner dashboard.
+scopes = "read_fulfillments,read_orders,read_products"
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ "https://kyro-phi.vercel.app/api/shopify/callback" ]
+
+[webhooks]
+api_version = "2026-07"
+
+  # Mandatory compliance topics. Shopify delivers these itself and will not
+  # accept an API subscription for them. All three land on the same receiver,
+  # which branches on X-Shopify-Topic.
+  #
+  # Business topics (orders, refunds, fulfillments, uninstall) are deliberately
+  # NOT declared here. They are subscribed per store in api/shopify/callback.ts
+  # at install time. Declaring them in both places produces two subscriptions
+  # per topic and therefore two deliveries of every order.
+  [webhooks.privacy_compliance]
+  customer_data_request_url = "https://kyro-phi.vercel.app/api/shopify/webhooks"
+  customer_deletion_url     = "https://kyro-phi.vercel.app/api/shopify/webhooks"
+  shop_deletion_url         = "https://kyro-phi.vercel.app/api/shopify/webhooks"
+
+[build]
+include_config_on_deploy = true

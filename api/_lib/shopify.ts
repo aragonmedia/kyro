@@ -87,3 +87,44 @@ export async function exchangeCodeForToken(shop: string, code: string): Promise<
   if (!json.access_token) throw new Error('Shopify token exchange returned no access_token.');
   return json;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Webhooks
+   ───────────────────────────────────────────────────────────── */
+
+/**
+ * Read the request body as the exact bytes Shopify sent.
+ *
+ * The HMAC is computed over the raw payload. Any JSON parse-and-restringify
+ * changes key order, whitespace and unicode escaping, so the signature will
+ * never match. The endpoint must also set `export const config = { api: {
+ * bodyParser: false } }` or Vercel consumes the stream before we see it.
+ */
+export async function readRawBody(req: AsyncIterable<Buffer | string>): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Verify `X-Shopify-Hmac-Sha256`.
+ *
+ * Unlike the OAuth HMAC (hex, over a sorted query string), the webhook HMAC is
+ * base64 over the raw body. Same secret, different shape. Getting these two
+ * confused is the classic Shopify integration bug.
+ */
+export function verifyWebhookHmac(raw: Buffer, provided: string | undefined): boolean {
+  if (!provided) return false;
+  const { clientSecret } = shopifyConfig();
+  const digest = crypto.createHmac('sha256', clientSecret).update(raw).digest('base64');
+  return safeEqual(digest, provided);
+}
+
+/** Money arrives from Shopify as a decimal string. Keep everything in cents. */
+export function moneyToCents(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  const n = typeof value === 'number' ? value : Number(String(value).replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}

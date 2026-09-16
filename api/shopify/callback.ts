@@ -15,6 +15,7 @@ import { serviceClient } from '../_lib/supabase.js';
 import { seal, verifyState } from '../_lib/crypto.js';
 import { exchangeCodeForToken, normalizeShopDomain, verifyOAuthHmac } from '../_lib/shopify.js';
 import { appOrigin } from '../_lib/env.js';
+import { subscribeWebhooks } from '../_lib/shopify-admin.js';
 
 /** Send the merchant back into the app with a readable outcome. */
 function back(res: VercelResponse, params: Record<string, string>) {
@@ -109,6 +110,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     if (connError) console.error('[kyro] could not update brand_connections', connError);
+
+    // 6. Subscribe the store to the topics the receiver expects. Without this
+    //    the app installs cleanly and then silently never sees an order.
+    //    Best effort: a subscription failure must not break the merchant's
+    //    install, so it is logged and the flow completes either way.
+    try {
+      const outcomes = await subscribeWebhooks(
+        shop,
+        token.access_token,
+        `${appOrigin()}/api/shopify/webhooks`
+      );
+      const failed = outcomes.filter((o) => !o.ok);
+      if (failed.length) {
+        console.error('[kyro] webhook subscriptions failed', failed);
+        await sb
+          .from('brand_connections')
+          .update({ last_error: `webhooks: ${failed.map((f) => f.topic).join(',')}` })
+          .eq('brand_id', state.brandId)
+          .eq('provider', 'shopify');
+      }
+    } catch (e) {
+      console.error('[kyro] webhook subscription step threw', e);
+    }
 
     return back(res, { shopify: 'connected', shop });
   } catch (e) {
