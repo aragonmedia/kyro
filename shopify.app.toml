@@ -4,8 +4,11 @@
 # webhook URLs. Nothing in that screen accepts them, and an app without them
 # fails App Store review. This file is the only way to declare them:
 #
-#   shopify app config link      (once, links this folder to the app)
 #   shopify app deploy           (publishes a new version with these values)
+#
+# No `handle` key: the app already has one and it must be globally unique, so
+# declaring it here only risks colliding with another app and failing the
+# deploy. Shopify keeps the existing handle when the key is absent.
 #
 # Everything above the webhooks block mirrors version kyro-3 exactly. If it
 # drifts, `shopify app deploy` will silently change the live configuration to
@@ -14,7 +17,6 @@
 
 client_id = "df3d593d79cf8787c3a6d8db517efe38"
 name = "KYRO"
-handle = "kyro"
 application_url = "https://kyro-phi.vercel.app"
 
 # KYRO has no App Bridge surface. It is not an embedded admin app; merchants
@@ -47,5 +49,3 @@ api_version = "2026-07"
   customer_deletion_url     = "https://kyro-phi.vercel.app/api/shopify/webhooks"
   shop_deletion_url         = "https://kyro-phi.vercel.app/api/shopify/webhooks"
 
-[build]
-include_config_on_deploy = true
