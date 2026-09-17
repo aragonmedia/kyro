@@ -27,7 +27,7 @@ export function appOrigin(): string {
   if (explicit) return explicit.replace(/\/+$/, '');
   const vercel = optional('VERCEL_PROJECT_PRODUCTION_URL') || optional('VERCEL_URL');
   if (vercel) return `https://${vercel.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`;
-  return 'https://kyro-phi.vercel.app';
+  return 'https://itskyro.com';
 }
 
 export const shopifyConfig = () => ({

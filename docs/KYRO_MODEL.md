@@ -7,7 +7,7 @@ ever disagree, fix both._
 > **Operating entity:** Kyvo LLC · 131 Continental Drive, Suite 305, Newark, DE 19713 ·
 > chatwithkyro@gmail.com · governing law Delaware · effective 31 Aug 2026.
 >
-> **Still open:** `[DOMAIN]`, in both legal docs, until the domain is bought.
+> **Domain:** `itskyro.com`, live on Vercel since 17 Sep 2026. Both legal docs name it.
 
 ---
 
@@ -257,8 +257,9 @@ defining the deal so they aren't KYRO's problem.
 ## 11. Open items
 
 - [x] Entity, addresses, contact, governing law and effective date filled in both legal docs
-- [ ] Buy the domain; fill `[DOMAIN]`, update Supabase Site URL, redirect URLs and email
-      templates (currently hardcoded to `kyro-phi.vercel.app`)
+- [x] Buy the domain (`itskyro.com`); filled in both legal docs, email templates and
+      `shopify.app.toml`. `KYRO_APP_ORIGIN` pins the server-side origin so OAuth redirect
+      URIs cannot drift back to the vercel.app hostname.
 - [ ] Decide whether KYRO needs its own entity or a DBA rather than sitting inside Kyvo LLC
 - [ ] Re-check the Delaware choice of law and forum (see below)
 - [ ] Have counsel review both legal docs, especially the funds-flow structure

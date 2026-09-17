@@ -17,10 +17,10 @@
 
 client_id = "df3d593d79cf8787c3a6d8db517efe38"
 name = "KYRO"
-application_url = "https://kyro-phi.vercel.app"
+application_url = "https://itskyro.com"
 
 # KYRO has no App Bridge surface. It is not an embedded admin app; merchants
-# use kyro-phi.vercel.app directly. Setting this true breaks the install and
+# use itskyro.com directly. Setting this true breaks the install and
 # adds review requirements for UI we do not have.
 embedded = false
 
@@ -31,7 +31,7 @@ scopes = "read_fulfillments,read_orders,read_products"
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://kyro-phi.vercel.app/api/shopify/callback" ]
+redirect_urls = [ "https://itskyro.com/api/shopify/callback" ]
 
 [webhooks]
 api_version = "2026-07"
@@ -45,7 +45,7 @@ api_version = "2026-07"
   # at install time. Declaring them in both places produces two subscriptions
   # per topic and therefore two deliveries of every order.
   [webhooks.privacy_compliance]
-  customer_data_request_url = "https://kyro-phi.vercel.app/api/shopify/webhooks"
-  customer_deletion_url     = "https://kyro-phi.vercel.app/api/shopify/webhooks"
-  shop_deletion_url         = "https://kyro-phi.vercel.app/api/shopify/webhooks"
+  customer_data_request_url = "https://itskyro.com/api/shopify/webhooks"
+  customer_deletion_url     = "https://itskyro.com/api/shopify/webhooks"
+  shop_deletion_url         = "https://itskyro.com/api/shopify/webhooks"
 

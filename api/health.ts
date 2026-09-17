@@ -11,6 +11,7 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { appOrigin, shopifyConfig } from './_lib/env.js';
 
 const SERVER_VARS = [
   'SUPABASE_SERVICE_ROLE_KEY',
@@ -38,6 +39,19 @@ export default function handler(_req: VercelRequest, res: VercelResponse) {
   const rawKey = process.env.KYRO_ENCRYPTION_KEY || '';
   const keyLooksValid = /^[0-9a-fA-F]{64}$/.test(rawKey.trim());
 
+  // The origin every OAuth redirect_uri is built from. Worth reporting because
+  // it is derived, not configured: KYRO_APP_ORIGIN wins, then Vercel's system
+  // variable, then a hardcoded fallback. If this does not match the redirect
+  // URL registered with Shopify and Meta, installs fail with a mismatch error
+  // and nothing in the logs says why. This makes it a one-request check.
+  const origin = appOrigin();
+  let shopifyRedirect: string | null = null;
+  try {
+    shopifyRedirect = shopifyConfig().redirectUri;
+  } catch {
+    shopifyRedirect = null;
+  }
+
   res.setHeader('Cache-Control', 'no-store');
   return res.status(missing.length === 0 ? 200 : 503).json({
     ok: missing.length === 0 && keyLooksValid,
@@ -45,6 +59,8 @@ export default function handler(_req: VercelRequest, res: VercelResponse) {
     server,
     public: pub,
     missing,
+    appOrigin: origin,
+    shopifyRedirectUri: shopifyRedirect,
     encryptionKeyFormatValid: keyLooksValid,
     note:
       missing.length > 0

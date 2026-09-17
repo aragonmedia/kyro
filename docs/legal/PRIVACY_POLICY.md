@@ -1,6 +1,6 @@
 <!--
   DRAFT — NOT YET REVIEWED BY COUNSEL. Do not publish as-is.
-  Placeholders to fill: Kyvo LLC [DOMAIN] chatwithkyro@gmail.com chatwithkyro@gmail.com
+  Placeholders filled: Kyvo LLC, itskyro.com, chatwithkyro@gmail.com
   131 Continental Drive, Suite 305, Newark, DE 19713 August 31, 2026
   Note: §4 (order data) and §12 (Shopify) exist because KYRO receives end-customer
   personal data from connected Shopify stores. Shopify app review and Meta app review
@@ -11,7 +11,7 @@
 
 **Effective date:** August 31, 2026
 
-Kyvo LLC ("KYRO," "we," "us") operates the KYRO platform at [DOMAIN]. This policy explains
+Kyvo LLC ("KYRO," "we," "us") operates the KYRO platform at itskyro.com. This policy explains
 what we collect, why, who we share it with, and what you can do about it.
 
 It covers three groups: **Brands** (businesses using KYRO), **Creators** (people producing
