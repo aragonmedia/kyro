@@ -39,6 +39,7 @@ import {
 import type { BrandBilling, BrandUnbilled, CampaignWithStats, OnboardingStatus } from './lib/db';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
+import { startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -1381,14 +1382,17 @@ function OnboardingGates({
           {!status.shopify && (
             <ConnectField
               placeholder="your-store.myshopify.com"
-              hint="Your permanent .myshopify.com domain, not your custom domain."
+              hint="Your permanent .myshopify.com domain, not your custom domain. You will be sent to Shopify to approve the install."
               cta="Connect"
               onConnect={async (v) => {
                 const domain = normalizeShopifyDomain(v);
                 if (!domain) return 'Enter your store as your-store.myshopify.com.';
-                const res = await connectProvider(brandId, 'shopify', domain);
-                if (res.error) return res.error;
-                onChanged();
+                // Real OAuth. Writing a brand_connections row here instead
+                // would mark the store "connected" without ever obtaining a
+                // token, so nothing could actually read orders.
+                const res = await startShopifyInstall(brandId, domain);
+                if (res.error || !res.url) return res.error ?? 'Could not start the install.';
+                window.location.href = res.url;
                 return null;
               }}
             />
@@ -1601,6 +1605,10 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   const brandId = brand?.id ?? null;
 
   const [showCreate, setShowCreate] = useState(false);
+  // Result of a Shopify install, read off the query string the callback
+  // redirected back with. Read once on mount and stripped from the URL there,
+  // so a refresh does not replay a stale banner.
+  const [connectOutcome, setConnectOutcome] = useState<ConnectOutcome | null>(() => takeConnectionOutcome());
   const [rows, setRows] = useState<CampaignWithStats[]>([]);
   const [loading, setLoading] = useState(liveMode);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1623,6 +1631,12 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   }, [brandId]);
 
   useEffect(() => { void loadGates(); }, [loadGates]);
+
+  // A successful install wrote brand_connections server-side, so the gate
+  // state the page loaded with is already stale. Re-read it.
+  useEffect(() => {
+    if (connectOutcome?.ok) void loadGates();
+  }, [connectOutcome, loadGates]);
 
   const reload = useCallback(async () => {
     if (!brandId) return;
@@ -1701,6 +1715,29 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
           <Plus size={18} /> Create Campaign
         </button>
       </div>
+
+      {connectOutcome && (
+        <div
+          className={`flex items-start gap-3 p-4 rounded-xl border ${
+            connectOutcome.ok
+              ? 'border-emerald-400/30 bg-emerald-400/10'
+              : 'border-pink-400/30 bg-pink-400/10'
+          }`}
+        >
+          {connectOutcome.ok
+            ? <CheckCircle size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+            : <AlertCircle size={18} className="text-pink-400 flex-shrink-0 mt-0.5" />}
+          <p className={`text-sm flex-1 ${connectOutcome.ok ? 'text-emerald-200' : 'text-pink-200'}`}>
+            {connectOutcome.message}
+          </p>
+          <button
+            onClick={() => setConnectOutcome(null)}
+            className="text-xs text-muted hover:text-heading px-2 py-0.5"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {liveMode && brandId && onboarding && !onboarding.complete && (
         <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
