@@ -50,7 +50,7 @@ The device shell and the cloud container are both **blocked from `*.supabase.co`
 
 ### GitHub / Vercel
 - Repo: **`github.com/aragonmedia/kyro`**.
-- Production: **`https://kyro-phi.vercel.app`**. Deep links like `/admin` and `/reset-password` work because of **`vercel.json`** (SPA rewrite `/(.*) → /`).
+- Production: **`https://itskyro.com`** (apex; `www.` redirects to it). The `kyro-phi.vercel.app` hostname still resolves but nothing should reference it. Deep links like `/admin` and `/reset-password` work because of **`vercel.json`** (SPA rewrite `/(.*) → /`).
 - The Vercel MCP connected to Cowork shows only `aragon-media-portal`, so **Kyro deploys from a different Vercel account** than the one Claude can see. Don't expect to find it via `list_projects`.
 - **Vite bakes `VITE_*` env vars at BUILD time** → after changing any env var in Vercel you MUST **Redeploy**.
 
@@ -91,8 +91,8 @@ Switched from 6-digit email OTP to **email + password** in Sept 2026, modeled on
 UI components in `App.tsx`: `AuthShell`, `SignIn`, `SignUp`, `ForgotPassword`, `ResetPassword`, `PasswordField` (show/hide toggle), `SubmitButton`.
 
 ### Required Supabase dashboard settings
-- **Authentication → URL Configuration → Site URL** = `https://kyro-phi.vercel.app`
-- **Redirect URLs** must include `https://kyro-phi.vercel.app/reset-password` — without it the reset link dead-ends.
+- **Authentication → URL Configuration → Site URL** = `https://itskyro.com`
+- **Redirect URLs** must include `https://itskyro.com/reset-password` — without it the reset link dead-ends.
 - **Email Templates → Reset Password** = `email-templates/kyro-reset-password.html`, subject `Reset your KYRO password`.
 - **"Confirm email" stays OFF** (sign-up returns a live session immediately). If it is ever switched on, `SignUp` already handles it with a "check your inbox" state.
 
@@ -209,4 +209,4 @@ Full detail in **`docs/ROADMAP.md`**. Snapshot:
 
 ## 10. How to resume in one paragraph
 
-KYRO is live at kyro-phi.vercel.app on Supabase (project `blmsjeniotlkpsslfrrl`), with **email + password auth** (sign in, sign up with a Brand/Creator toggle, forgot password, reset), a deployed 10-table Postgres schema with RLS, and a **Brand dashboard that reads real campaign rows** through `src/lib/db.ts`. `src/lib/session.tsx` restores the session on reload and provisions the `brands`/`creators` row RLS requires before any write. Creator and Admin dashboards still render `SEED_*` mock data. The next job is the **creator side**: browse live campaigns, apply (writes `applications`), upload video to Supabase Storage (writes `submissions`), then Brand review/approve. Edit in `~/Desktop/Kyro`; **always typecheck and build first** (Section 1) because Kevin never runs the app locally — he reviews the deployed site. Kevin reviews and pushes from GitHub Desktop; Claude never pushes.
+KYRO is live at itskyro.com on Supabase (project `blmsjeniotlkpsslfrrl`), with **email + password auth** (sign in, sign up with a Brand/Creator toggle, forgot password, reset), a deployed 10-table Postgres schema with RLS, and a **Brand dashboard that reads real campaign rows** through `src/lib/db.ts`. `src/lib/session.tsx` restores the session on reload and provisions the `brands`/`creators` row RLS requires before any write. Creator and Admin dashboards still render `SEED_*` mock data. The next job is the **creator side**: browse live campaigns, apply (writes `applications`), upload video to Supabase Storage (writes `submissions`), then Brand review/approve. Edit in `~/Desktop/Kyro`; **always typecheck and build first** (Section 1) because Kevin never runs the app locally — he reviews the deployed site. Kevin reviews and pushes from GitHub Desktop; Claude never pushes.
