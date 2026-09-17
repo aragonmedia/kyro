@@ -1311,6 +1311,54 @@ function ConnectField({
   );
 }
 
+/**
+ * Re-run the Shopify authorisation for a store that is already connected.
+ *
+ * Needed because a connected store is not necessarily a working one. Tokens
+ * expire, scopes change, and a token issued before KYRO started requesting
+ * expiring offline tokens is rejected by the Admin API on every call. Without
+ * this the only escape was to uninstall the app from the Shopify side.
+ */
+function ReconnectShopify({ brandId, shop, errored }: { brandId: string; shop: string; errored: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const go = async () => {
+    setError(null);
+    setBusy(true);
+    const res = await startShopifyInstall(brandId, shop);
+    if (res.error || !res.url) {
+      setBusy(false);
+      setError(res.error ?? 'Could not start the install.');
+      return;
+    }
+    window.location.href = res.url;
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <button
+        onClick={() => void go()}
+        disabled={busy}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${
+          errored
+            ? 'border-pink-400/40 bg-pink-400/10 text-pink-200 hover:bg-pink-400/20'
+            : 'border-line bg-surface-2 text-muted hover:text-heading'
+        }`}
+      >
+        {busy && <RefreshCw size={12} className="animate-spin" />}
+        Reconnect store
+      </button>
+      <p className={`text-xs ${error ? 'text-pink-300' : 'text-faint'}`}>
+        {error ||
+          (errored
+            ? 'This store needs reauthorising before KYRO can read its orders.'
+            : 'Re-runs the Shopify authorisation. Use this if orders stop arriving.')}
+      </p>
+    </div>
+  );
+}
+
 function OnboardingGates({
   brandId,
   status,
@@ -1395,6 +1443,13 @@ function OnboardingGates({
                 window.location.href = res.url;
                 return null;
               }}
+            />
+          )}
+          {status.shopify && (
+            <ReconnectShopify
+              brandId={brandId}
+              shop={status.shopify.externalId}
+              errored={status.shopify.status === 'error'}
             />
           )}
         </GateStep>

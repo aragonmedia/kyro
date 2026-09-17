@@ -65,17 +65,41 @@ export function buildAuthorizeUrl(shop: string, state: string): string {
 export interface TokenResponse {
   access_token: string;
   scope: string;
+  /** Seconds until the access token expires. 3600 for expiring offline tokens. */
   expires_in?: number;
   refresh_token?: string;
+  /** Seconds until the refresh token expires. 7776000 (90 days). */
+  refresh_token_expires_in?: number;
 }
 
-/** Trade the one-time code for a store access token. Requires the secret. */
+/**
+ * Trade the one-time code for a store access token.
+ *
+ * `expiring: 1` is NOT optional. Shopify stopped accepting non-expiring
+ * offline tokens on the Admin API: every call made with one comes back
+ *
+ *   403 [API] Non-expiring access tokens are no longer accepted for the
+ *   Admin API. Start using expiring offline tokens
+ *
+ * and the install still appears to succeed, because the token is issued
+ * fine. It is only rejected later, when used. Omitting this parameter gives
+ * you a store that connects cleanly and can never be read.
+ *
+ * The token that comes back lives for ONE HOUR. Nothing may cache it beyond
+ * that; see requireStoreToken() in shopify-token.ts, which is the only
+ * supported way to get a usable token for a stored connection.
+ */
 export async function exchangeCodeForToken(shop: string, code: string): Promise<TokenResponse> {
   const { clientId, clientSecret } = shopifyConfig();
   const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      expiring: 1,
+    }),
   });
 
   if (!res.ok) {
@@ -85,6 +109,40 @@ export async function exchangeCodeForToken(shop: string, code: string): Promise<
 
   const json = (await res.json()) as TokenResponse;
   if (!json.access_token) throw new Error('Shopify token exchange returned no access_token.');
+  return json;
+}
+
+/**
+ * Exchange a refresh token for a fresh access token.
+ *
+ * Shopify rotates BOTH values: the response carries a new refresh_token that
+ * replaces the one just used. Storing only the access token means the next
+ * refresh fails and the merchant has to reinstall.
+ *
+ * The refresh token itself lasts 90 days, so a store nobody touches for a
+ * quarter needs a genuine reconnect. That is a merchant-visible event, not
+ * something to paper over.
+ */
+export async function refreshAccessToken(shop: string, refreshToken: string): Promise<TokenResponse> {
+  const { clientId, clientSecret } = shopifyConfig();
+  const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Shopify token refresh failed (${res.status}): ${body.slice(0, 300)}`);
+  }
+
+  const json = (await res.json()) as TokenResponse;
+  if (!json.access_token) throw new Error('Shopify token refresh returned no access_token.');
   return json;
 }
 

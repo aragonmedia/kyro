@@ -81,6 +81,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       credential.refresh_token_ct = refresh.ct;
       credential.refresh_token_iv = refresh.iv;
       credential.refresh_token_tag = refresh.tag;
+      // The refresh token's own deadline (90 days). Past it there is no
+      // automatic recovery and the merchant has to reconnect, so it is worth
+      // knowing before orders quietly stop arriving.
+      if (token.refresh_token_expires_in) {
+        credential.refresh_token_expires_at = new Date(
+          Date.now() + token.refresh_token_expires_in * 1000
+        ).toISOString();
+      }
     }
 
     const { error: credError } = await sb

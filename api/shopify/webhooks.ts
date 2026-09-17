@@ -28,7 +28,7 @@ import {
   verifyWebhookHmac,
   moneyToCents,
 } from '../_lib/shopify.js';
-import { unseal } from '../_lib/crypto.js';
+import { requireStoreToken, TokenUnavailable } from '../_lib/shopify-token.js';
 import {
   fetchOrderJourney,
   trackingTokenFromVisit,
@@ -138,24 +138,27 @@ async function attribute(
   shopifyOrderId: string,
   commissionableCents: number
 ): Promise<{ note: string; retryable: boolean }> {
-  const cred = await db
-    .from('platform_credentials')
-    .select('access_token_ct, access_token_iv, access_token_tag')
-    .eq('brand_id', brandId)
-    .eq('provider', 'shopify')
-    .maybeSingle();
-
-  if (cred.error || !cred.data) return { note: 'no stored Shopify token', retryable: false };
-
+  // Never unseal the credential directly. Shopify access tokens now live one
+  // hour, and a webhook can arrive at any point after that, so the token has
+  // to be refreshed on the way out.
   let token: string;
   try {
-    token = unseal({
-      ct: cred.data.access_token_ct as string,
-      iv: cred.data.access_token_iv as string,
-      tag: cred.data.access_token_tag as string,
-    });
-  } catch {
-    return { note: 'stored Shopify token could not be decrypted', retryable: false };
+    token = await requireStoreToken(db, brandId, shop);
+  } catch (err) {
+    if (err instanceof TokenUnavailable) {
+      // needsReconnect means no number of retries will help: the merchant has
+      // to reauthorise. Surface it on the connection so it is visible in the
+      // app rather than only in a log line.
+      if (err.needsReconnect) {
+        await db
+          .from('brand_connections')
+          .update({ status: 'error', last_error: err.message.slice(0, 500) })
+          .eq('brand_id', brandId)
+          .eq('provider', 'shopify');
+      }
+      return { note: err.message.slice(0, 500), retryable: !err.needsReconnect };
+    }
+    return { note: `token lookup failed: ${(err as Error).message}`.slice(0, 500), retryable: true };
   }
 
   let visits: Array<CustomerVisit | null | undefined>;
