@@ -131,6 +131,10 @@ export interface CreatorRow {
   youtube_subscribers: number | null;
   trolley_recipient_id: string | null;
   tax_form_status: 'not_collected' | 'pending' | 'complete';
+  tax_form_submitted_at?: string | null;
+  payout_bank_name?: string | null;
+  payout_bank_last4?: string | null;
+  payout_updated_at?: string | null;
   stats: Record<string, unknown> | null;
   created_at: string;
 }
@@ -205,6 +209,10 @@ export function toCreator(row: CreatorRow): Creator {
     },
     trolleyRecipientId: row.trolley_recipient_id ?? undefined,
     taxFormStatus: row.tax_form_status,
+    taxFormSubmittedAt: row.tax_form_submitted_at ?? undefined,
+    payoutBankName: row.payout_bank_name ?? undefined,
+    payoutBankLast4: row.payout_bank_last4 ?? undefined,
+    payoutUpdatedAt: row.payout_updated_at ?? undefined,
     stats: {
       campaigns: stats.campaigns ?? 0,
       totalEarnedCents: stats.totalEarnedCents ?? 0,
@@ -990,4 +998,189 @@ export async function getOnboardingStatus(brandId: string): Promise<Result<Onboa
     complete: Boolean(meta && shopify && agreement.data),
   };
   return error ? fail(status, error) : ok(status);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Creator: campaigns, submissions, payout details
+   ───────────────────────────────────────────────────────────── */
+
+export interface OpenCampaign {
+  id: string;
+  name: string;
+  brandId: string;
+  brandName: string;
+  deliverableSpec: string | null;
+}
+
+/**
+ * Campaigns a creator may submit a video to.
+ *
+ * Currently every campaign a brand has set live. The brand still controls
+ * what runs, because a submission lands as `submitted` and only becomes an
+ * ad once they approve it. Narrowing this to campaigns the creator has an
+ * accepted application for is the right end state, but applications have no
+ * UI yet, so gating on them today would leave every creator with an empty
+ * list and no way to fill it.
+ */
+export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('campaigns')
+      .select('id, name, brand_id, deliverable_spec, brands(name)')
+      .eq('status', 'live')
+      .order('created_at', { ascending: false });
+
+    if (error) return fail([], describeError(error, 'Could not load campaigns.'));
+
+    const rows = (data ?? []) as Array<{
+      id: string;
+      name: string;
+      brand_id: string;
+      deliverable_spec: string | null;
+      brands: { name: string } | { name: string }[] | null;
+    }>;
+
+    return ok(
+      rows.map((r) => {
+        const brand = Array.isArray(r.brands) ? r.brands[0] : r.brands;
+        return {
+          id: r.id,
+          name: r.name,
+          brandId: r.brand_id,
+          brandName: brand?.name ?? 'Unknown brand',
+          deliverableSpec: r.deliverable_spec,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load campaigns.'));
+  }
+}
+
+export interface MySubmission {
+  id: string;
+  campaignId: string;
+  campaignName: string;
+  brandName: string;
+  status: string;
+  videoUrl: string | null;
+  trackingToken: string | null;
+  submittedAt: string;
+}
+
+export async function listMySubmissions(creatorId: string): Promise<Result<MySubmission[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('submissions')
+      .select('id, campaign_id, status, video_url, tracking_token, submitted_at, campaigns(name, brands(name))')
+      .eq('creator_id', creatorId)
+      .order('submitted_at', { ascending: false });
+
+    if (error) return fail([], describeError(error, 'Could not load your submissions.'));
+
+    const rows = (data ?? []) as Array<{
+      id: string;
+      campaign_id: string;
+      status: string;
+      video_url: string | null;
+      tracking_token: string | null;
+      submitted_at: string;
+      campaigns: { name: string; brands: { name: string } | { name: string }[] | null } | Array<{ name: string; brands: { name: string } | { name: string }[] | null }> | null;
+    }>;
+
+    return ok(
+      rows.map((r) => {
+        const campaign = Array.isArray(r.campaigns) ? r.campaigns[0] : r.campaigns;
+        const brand = Array.isArray(campaign?.brands) ? campaign?.brands[0] : campaign?.brands;
+        return {
+          id: r.id,
+          campaignId: r.campaign_id,
+          campaignName: campaign?.name ?? 'Campaign',
+          brandName: brand?.name ?? '',
+          status: r.status,
+          videoUrl: r.video_url,
+          trackingToken: r.tracking_token ?? null,
+          submittedAt: r.submitted_at,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your submissions.'));
+  }
+}
+
+/**
+ * Record a submitted video.
+ *
+ * Called after the file is already in storage. The row carries brand_id as
+ * well as campaign_id because RLS and the attribution join both read it, and
+ * deriving it later would mean a second query on every read.
+ */
+export async function createSubmission(input: {
+  campaignId: string;
+  creatorId: string;
+  brandId: string;
+  videoUrl: string;
+}): Promise<Result<string | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb
+      .from('submissions')
+      .insert({
+        campaign_id: input.campaignId,
+        creator_id: input.creatorId,
+        brand_id: input.brandId,
+        video_url: input.videoUrl,
+        status: 'submitted',
+      })
+      .select('id')
+      .single();
+
+    if (error) return fail(null, describeError(error, 'Could not save your submission.'));
+    return ok((data as { id: string }).id);
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not save your submission.'));
+  }
+}
+
+/**
+ * Update the payout account KYRO displays for a creator.
+ *
+ * Bank name and last four only. This does not change where money goes: the
+ * payout provider holds the real account against trolley_recipient_id, and
+ * changing it there is a separate flow. The function refuses anything longer
+ * than four digits so a full account number cannot be stored by accident.
+ */
+export async function updatePayoutDisplay(
+  creatorId: string,
+  bankName: string,
+  last4: string
+): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+
+  const digits = last4.replace(/\D/g, '');
+  if (digits.length !== 4) return fail(false, 'Enter exactly the last 4 digits.');
+  if (!bankName.trim()) return fail(false, 'Enter the name of your bank.');
+
+  try {
+    const { error } = await sb
+      .from('creators')
+      .update({
+        payout_bank_name: bankName.trim(),
+        payout_bank_last4: digits,
+        payout_updated_at: new Date().toISOString(),
+      })
+      .eq('id', creatorId);
+
+    if (error) return fail(false, describeError(error, 'Could not update your payout account.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not update your payout account.'));
+  }
 }

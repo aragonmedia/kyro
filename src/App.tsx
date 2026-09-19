@@ -30,15 +30,20 @@ import {
   ensureBrandBilling,
   getBrandUnbilled,
   getOnboardingStatus,
+  createSubmission,
+  listCampaignsOpenToCreators,
   listCampaignsWithStats,
   listConnections,
+  listMySubmissions,
+  updatePayoutDisplay,
   normalizeMetaAdAccount,
   normalizeShopifyDomain,
   parseMoneyToCents,
   parsePercentToFraction,
   signCampaignAgreement,
 } from './lib/db';
-import type { BrandBilling, BrandConnection, BrandUnbilled, CampaignWithStats, OnboardingStatus } from './lib/db';
+import type { BrandBilling, BrandConnection, BrandUnbilled, CampaignWithStats, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
+import { uploadSubmissionVideo } from './lib/storage';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
@@ -2283,6 +2288,17 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
    ───────────────────────────────────────────────────────────── */
 function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void }) {
   const session = useSession();
+  const creatorId = session.creator?.id ?? null;
+  const [showSubmit, setShowSubmit] = useState(false);
+  const [mine, setMine] = useState<MySubmission[]>([]);
+
+  const loadMine = useCallback(async () => {
+    if (!creatorId) { setMine([]); return; }
+    const res = await listMySubmissions(creatorId);
+    setMine(res.data);
+  }, [creatorId]);
+
+  useEffect(() => { void loadMine(); }, [loadMine]);
   const [tab, setTab] = useState<'submissions' | 'browse' | 'payouts'>('submissions');
   const [liveEarnings, setLiveEarnings] = useState(2820);
   const [notification, setNotification] = useState<{ amount: number; orders: number } | null>(null);
@@ -2363,6 +2379,27 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
 
       {tab === 'submissions' && (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {mine.map((sub) => (
+            <div key={sub.id} className="bg-surface border border-line rounded-2xl overflow-hidden">
+              <div className="p-5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-heading truncate">{sub.campaignName}</h3>
+                    <p className="text-xs text-muted truncate">{sub.brandName}</p>
+                  </div>
+                  <StatusPill status={sub.status} />
+                </div>
+                <p className="text-xs text-faint">
+                  Submitted {new Date(sub.submittedAt).toLocaleDateString()}
+                </p>
+                {sub.trackingToken && (
+                  <p className="text-xs text-faint font-mono truncate" title="The id that ties orders back to this video">
+                    Tracking {sub.trackingToken}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
           {SEED_CREATOR_SUBMISSIONS.map((s) => {
             const brand = BRANDS[s.brandId];
             return (
@@ -2415,12 +2452,13 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
           })}
           <button
             type="button"
-            disabled
-            title="Video upload arrives with the creator side of KYRO, alongside Supabase Storage."
-            className="border-2 border-dashed border-line rounded-2xl flex flex-col items-center justify-center gap-3 p-8 text-muted min-h-[320px] opacity-50 cursor-not-allowed"
+            onClick={() => setShowSubmit(true)}
+            disabled={!creatorId}
+            title={creatorId ? undefined : 'Sign in as a creator to submit a video.'}
+            className="border-2 border-dashed border-line rounded-2xl flex flex-col items-center justify-center gap-3 p-8 text-muted hover:text-heading hover:border-purple-500/50 transition min-h-[320px] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <div className="w-14 h-14 rounded-full bg-surface-2 flex items-center justify-center"><Upload size={22} /></div>
-            <div className="text-center"><p className="font-semibold">Submit New Video</p><p className="text-xs text-faint mt-1">Upload arrives with the creator build</p></div>
+            <div className="text-center"><p className="font-semibold">Submit New Video</p><p className="text-xs text-faint mt-1">Upload to a live campaign</p></div>
           </button>
         </div>
       )}
@@ -2464,6 +2502,8 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
       )}
 
       {tab === 'payouts' && (
+        <div className="space-y-6">
+        <PayoutAccountCard />
         <div className="bg-surface border border-line rounded-2xl overflow-hidden">
           <div className="p-5 border-b border-line flex items-center justify-between">
             <h2 className="text-xl font-bold text-heading">Payout History</h2>
@@ -2481,7 +2521,284 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
             ))}
           </div>
         </div>
+        </div>
       )}
+
+      {showSubmit && creatorId && (
+        <SubmitVideoModal
+          creatorId={creatorId}
+          onClose={() => setShowSubmit(false)}
+          onSubmitted={() => void loadMine()}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CREATOR — SUBMIT A VIDEO
+   Upload to private storage, then record the submission. The brand still
+   approves it before anything runs as an ad.
+   ───────────────────────────────────────────────────────────── */
+function SubmitVideoModal({
+  creatorId,
+  onClose,
+  onSubmitted,
+}: {
+  creatorId: string;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const [campaigns, setCampaigns] = useState<OpenCampaign[] | null>(null);
+  const [campaignId, setCampaignId] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [stage, setStage] = useState<'idle' | 'uploading' | 'saving'>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await listCampaignsOpenToCreators();
+      setCampaigns(res.data);
+      if (res.error) setError(res.error);
+      if (res.data.length === 1) setCampaignId(res.data[0].id);
+    })();
+  }, []);
+
+  const chosen = campaigns?.find((c) => c.id === campaignId) ?? null;
+  const busy = stage !== 'idle';
+
+  const submit = async () => {
+    setError(null);
+    if (!chosen) { setError('Choose which campaign this video is for.'); return; }
+    if (!file) { setError('Choose a video file.'); return; }
+
+    setStage('uploading');
+    const up = await uploadSubmissionVideo(creatorId, file);
+    if (up.error || !up.path) {
+      setStage('idle');
+      setError(up.error ?? 'Upload failed.');
+      return;
+    }
+
+    setStage('saving');
+    const res = await createSubmission({
+      campaignId: chosen.id,
+      creatorId,
+      brandId: chosen.brandId,
+      videoUrl: up.path,
+    });
+    setStage('idle');
+    if (res.error) { setError(res.error); return; }
+    onSubmitted();
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-app/80 backdrop-blur-sm" onClick={() => { if (!busy) onClose(); }}>
+      <div className="bg-surface border border-line rounded-2xl max-w-lg w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-heading">Submit a video</h2>
+          <button type="button" onClick={onClose} disabled={busy} className="text-muted hover:text-heading disabled:opacity-40"><X size={20} /></button>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted">Campaign</label>
+          {campaigns === null ? (
+            <p className="text-sm text-muted">Loading campaigns…</p>
+          ) : campaigns.length === 0 ? (
+            <p className="text-sm text-muted">
+              No campaigns are live right now. A brand has to set one live before you can submit to it.
+            </p>
+          ) : (
+            <select
+              value={campaignId}
+              onChange={(e) => setCampaignId(e.target.value)}
+              disabled={busy}
+              className="w-full px-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500"
+            >
+              <option value="">Choose a campaign…</option>
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id}>{c.name} · {c.brandName}</option>
+              ))}
+            </select>
+          )}
+          {chosen?.deliverableSpec && (
+            <p className="text-xs text-faint leading-relaxed">What they asked for: {chosen.deliverableSpec}</p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted">Video</label>
+          <input
+            type="file"
+            accept="video/mp4,video/quicktime,video/webm"
+            disabled={busy}
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="w-full text-sm text-muted file:mr-3 file:px-4 file:py-2 file:rounded-lg file:border-0 file:bg-surface-2 file:text-body file:font-semibold file:cursor-pointer"
+          />
+          <p className="text-xs text-faint">
+            MP4, MOV or WebM, up to 500 MB. Your video is stored privately and only the brand running this campaign can view it.
+          </p>
+          {file && <p className="text-xs text-body">{file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB</p>}
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 p-3 rounded-lg border border-pink-400/30 bg-pink-400/10">
+            <AlertCircle size={14} className="text-pink-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-pink-200">{error}</p>
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={busy || !campaignId || !file}
+            className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+          >
+            {busy && <RefreshCw size={14} className="animate-spin" />}
+            {stage === 'uploading' ? 'Uploading…' : stage === 'saving' ? 'Saving…' : 'Submit for review'}
+          </button>
+          <p className="text-xs text-faint">The brand reviews it before it runs as an ad.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CREATOR — PAYOUT ACCOUNT AND TAX FORM
+   ───────────────────────────────────────────────────────────── */
+function PayoutAccountCard() {
+  const session = useSession();
+  const creator = session.creator;
+  const [editing, setEditing] = useState(false);
+  const [bank, setBank] = useState(creator?.payoutBankName ?? '');
+  const [last4, setLast4] = useState(creator?.payoutBankLast4 ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBank(creator?.payoutBankName ?? '');
+    setLast4(creator?.payoutBankLast4 ?? '');
+  }, [creator?.payoutBankName, creator?.payoutBankLast4]);
+
+  if (!creator) return null;
+
+  const save = async () => {
+    setError(null);
+    setSaving(true);
+    const res = await updatePayoutDisplay(creator.id, bank, last4);
+    setSaving(false);
+    if (res.error) { setError(res.error); return; }
+    await session.refresh();
+    setEditing(false);
+  };
+
+  const taxDone = creator.taxFormStatus === 'complete';
+
+  return (
+    <div className="grid md:grid-cols-2 gap-5">
+      {/* Bank account */}
+      <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Wallet size={16} className="text-body" />
+            <h3 className="font-semibold text-heading">Payout account</h3>
+          </div>
+          {!editing && (
+            <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-purple-400 hover:text-purple-300">
+              {creator.payoutBankLast4 ? 'Change' : 'Add'}
+            </button>
+          )}
+        </div>
+
+        {!editing && (
+          creator.payoutBankLast4 ? (
+            <div className="space-y-1">
+              <p className="text-lg font-semibold text-heading tabular-nums">•••• •••• •••• {creator.payoutBankLast4}</p>
+              <p className="text-sm text-muted">{creator.payoutBankName}</p>
+              {creator.payoutUpdatedAt && (
+                <p className="text-xs text-faint">Updated {new Date(creator.payoutUpdatedAt).toLocaleDateString()}</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted">No payout account on file. Add one so KYRO knows where to send your earnings.</p>
+          )
+        )}
+
+        {editing && (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Bank name</label>
+              <input
+                value={bank}
+                onChange={(e) => setBank(e.target.value)}
+                placeholder="Chase"
+                className="w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Last 4 digits</label>
+              <input
+                value={last4}
+                onChange={(e) => setLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                inputMode="numeric"
+                placeholder="4321"
+                className="w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500 tabular-nums"
+              />
+            </div>
+            {error && <p className="text-xs text-pink-300">{error}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                {saving && <RefreshCw size={14} className="animate-spin" />}
+                Save
+              </button>
+              <button type="button" onClick={() => { setEditing(false); setError(null); }} className="px-4 py-2 rounded-lg border border-line text-sm text-muted hover:text-heading">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-faint leading-relaxed">
+          KYRO stores only your bank name and the last four digits, so you can recognise the account. Your full account and routing numbers live with the payout provider and are never held here.
+        </p>
+      </div>
+
+      {/* Tax form */}
+      <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={16} className="text-body" />
+          <h3 className="font-semibold text-heading">Tax form</h3>
+        </div>
+
+        <div className={`flex items-start gap-3 p-3 rounded-xl border ${taxDone ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-400/30 bg-amber-400/10'}`}>
+          {taxDone
+            ? <CheckCircle size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+            : <AlertCircle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />}
+          <div className="space-y-0.5">
+            <p className={`text-sm font-semibold ${taxDone ? 'text-emerald-200' : 'text-amber-200'}`}>
+              {taxDone ? 'W-9 on file' : creator.taxFormStatus === 'pending' ? 'W-9 in review' : 'W-9 not submitted'}
+            </p>
+            {taxDone && creator.taxFormSubmittedAt && (
+              <p className="text-xs text-emerald-200/70">Submitted {new Date(creator.taxFormSubmittedAt).toLocaleDateString()}</p>
+            )}
+          </div>
+        </div>
+
+        <p className="text-sm text-muted leading-relaxed">
+          US creators paid $600 or more in a calendar year get a 1099-NEC. KYRO needs a completed W-9 before it can release a payout, which is why the withdraw button stays locked until this is done.
+        </p>
+        <p className="text-xs text-faint leading-relaxed">
+          The form is collected by the payout provider, not by KYRO, so your tax identification number never passes through this app.
+        </p>
+      </div>
     </div>
   );
 }

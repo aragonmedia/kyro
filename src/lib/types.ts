@@ -57,6 +57,11 @@ export interface Creator {
   };
   trolleyRecipientId?: string;  // populated when Trolley onboarding done
   taxFormStatus: 'not_collected' | 'pending' | 'complete';
+  taxFormSubmittedAt?: string;
+  /** Display only. KYRO never stores a full account or routing number. */
+  payoutBankName?: string;
+  payoutBankLast4?: string;
+  payoutUpdatedAt?: string;
   stats: {
     campaigns: number;
     totalEarnedCents: Cents;
