@@ -2,7 +2,7 @@ import {
   Menu, X, ArrowRight, Star, TrendingUp, Zap, DollarSign,
   CheckCircle, Clock, Briefcase, Camera, Shield, ChevronRight,
   Plus, Upload, Eye, Users, Wallet, FileVideo, AlertCircle, Activity,
-  Sparkles, Bell, LogOut, Filter, Search, ExternalLink, Award, Target,
+  Sparkles, Bell, LogOut, Filter, Search, Award, Target,
   ArrowUpRight, RefreshCw, MessageSquare, Globe, Mail, Trophy, Hash,
   Instagram, Youtube, ShieldCheck, Cpu, Layers, Heart,
   ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3, PieChart, Calendar, ArrowDownRight
@@ -26,17 +26,19 @@ import {
   centsToDollars,
   connectProvider,
   createCampaign,
+  disconnectProvider,
   ensureBrandBilling,
   getBrandUnbilled,
   getOnboardingStatus,
   listCampaignsWithStats,
+  listConnections,
   normalizeMetaAdAccount,
   normalizeShopifyDomain,
   parseMoneyToCents,
   parsePercentToFraction,
   signCampaignAgreement,
 } from './lib/db';
-import type { BrandBilling, BrandUnbilled, CampaignWithStats, OnboardingStatus } from './lib/db';
+import type { BrandBilling, BrandConnection, BrandUnbilled, CampaignWithStats, OnboardingStatus } from './lib/db';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
@@ -1194,10 +1196,7 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, showDemoSwitch = true
                   ))}
                 </div>
               )}
-              <button className="relative p-2 text-muted hover:text-heading transition" title="Notifications">
-                <Bell size={18} />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-pink-500 rounded-full"></span>
-              </button>
+              <NotificationsBell />
               <button onClick={onSettings} className="p-2 text-muted hover:text-heading transition" title="Account">
                 <Users size={18} />
               </button>
@@ -1210,6 +1209,75 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, showDemoSwitch = true
         </div>
       </header>
       <main className="px-4 sm:px-6 lg:px-8 py-8">{children}</main>
+    </div>
+  );
+}
+
+/** "@maya" -> "maya". Social handles are stored with or without the @. */
+function stripAt(handle: string): string {
+  return handle.replace(/^@+/, '').trim();
+}
+
+/** A social handle that actually opens the profile, in a new tab. */
+function SocialLink({ href, icon: Icon, label }: { href: string; icon: typeof Instagram; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="flex items-center gap-2 text-muted hover:text-heading transition"
+    >
+      <Icon size={18} />
+      <span className="text-sm font-semibold">{label}</span>
+    </a>
+  );
+}
+
+/**
+ * Notifications.
+ *
+ * There is no notifications table yet, so this deliberately shows an empty
+ * state rather than a badge. The old version rendered a permanent pink "unread"
+ * dot over a button that did nothing, which told every user they had messages
+ * waiting and then refused to show them.
+ */
+function NotificationsBell() {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('[data-notifications]')) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" data-notifications>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={`relative p-2 transition ${open ? 'text-heading' : 'text-muted hover:text-heading'}`}
+        title="Notifications"
+      >
+        <Bell size={18} />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-2 w-72 p-4 rounded-xl border border-line bg-surface shadow-xl z-50 space-y-2">
+          <p className="text-sm font-semibold text-heading">Notifications</p>
+          <p className="text-sm text-muted leading-relaxed">You're all caught up.</p>
+          <p className="text-xs text-faint leading-relaxed">
+            Creator applications, video submissions and billing runs will appear here once those parts of KYRO are live.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1660,6 +1728,9 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   const brandId = brand?.id ?? null;
 
   const [showCreate, setShowCreate] = useState(false);
+  const [query, setQuery] = useState('');
+  const [showAllLeaders, setShowAllLeaders] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'draft' | 'ended' | 'pending_fund'>('all');
   // Result of a Shopify install, read off the query string the callback
   // redirected back with. Read once on mount and stripped from the URL there,
   // so a refresh does not replay a stale banner.
@@ -1710,13 +1781,22 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
     void reload();
   }, [brandId, reload]);
 
-  const cards = brand && configured
+  const allCards = brand && configured
     ? dbCampaignCards(rows, brand.name, brand.logoUrl || null)
     : seedCampaignCards();
 
-  const totalPool = cards.reduce((s, c) => s + c.poolDollars, 0);
-  const totalSpent = cards.reduce((s, c) => s + c.spentDollars, 0);
-  const totalOrders = cards.reduce((s, c) => s + c.orders, 0);
+  // KPIs describe the whole account, so they are computed from every campaign.
+  // Only the list below is filtered, otherwise typing in the search box would
+  // appear to change the brand's actual spend.
+  const cards = allCards.filter((c) => {
+    if (statusFilter !== 'all' && c.status !== statusFilter) return false;
+    const q = query.trim().toLowerCase();
+    return !q || c.name.toLowerCase().includes(q);
+  });
+
+  const totalPool = allCards.reduce((s, c) => s + c.poolDollars, 0);
+  const totalSpent = allCards.reduce((s, c) => s + c.spentDollars, 0);
+  const totalOrders = allCards.reduce((s, c) => s + c.orders, 0);
   const totalImpr = cards.reduce((s, c) => s + c.impressions, 0);
   const totalSubs = cards.reduce((s, c) => s + c.submissions, 0);
   const poolUsedPct = totalPool > 0 ? Math.round((totalSpent / totalPool) * 100) : 0;
@@ -1831,7 +1911,15 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
             <h2 className="text-xl font-bold text-heading">Creator Leaderboard</h2>
             <span className="text-xs text-faint ml-2">Last 7 days</span>
           </div>
-          {!liveMode && <button className="text-xs text-muted hover:text-heading">View all</button>}
+          {!liveMode && SEED_LEADERBOARD.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setShowAllLeaders((v) => !v)}
+              className="text-xs text-muted hover:text-heading"
+            >
+              {showAllLeaders ? 'Show less' : 'View all'}
+            </button>
+          )}
         </div>
         {liveMode ? (
           <div className="p-10 text-center">
@@ -1841,7 +1929,7 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
           </div>
         ) : (
           <div className="divide-y divide-line">
-            {SEED_LEADERBOARD.map((l, i) => {
+            {(showAllLeaders ? SEED_LEADERBOARD : SEED_LEADERBOARD.slice(0, 3)).map((l, i) => {
               const c = SEED_CREATORS[l.creatorId];
               const brandRef = BRANDS[l.brandId];
               return (
@@ -1874,16 +1962,29 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                 <RefreshCw size={14} className={busy ? 'animate-spin' : ''} /> Refresh
               </button>
             )}
-            {!liveMode && (
-              <>
-                <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-muted">
-                  <Search size={14} /><span>Search</span>
-                </div>
-                <button className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-body hover:text-heading">
-                  <Filter size={14} /> Filter
-                </button>
-              </>
-            )}
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg">
+              <Search size={14} className="text-faint flex-shrink-0" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search campaigns"
+                className="bg-transparent text-sm text-heading placeholder-faint focus:outline-none w-36"
+              />
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg">
+              <Filter size={14} className="text-faint flex-shrink-0" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                className="bg-transparent text-sm text-heading focus:outline-none cursor-pointer"
+              >
+                <option value="all">All</option>
+                <option value="live">Live</option>
+                <option value="draft">Draft</option>
+                <option value="pending_fund">Pending</option>
+                <option value="ended">Ended</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -1948,7 +2049,7 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                             <p className="text-sm text-muted">{c.brandName} · {plural(c.creators, 'creator')} · {plural(c.submissions, 'submission')}</p>
                           </div>
                         </div>
-                        <button className="text-muted hover:text-heading"><ExternalLink size={16} /></button>
+
                       </div>
                       {c.status === 'live' && (
                         <>
@@ -2430,6 +2531,10 @@ function RevSpendChart() {
 }
 
 function AdminDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => void }) {
+  // Curation cards the operator has passed on this session.
+  const [skipped, setSkipped] = useState<string[]>([]);
+  // Brand Performance ordering. Spend descending is the useful default.
+  const [perfSort, setPerfSort] = useState<'spend' | 'name'>('spend');
   const totalRevenue = ADMIN_MONTHS.reduce((s, m) => s + m.rev, 0);
   const totalSpend = ADMIN_MONTHS.reduce((s, m) => s + m.spend, 0);
   const totalOrders = ADMIN_BRAND_PERF.reduce((s, b) => s + b.orders, 0);
@@ -2492,7 +2597,14 @@ function AdminDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
       <div className="bg-surface border border-line rounded-2xl overflow-hidden">
         <div className="p-5 border-b border-line flex items-center justify-between">
           <h2 className="text-lg font-bold text-heading">Brand Performance</h2>
-          <button className="text-xs text-muted hover:text-heading flex items-center gap-1"><Filter size={12} /> Filter</button>
+          <button
+            type="button"
+            onClick={() => setPerfSort((cur) => (cur === 'spend' ? 'name' : 'spend'))}
+            className="text-xs text-muted hover:text-heading flex items-center gap-1"
+            title="Change how this table is ordered"
+          >
+            <Filter size={12} /> Sorted by {perfSort === 'spend' ? 'spend' : 'name'}
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
@@ -2507,7 +2619,13 @@ function AdminDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {ADMIN_BRAND_PERF.map((b) => {
+              {[...ADMIN_BRAND_PERF]
+                .sort((a, b) =>
+                  perfSort === 'spend'
+                    ? b.spend - a.spend
+                    : BRANDS[a.brandId].name.localeCompare(BRANDS[b.brandId].name)
+                )
+                .map((b) => {
                 const brand = BRANDS[b.brandId];
                 return (
                   <tr key={b.brandId} className="hover:bg-surface-2 transition">
@@ -2628,7 +2746,7 @@ function AdminDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
             <span className="text-xs text-faint">{SEED_CURATION.length} pending</span>
           </div>
           <div className="divide-y divide-line">
-            {SEED_CURATION.map((cu) => {
+            {SEED_CURATION.filter((cu) => !skipped.includes(cu.id)).map((cu) => {
               const c = SEED_CREATORS[cu.creatorId];
               return (
                 <div key={cu.id} className="p-4 space-y-3">
@@ -2642,7 +2760,13 @@ function AdminDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                   </button>
                   <div className="flex gap-2">
                     <button onClick={() => mockApi.proposeMatch(cu.id)} className="flex-1 px-3 py-1.5 bg-gradient-kyro rounded-lg text-white text-xs font-semibold">Propose Match</button>
-                    <button className="px-3 py-1.5 border border-line rounded-lg text-body text-xs font-semibold hover:bg-surface-2">Skip</button>
+                    <button
+                      type="button"
+                      onClick={() => setSkipped((cur) => [...cur, cu.id])}
+                      className="px-3 py-1.5 border border-line rounded-lg text-body text-xs font-semibold hover:bg-surface-2"
+                    >
+                      Skip
+                    </button>
                   </div>
                 </div>
               );
@@ -2695,12 +2819,17 @@ function CreatorPublicProfile({ creatorId, onBack }: { creatorId: CreatorId; onB
                 ))}
               </div>
               <div className="flex gap-4 pt-3">
-                <a href="#" className="flex items-center gap-2 text-muted hover:text-heading transition"><Instagram size={18} /><span className="text-sm font-semibold">{c.social.instagram}</span></a>
-                <a href="#" className="flex items-center gap-2 text-muted hover:text-heading transition"><Hash size={18} /><span className="text-sm font-semibold">{c.social.tiktok}</span></a>
-                <a href="#" className="flex items-center gap-2 text-muted hover:text-heading transition"><Youtube size={18} /><span className="text-sm font-semibold">{c.social.youtube}</span></a>
+                <SocialLink href={`https://instagram.com/${stripAt(c.social.instagram)}`} icon={Instagram} label={c.social.instagram} />
+                <SocialLink href={`https://tiktok.com/@${stripAt(c.social.tiktok)}`} icon={Hash} label={c.social.tiktok} />
+                <SocialLink href={`https://youtube.com/@${stripAt(c.social.youtube)}`} icon={Youtube} label={c.social.youtube} />
               </div>
             </div>
-            <button className="px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105 whitespace-nowrap">
+            <button
+              type="button"
+              disabled
+              title="Creator invitations arrive with the creator side of KYRO. Until then, creators apply to your campaigns."
+              className="px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold whitespace-nowrap opacity-50 cursor-not-allowed"
+            >
               Invite to Campaign
             </button>
           </div>
@@ -2790,7 +2919,12 @@ function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () 
               </div>
               <span className="inline-block px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-heading">{b.category}</span>
             </div>
-            <button className="px-5 py-2.5 bg-white text-slate-900 rounded-lg font-semibold hover:bg-slate-100 transition transform hover:scale-105 whitespace-nowrap">
+            <button
+              type="button"
+              disabled
+              title="Applying to a brand arrives with the creator side of KYRO."
+              className="px-5 py-2.5 bg-white text-slate-900 rounded-lg font-semibold whitespace-nowrap opacity-50 cursor-not-allowed"
+            >
               Apply to work with us
             </button>
           </div>
@@ -2831,7 +2965,14 @@ function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () 
                       <div><p className="text-xs text-faint">ROAS</p><p className="font-bold text-purple-400">{c.roas}x</p></div>
                     </div>
                   )}
-                  <button className="w-full px-4 py-2 bg-gradient-kyro rounded-lg text-white text-sm font-semibold">Apply</button>
+                  <button
+                    type="button"
+                    disabled
+                    title="Applying to a campaign arrives with the creator side of KYRO."
+                    className="w-full px-4 py-2 bg-gradient-kyro rounded-lg text-white text-sm font-semibold opacity-50 cursor-not-allowed"
+                  >
+                    Apply
+                  </button>
                 </div>
               </div>
             ))}
@@ -2938,7 +3079,250 @@ function AboutPage({ onBack, onSignIn, onGetStarted }: { onBack: () => void; onS
 /* ─────────────────────────────────────────────────────────────
    ACCOUNT SETTINGS (stub)
    ───────────────────────────────────────────────────────────── */
+/** One expandable row in Account Settings. */
+function SettingsRow({
+  label,
+  sub,
+  icon: Icon,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string;
+  sub: string;
+  icon: typeof Users;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="w-full p-5 flex items-center gap-4 hover:bg-surface-2 transition text-left"
+      >
+        <div className="w-10 h-10 rounded-lg bg-surface-2 flex items-center justify-center">
+          <Icon size={18} className="text-body" />
+        </div>
+        <div className="flex-1">
+          <p className="text-heading font-semibold">{label}</p>
+          <p className="text-xs text-faint">{sub}</p>
+        </div>
+        <ChevronRight size={16} className={`text-faint transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open && <div className="px-5 pb-5 pt-0 space-y-3">{children}</div>}
+    </div>
+  );
+}
+
+/** Panel for a feature that genuinely does not exist yet. Says so plainly. */
+function NotYetPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-1.5">
+      <p className="text-xs uppercase tracking-wider font-semibold text-faint">Not available yet</p>
+      <div className="text-sm text-muted leading-relaxed space-y-2">{children}</div>
+    </div>
+  );
+}
+
+function ProfilePanel() {
+  const session = useSession();
+  const [name, setName] = useState(session.fullName ?? '');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => { setName(session.fullName ?? ''); }, [session.fullName]);
+
+  const save = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) { setMsg({ ok: false, text: 'Enter a name.' }); return; }
+    if (!session.role) { setMsg({ ok: false, text: 'Your account has no role yet.' }); return; }
+    setMsg(null);
+    setSaving(true);
+    const { error } = await saveMyProfile(session.role, trimmed);
+    setSaving(false);
+    if (error) { setMsg({ ok: false, text: error.message || 'Could not save your name.' }); return; }
+    await session.refresh();
+    setMsg({ ok: true, text: 'Saved.' });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted">Name</label>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Your name"
+          className="w-full px-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500"
+        />
+        <p className="text-xs text-faint">This is the name KYRO greets you by and shows to the brands or creators you work with.</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted">Email</label>
+        <input
+          value={session.email ?? ''}
+          readOnly
+          className="w-full px-4 py-2.5 bg-surface-2/50 border border-line rounded-lg text-muted cursor-not-allowed"
+        />
+        <p className="text-xs text-faint">Your email is your sign-in. Write to chatwithkyro@gmail.com to change it.</p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving || name.trim() === (session.fullName ?? '')}
+          className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+        >
+          {saving && <RefreshCw size={14} className="animate-spin" />}
+          Save
+        </button>
+        {msg && <span className={`text-xs ${msg.ok ? 'text-emerald-400' : 'text-pink-300'}`}>{msg.text}</span>}
+      </div>
+    </div>
+  );
+}
+
+function SecurityPanel() {
+  const [pw, setPw] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const save = async () => {
+    setMsg(null);
+    if (pw.length < 8) { setMsg({ ok: false, text: 'Use at least 8 characters.' }); return; }
+    if (pw !== confirm) { setMsg({ ok: false, text: 'Those two passwords do not match.' }); return; }
+    setSaving(true);
+    const { error } = await updatePassword(pw);
+    setSaving(false);
+    if (error) { setMsg({ ok: false, text: error }); return; }
+    setPw(''); setConfirm('');
+    setMsg({ ok: true, text: 'Password updated.' });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted">New password</label>
+        <input
+          type="password"
+          value={pw}
+          onChange={(e) => setPw(e.target.value)}
+          autoComplete="new-password"
+          className="w-full px-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted">Confirm new password</label>
+        <input
+          type="password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          autoComplete="new-password"
+          onKeyDown={(e) => { if (e.key === 'Enter') void save(); }}
+          className="w-full px-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving || !pw || !confirm}
+          className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+        >
+          {saving && <RefreshCw size={14} className="animate-spin" />}
+          Update password
+        </button>
+        {msg && <span className={`text-xs ${msg.ok ? 'text-emerald-400' : 'text-pink-300'}`}>{msg.text}</span>}
+      </div>
+      <p className="text-xs text-faint">
+        Two-factor authentication and a list of active sessions are not built yet. Changing your password here does not sign out your other devices.
+      </p>
+    </div>
+  );
+}
+
+function ConnectedAccountsPanel() {
+  const session = useSession();
+  const brandId = session.brand?.id ?? null;
+  const [rows, setRows] = useState<BrandConnection[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!brandId) { setRows([]); return; }
+    const res = await listConnections(brandId);
+    setRows(res.data);
+    setError(res.error);
+  }, [brandId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const drop = async (provider: 'meta' | 'shopify') => {
+    if (!brandId) return;
+    setBusy(provider);
+    const res = await disconnectProvider(brandId, provider);
+    setBusy(null);
+    if (res.error) { setError(res.error); return; }
+    await load();
+  };
+
+  if (session.role === 'creator') {
+    return (
+      <NotYetPanel>
+        <p>Linking your Instagram, TikTok and YouTube accounts arrives with the creator profile build. Until then, add your handles when you apply to a campaign.</p>
+      </NotYetPanel>
+    );
+  }
+
+  if (!brandId) {
+    return <p className="text-sm text-muted">No brand workspace on this account yet.</p>;
+  }
+
+  const active = (rows ?? []).filter((c) => c.status === 'active');
+
+  return (
+    <div className="space-y-3">
+      {error && <p className="text-xs text-pink-300">{error}</p>}
+      {rows === null && <p className="text-sm text-muted">Loading…</p>}
+      {rows !== null && active.length === 0 && (
+        <p className="text-sm text-muted">
+          Nothing connected. Connect Meta and Shopify from the setup card on your dashboard.
+        </p>
+      )}
+      {active.map((c) => (
+        <div key={c.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-line bg-surface-2">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-heading capitalize">{c.provider}</p>
+            <p className="text-xs text-faint truncate">{c.externalId}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void drop(c.provider)}
+            disabled={busy === c.provider}
+            className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading disabled:opacity-50 inline-flex items-center gap-1.5 whitespace-nowrap"
+          >
+            {busy === c.provider && <RefreshCw size={12} className="animate-spin" />}
+            Disconnect
+          </button>
+        </div>
+      ))}
+      <p className="text-xs text-faint">
+        Disconnecting stops KYRO reading new data from that account. It does not delete orders already attributed, because creators are still owed commission on them.
+      </p>
+    </div>
+  );
+}
+
 function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const toggle = (key: string) => setOpen((cur) => (cur === key ? null : key));
+
   return (
     <div className="min-h-screen bg-app">
       <div className="sticky top-0 z-40 backdrop-blur-md bg-app/80 border-b border-line px-4 sm:px-6 lg:px-8">
@@ -2975,29 +3359,43 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
         </div>
 
         <div className="bg-surface border border-line rounded-2xl divide-y divide-line">
-          {[
-            { label: 'Profile', icon: Users, sub: 'Name, email, bio' },
-            { label: 'Payment Method', icon: Wallet, sub: role === 'creator' ? 'Trolley payout account' : 'Square billing on file' },
-            { label: 'Notifications', icon: Bell, sub: 'Email + in-app preferences' },
-            { label: 'Connected Accounts', icon: Heart, sub: 'Meta, Instagram, TikTok' },
-            { label: 'Security', icon: ShieldCheck, sub: 'Password, 2FA, sessions' },
-          ].map((row) => (
-            <button key={row.label} className="w-full p-5 flex items-center gap-4 hover:bg-surface-2 transition text-left">
-              <div className="w-10 h-10 rounded-lg bg-surface-2 flex items-center justify-center">
-                <row.icon size={18} className="text-body" />
-              </div>
-              <div className="flex-1">
-                <p className="text-heading font-semibold">{row.label}</p>
-                <p className="text-xs text-faint">{row.sub}</p>
-              </div>
-              <ChevronRight size={16} className="text-faint" />
-            </button>
-          ))}
-        </div>
+          <SettingsRow label="Profile" sub="Name and email" icon={Users} open={open === 'profile'} onToggle={() => toggle('profile')}>
+            <ProfilePanel />
+          </SettingsRow>
 
-        <div className="p-4 bg-amber-400/10 border border-amber-400/20 rounded-lg flex items-start gap-3">
-          <AlertCircle size={18} className="text-amber-400 mt-0.5 flex-shrink-0" />
-          <p className="text-sm text-amber-200">Settings are read-only in this demo. Full editing arrives in V1 alongside real Supabase auth.</p>
+          <SettingsRow
+            label="Payment Method"
+            sub={role === 'creator' ? 'Payout account' : 'Deposit and billing'}
+            icon={Wallet}
+            open={open === 'payment'}
+            onToggle={() => toggle('payment')}
+          >
+            <NotYetPanel>
+              {role === 'creator' ? (
+                <p>Payouts run through a payout provider that also collects your tax form. Connecting it opens once your first commission clears.</p>
+              ) : (
+                <>
+                  <p>Billing is a $2,500 refundable deposit held on a card, with commission charged to your bank account by ACH. Never to the card, so card fees do not eat the 1% KYRO fee.</p>
+                  <p>Payment processing is not connected yet. You can create and run campaigns for testing, but nothing can be billed.</p>
+                </>
+              )}
+            </NotYetPanel>
+          </SettingsRow>
+
+          <SettingsRow label="Notifications" sub="Email and in-app" icon={Bell} open={open === 'notifications'} onToggle={() => toggle('notifications')}>
+            <NotYetPanel>
+              <p>KYRO does not send notifications yet, so there is nothing to configure. When it does, the first ones will be a creator applying to your campaign, a video submitted for review, and a billing run closing.</p>
+              <p>Transactional email such as password resets always sends and is not optional.</p>
+            </NotYetPanel>
+          </SettingsRow>
+
+          <SettingsRow label="Connected Accounts" sub="Meta and Shopify" icon={Heart} open={open === 'connected'} onToggle={() => toggle('connected')}>
+            <ConnectedAccountsPanel />
+          </SettingsRow>
+
+          <SettingsRow label="Security" sub="Password" icon={ShieldCheck} open={open === 'security'} onToggle={() => toggle('security')}>
+            <SecurityPanel />
+          </SettingsRow>
         </div>
       </div>
     </div>
