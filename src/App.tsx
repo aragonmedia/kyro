@@ -34,16 +34,22 @@ import {
   listCampaignsOpenToCreators,
   listCampaignsWithStats,
   listConnections,
+  listApplicationsForBrand,
+  listMyApplications,
   listMySubmissions,
   listSubmissionsForBrand,
+  saveTaxDetails,
+  setApplicationStatus,
   setSubmissionUsage,
+  updateCampaignStatus,
+  applyToCampaign,
   normalizeMetaAdAccount,
   normalizeShopifyDomain,
   parseMoneyToCents,
   parsePercentToFraction,
   signCampaignAgreement,
 } from './lib/db';
-import type { BrandBilling, BrandConnection, BrandUnbilled, CampaignSubmission, CampaignWithStats, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
+import type { BrandApplication, BrandBilling, BrandConnection, BrandUnbilled, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
 import { uploadSubmissionVideo } from './lib/storage';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
@@ -1888,6 +1894,8 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
         <DepositTracker billing={billing} unbilled={unbilled} />
       )}
 
+      {liveMode && brandId && <ApplicationsPanel brandId={brandId} />}
+
       {liveMode && brandId && <CreatorVideosPanel brandId={brandId} />}
 
       {workspaceError && (
@@ -2073,26 +2081,13 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                           </div>
                         </>
                       )}
-                      {c.status === 'pending_fund' && (
-                        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-blue-400/10 border border-blue-400/20 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <AlertCircle size={18} className="text-blue-400 flex-shrink-0" />
-                            <p className="text-sm text-blue-300">
-                              {liveMode
-                                ? `Budget set at ${fmt(c.poolDollars)}. Fund the pool to launch on Meta.`
-                                : 'Fund this campaign pool to launch on Meta.'}
-                            </p>
-                          </div>
-                          {liveMode ? (
-                            <span className="text-xs font-semibold px-3 py-1.5 bg-surface-2 border border-line text-faint rounded-lg" title="Square funding is wired up in Phase 2">
-                              Funding coming soon
-                            </span>
-                          ) : (
-                            <span className="text-xs font-semibold px-3 py-1.5 bg-surface-2 border border-line text-faint rounded-lg" title="Brands are billed after the fact against a deposit. Prefunding a pool is not part of the model.">
-                              Funding coming soon
-                            </span>
-                          )}
-                        </div>
+                      {(c.status === 'pending_fund' || c.status === 'draft') && (
+                        <ActivateCampaignRow
+                          campaignId={c.id}
+                          status={c.status}
+                          live={liveMode}
+                          onActivated={() => void reload()}
+                        />
                       )}
                     </div>
                   </div>
@@ -2447,6 +2442,8 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
       )}
 
       {tab === 'browse' && (
+        <div className="space-y-5">
+        {creatorId && <BrowseCampaigns creatorId={creatorId} />}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
           {SEED_MARKETPLACE.map((m) => {
             const brand = BRANDS[m.brandId];
@@ -2481,6 +2478,7 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
               </div>
             );
           })}
+        </div>
         </div>
       )}
 
@@ -2572,6 +2570,239 @@ function MySubmissionCard({ sub }: { sub: MySubmission }) {
             Tracking {sub.trackingToken}
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Open a campaign to creators.
+ *
+ * Replaces the old "fund the pool to launch" prompt, which described a model
+ * KYRO deliberately does not use: brands are billed after the fact against a
+ * deposit, so there is no pool to prefund. Without this control nothing ever
+ * moved out of draft, which is why the creator campaign picker was empty.
+ */
+function ActivateCampaignRow({
+  campaignId,
+  status,
+  live,
+  onActivated,
+}: {
+  campaignId: string;
+  status: string;
+  live: boolean;
+  onActivated: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const activate = async () => {
+    setError(null);
+    setBusy(true);
+    const res = await updateCampaignStatus(campaignId, 'live');
+    setBusy(false);
+    if (res.error) { setError(res.error); return; }
+    onActivated();
+  };
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-blue-400/10 border border-blue-400/20 rounded-lg">
+      <div className="flex items-center gap-2 min-w-0">
+        <AlertCircle size={18} className="text-blue-400 flex-shrink-0" />
+        <div className="min-w-0">
+          <p className="text-sm text-blue-300">
+            {status === 'draft' ? 'Still a draft.' : 'Set up but not open yet.'} Creators can't see it until you open it.
+          </p>
+          {error && <p className="text-xs text-pink-300 mt-0.5">{error}</p>}
+        </div>
+      </div>
+      {live ? (
+        <button
+          type="button"
+          onClick={() => void activate()}
+          disabled={busy}
+          className="text-xs font-semibold px-3 py-1.5 bg-gradient-kyro text-white rounded-lg disabled:opacity-50 inline-flex items-center gap-1.5 whitespace-nowrap"
+        >
+          {busy && <RefreshCw size={12} className="animate-spin" />}
+          Open to creators
+        </button>
+      ) : (
+        <span className="text-xs font-semibold px-3 py-1.5 bg-surface-2 border border-line text-faint rounded-lg">
+          Demo campaign
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CREATOR — BROWSE AND APPLY
+   ───────────────────────────────────────────────────────────── */
+function BrowseCampaigns({ creatorId }: { creatorId: string }) {
+  const [campaigns, setCampaigns] = useState<OpenCampaign[] | null>(null);
+  const [apps, setApps] = useState<MyApplication[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const [c, a] = await Promise.all([listCampaignsOpenToCreators(), listMyApplications(creatorId)]);
+    setCampaigns(c.data);
+    setApps(a.data);
+    setError(c.error || a.error);
+  }, [creatorId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const statusFor = (campaignId: string) => apps.find((a) => a.campaignId === campaignId)?.status ?? null;
+
+  const apply = async (campaignId: string) => {
+    setError(null);
+    setBusy(campaignId);
+    const res = await applyToCampaign(campaignId, creatorId);
+    setBusy(null);
+    if (res.error) { setError(res.error); return; }
+    await load();
+  };
+
+  if (campaigns !== null && campaigns.length === 0) return null;
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="p-5 border-b border-line">
+        <h2 className="text-xl font-bold text-heading">Open campaigns</h2>
+        <p className="text-sm text-muted mt-0.5">Apply to join. You can start making content as soon as you're on.</p>
+      </div>
+
+      {error && <p className="p-5 text-sm text-pink-300">{error}</p>}
+      {campaigns === null && <p className="p-10 text-center text-sm text-muted">Loading…</p>}
+
+      <div className="divide-y divide-line">
+        {(campaigns ?? []).map((c) => {
+          const status = statusFor(c.id);
+          return (
+            <div key={c.id} className="p-5 flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-heading truncate">{c.name}</p>
+                <p className="text-xs text-muted truncate">{c.brandName}</p>
+                {c.deliverableSpec && <p className="text-xs text-faint mt-1 line-clamp-2">{c.deliverableSpec}</p>}
+              </div>
+
+              {status === 'accepted' ? (
+                <span className="px-3 py-1.5 rounded-lg border border-emerald-400/30 bg-emerald-400/10 text-emerald-300 text-xs font-semibold whitespace-nowrap">
+                  You're on this campaign
+                </span>
+              ) : status === 'pending' ? (
+                <span className="px-3 py-1.5 rounded-lg border border-line bg-surface-2 text-muted text-xs font-semibold whitespace-nowrap">
+                  Applied
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void apply(c.id)}
+                  disabled={busy === c.id}
+                  className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2 whitespace-nowrap"
+                >
+                  {busy === c.id && <RefreshCw size={14} className="animate-spin" />}
+                  {status === 'rejected' ? 'Apply again' : 'Apply'}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BRAND — CREATOR APPLICATIONS
+   ───────────────────────────────────────────────────────────── */
+function ApplicationsPanel({ brandId }: { brandId: string }) {
+  const [rows, setRows] = useState<BrandApplication[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const res = await listApplicationsForBrand(brandId);
+    setRows(res.data);
+    setError(res.error);
+  }, [brandId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const decide = async (id: string, status: 'accepted' | 'rejected') => {
+    setBusy(id);
+    const res = await setApplicationStatus(id, status);
+    setBusy(null);
+    if (res.error) { setError(res.error); return; }
+    await load();
+  };
+
+  const all = rows ?? [];
+  const pending = all.filter((r) => r.status === 'pending');
+
+  if (rows !== null && all.length === 0) return null;
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="p-5 border-b border-line flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-heading">Creator applications</h2>
+          <p className="text-sm text-muted mt-0.5">Who wants to work on your campaigns.</p>
+        </div>
+        {pending.length > 0 && (
+          <span className="px-3 py-1.5 rounded-lg border border-purple-400/30 bg-purple-400/10 text-purple-300 text-xs font-semibold whitespace-nowrap">
+            {pending.length} to review
+          </span>
+        )}
+      </div>
+
+      {error && <p className="p-5 text-sm text-pink-300">{error}</p>}
+      {rows === null && <p className="p-10 text-center text-sm text-muted">Loading…</p>}
+
+      <div className="divide-y divide-line">
+        {all.map((a) => (
+          <div key={a.id} className="p-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-heading truncate">{a.creatorHandle}</p>
+              <p className="text-xs text-muted truncate">{a.campaignName}</p>
+              {a.creatorNiche.length > 0 && (
+                <p className="text-xs text-faint mt-0.5 truncate">{a.creatorNiche.join(' · ')}</p>
+              )}
+              {a.message && <p className="text-sm text-muted mt-1.5 leading-relaxed">{a.message}</p>}
+            </div>
+
+            {a.status === 'pending' ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void decide(a.id, 'accepted')}
+                  disabled={busy === a.id}
+                  className="px-3 py-1.5 rounded-lg bg-gradient-kyro text-white text-xs font-semibold disabled:opacity-50"
+                >
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void decide(a.id, 'rejected')}
+                  disabled={busy === a.id}
+                  className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading disabled:opacity-50"
+                >
+                  Decline
+                </button>
+              </div>
+            ) : (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${
+                a.status === 'accepted'
+                  ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                  : 'border-line bg-surface-2 text-muted'
+              }`}>
+                {a.status === 'accepted' ? 'On the campaign' : 'Declined'}
+              </span>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -2895,6 +3126,14 @@ function PayoutAccountCard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [taxEditing, setTaxEditing] = useState(false);
+  const [legalName, setLegalName] = useState('');
+  const [entityType, setEntityType] = useState<'individual' | 'business'>('individual');
+  const [taxAddress, setTaxAddress] = useState('');
+  const [taxCountry, setTaxCountry] = useState('United States');
+  const [taxSaving, setTaxSaving] = useState(false);
+  const [taxError, setTaxError] = useState<string | null>(null);
+
   /** Wipe the numbers out of component state the moment we are done with them. */
   const clearSecrets = () => {
     setRouting(''); setAccount(''); setConfirmAccount(''); setSwift('');
@@ -2926,6 +3165,18 @@ function PayoutAccountCard() {
   };
 
   const cancel = () => { clearSecrets(); setEditing(false); setError(null); };
+
+  const submitTax = async () => {
+    setTaxError(null);
+    setTaxSaving(true);
+    const res = await saveTaxDetails(creator.id, {
+      legalName, entityType, address: taxAddress, country: taxCountry,
+    });
+    setTaxSaving(false);
+    if (res.error) { setTaxError(res.error); return; }
+    await session.refresh();
+    setTaxEditing(false);
+  };
 
   const taxDone = creator.taxFormStatus === 'complete';
   const onFile = Boolean(creator.payoutBankLast4);
@@ -3085,12 +3336,83 @@ function PayoutAccountCard() {
           </div>
         </div>
 
-        <p className="text-sm text-muted leading-relaxed">
-          Earn $600 or more in a calendar year and KYRO issues you a 1099-NEC. To do that we need your tax details on file first, which is why the withdraw button stays locked until this is done.
-        </p>
-        <p className="text-xs text-faint leading-relaxed">
-          Your details are collected by the payout provider, so your Social Security or EIN number never passes through KYRO.
-        </p>
+        {!taxEditing && (
+          <>
+            <p className="text-sm text-muted leading-relaxed">
+              Earn $600 or more in a calendar year and KYRO issues you a 1099-NEC. To do that we need your tax details on file first, which is why the withdraw button stays locked until this is done.
+            </p>
+            {creator.taxLegalName && (
+              <p className="text-xs text-faint">On file for {creator.taxLegalName}{creator.taxCountry ? ` · ${creator.taxCountry}` : ''}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setTaxEditing(true)}
+              className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold"
+            >
+              {creator.taxLegalName ? 'Update tax info' : 'Submit tax info'}
+            </button>
+          </>
+        )}
+
+        {taxEditing && (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Full legal name</label>
+              <input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="As it appears on your tax return" className={field} />
+              <p className="text-xs text-faint">This has to match the name on your payout account before money can move.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Filing as</label>
+              <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg w-fit">
+                {(['individual', 'business'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setEntityType(t)}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded transition capitalize ${t === entityType ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Address</label>
+              <input value={taxAddress} onChange={(e) => setTaxAddress(e.target.value)} placeholder="Street, city, state, ZIP" className={field} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Country</label>
+              <input value={taxCountry} onChange={(e) => setTaxCountry(e.target.value)} placeholder="United States" className={field} />
+              <p className="text-xs text-faint">US creators file a W-9. Everyone else files a W-8BEN.</p>
+            </div>
+
+            <div className="p-3 rounded-xl border border-line bg-surface-2">
+              <p className="text-xs text-muted leading-relaxed">
+                KYRO does not ask for your Social Security or EIN number and has nowhere to put one. The payout provider collects it directly on the form itself, which is the last step before your first withdrawal.
+              </p>
+            </div>
+
+            {taxError && <p className="text-xs text-pink-300">{taxError}</p>}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void submitTax()}
+                disabled={taxSaving || !legalName || !taxAddress || !taxCountry}
+                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+              >
+                {taxSaving && <RefreshCw size={14} className="animate-spin" />}
+                Submit
+              </button>
+              <button type="button" onClick={() => { setTaxEditing(false); setTaxError(null); }} className="px-4 py-2 rounded-lg border border-line text-sm text-muted hover:text-heading">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

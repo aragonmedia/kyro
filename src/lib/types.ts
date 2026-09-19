@@ -58,6 +58,9 @@ export interface Creator {
   trolleyRecipientId?: string;  // populated when Trolley onboarding done
   taxFormStatus: 'not_collected' | 'pending' | 'complete';
   taxFormSubmittedAt?: string;
+  taxLegalName?: string;
+  taxEntityType?: 'individual' | 'business';
+  taxCountry?: string;
   /** Display only. KYRO never stores a full account or routing number. */
   payoutMethod?: 'ach' | 'wire';
   payoutBankName?: string;

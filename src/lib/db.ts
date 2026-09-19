@@ -132,6 +132,9 @@ export interface CreatorRow {
   trolley_recipient_id: string | null;
   tax_form_status: 'not_collected' | 'pending' | 'complete';
   tax_form_submitted_at?: string | null;
+  tax_legal_name?: string | null;
+  tax_entity_type?: 'individual' | 'business' | null;
+  tax_country?: string | null;
   payout_method?: 'ach' | 'wire' | null;
   payout_bank_name?: string | null;
   payout_bank_last4?: string | null;
@@ -211,6 +214,9 @@ export function toCreator(row: CreatorRow): Creator {
     trolleyRecipientId: row.trolley_recipient_id ?? undefined,
     taxFormStatus: row.tax_form_status,
     taxFormSubmittedAt: row.tax_form_submitted_at ?? undefined,
+    taxLegalName: row.tax_legal_name ?? undefined,
+    taxEntityType: row.tax_entity_type ?? undefined,
+    taxCountry: row.tax_country ?? undefined,
     payoutMethod: row.payout_method ?? undefined,
     payoutBankName: row.payout_bank_name ?? undefined,
     payoutBankLast4: row.payout_bank_last4 ?? undefined,
@@ -1011,18 +1017,24 @@ export interface OpenCampaign {
   name: string;
   brandId: string;
   brandName: string;
+  status: string;
   deliverableSpec: string | null;
 }
 
 /**
- * Campaigns a creator may submit a video to.
+ * Campaigns a creator may upload a video to.
  *
- * Currently every campaign a brand has set live. The brand still controls
- * what runs, because a submission lands as `submitted` and only becomes an
- * ad once they approve it. Narrowing this to campaigns the creator has an
- * accepted application for is the right end state, but applications have no
- * UI yet, so gating on them today would leave every creator with an empty
- * list and no way to fill it.
+ * Deliberately NOT just `live`. Under the no-approval-gate model a creator
+ * should be able to make work for a campaign a brand is still setting up;
+ * the brand decides later what they actually run. Gating on `live` alone made
+ * the picker permanently empty, because nothing sets a campaign live.
+ *
+ * Excluded: paused, complete and archived. Those are campaigns the brand has
+ * stopped, and taking uploads for them would waste a creator's time.
+ *
+ * Narrowing this further to campaigns the creator has an accepted application
+ * for is the right end state. Applications have no UI yet, so gating on them
+ * today would reproduce the empty list this fixes.
  */
 export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign[]>> {
   const sb = client();
@@ -1030,8 +1042,8 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
   try {
     const { data, error } = await sb
       .from('campaigns')
-      .select('id, name, brand_id, deliverable_spec, brands(name)')
-      .eq('status', 'live')
+      .select('id, name, brand_id, status, deliverable_spec, brands(name)')
+      .in('status', ['live', 'pending_fund', 'draft'])
       .order('created_at', { ascending: false });
 
     if (error) return fail([], describeError(error, 'Could not load campaigns.'));
@@ -1040,6 +1052,7 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
       id: string;
       name: string;
       brand_id: string;
+      status: string;
       deliverable_spec: string | null;
       brands: { name: string } | { name: string }[] | null;
     }>;
@@ -1052,6 +1065,7 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
           name: r.name,
           brandId: r.brand_id,
           brandName: brand?.name ?? 'Unknown brand',
+          status: r.status,
           deliverableSpec: r.deliverable_spec,
         };
       })
@@ -1275,5 +1289,203 @@ export async function setSubmissionUsage(
     return ok(true);
   } catch (e) {
     return fail(false, describeError(e, 'Could not save that decision.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Applications — creators joining campaigns
+   ───────────────────────────────────────────────────────────── */
+
+export interface MyApplication {
+  id: string;
+  campaignId: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
+  createdAt: string;
+}
+
+/** The creator's own applications, keyed by campaign for quick lookup. */
+export async function listMyApplications(creatorId: string): Promise<Result<MyApplication[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('applications')
+      .select('id, campaign_id, status, created_at')
+      .eq('creator_id', creatorId);
+
+    if (error) return fail([], describeError(error, 'Could not load your applications.'));
+    return ok(
+      (data ?? []).map((r) => {
+        const row = r as { id: string; campaign_id: string; status: MyApplication['status']; created_at: string };
+        return { id: row.id, campaignId: row.campaign_id, status: row.status, createdAt: row.created_at };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your applications.'));
+  }
+}
+
+/**
+ * Apply to a campaign.
+ *
+ * `applications` has a unique constraint on (campaign_id, creator_id), so a
+ * double click or a second visit upserts rather than erroring. Re-applying
+ * after a decline deliberately resets to pending: a creator who has since
+ * changed their work should not be locked out by an old no.
+ */
+export async function applyToCampaign(
+  campaignId: string,
+  creatorId: string,
+  message?: string
+): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+  try {
+    const { error } = await sb.from('applications').upsert(
+      {
+        campaign_id: campaignId,
+        creator_id: creatorId,
+        status: 'pending',
+        intake_path: 'marketplace',
+        message: (message ?? '').trim() || null,
+      },
+      { onConflict: 'campaign_id,creator_id' }
+    );
+    if (error) return fail(false, describeError(error, 'Could not send your application.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not send your application.'));
+  }
+}
+
+export interface BrandApplication {
+  id: string;
+  campaignId: string;
+  campaignName: string;
+  creatorId: string;
+  creatorHandle: string;
+  creatorNiche: string[];
+  status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
+  message: string | null;
+  createdAt: string;
+}
+
+/** Applications across all of a brand's campaigns. */
+export async function listApplicationsForBrand(brandId: string): Promise<Result<BrandApplication[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data: campaigns, error: campaignError } = await sb
+      .from('campaigns')
+      .select('id, name')
+      .eq('brand_id', brandId);
+
+    if (campaignError) return fail([], describeError(campaignError, 'Could not load your campaigns.'));
+
+    const names = new Map((campaigns ?? []).map((c) => [(c as { id: string }).id, (c as { name: string }).name]));
+    if (names.size === 0) return ok([]);
+
+    const { data, error } = await sb
+      .from('applications')
+      .select('id, campaign_id, creator_id, status, message, created_at, creators(handle, niche)')
+      .in('campaign_id', [...names.keys()])
+      .order('created_at', { ascending: false });
+
+    if (error) return fail([], describeError(error, 'Could not load applications.'));
+
+    const rows = (data ?? []) as Array<{
+      id: string;
+      campaign_id: string;
+      creator_id: string;
+      status: BrandApplication['status'];
+      message: string | null;
+      created_at: string;
+      creators: { handle: string | null; niche: string[] | null } | Array<{ handle: string | null; niche: string[] | null }> | null;
+    }>;
+
+    return ok(
+      rows.map((r) => {
+        const creator = Array.isArray(r.creators) ? r.creators[0] : r.creators;
+        return {
+          id: r.id,
+          campaignId: r.campaign_id,
+          campaignName: names.get(r.campaign_id) ?? 'Campaign',
+          creatorId: r.creator_id,
+          creatorHandle: creator?.handle ?? 'creator',
+          creatorNiche: creator?.niche ?? [],
+          status: r.status,
+          message: r.message,
+          createdAt: r.created_at,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load applications.'));
+  }
+}
+
+/** Accept or decline a creator onto a campaign. */
+export async function setApplicationStatus(
+  applicationId: string,
+  status: 'accepted' | 'rejected'
+): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+  try {
+    const { error } = await sb.from('applications').update({ status }).eq('id', applicationId);
+    if (error) return fail(false, describeError(error, 'Could not save that decision.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not save that decision.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Creator tax details
+   ───────────────────────────────────────────────────────────── */
+
+export interface TaxDetailsInput {
+  legalName: string;
+  entityType: 'individual' | 'business';
+  address: string;
+  country: string;
+}
+
+/**
+ * Save the tax details KYRO is allowed to hold.
+ *
+ * Status moves to `pending`, never straight to `complete`. The form is not
+ * finished until the payout provider has collected the SSN or EIN, which
+ * happens outside KYRO, so calling it complete here would tell a creator they
+ * can withdraw when they cannot.
+ */
+export async function saveTaxDetails(
+  creatorId: string,
+  input: TaxDetailsInput
+): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+
+  if (!input.legalName.trim()) return fail(false, 'Enter your full legal name.');
+  if (!input.address.trim()) return fail(false, 'Enter your address.');
+  if (!input.country.trim()) return fail(false, 'Enter your country.');
+
+  try {
+    const { error } = await sb
+      .from('creators')
+      .update({
+        tax_legal_name: input.legalName.trim(),
+        tax_entity_type: input.entityType,
+        tax_address: input.address.trim(),
+        tax_country: input.country.trim(),
+        tax_form_status: 'pending',
+        tax_form_submitted_at: new Date().toISOString(),
+      })
+      .eq('id', creatorId);
+
+    if (error) return fail(false, describeError(error, 'Could not save your tax details.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not save your tax details.'));
   }
 }
