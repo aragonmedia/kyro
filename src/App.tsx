@@ -2080,7 +2080,9 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                               Funding coming soon
                             </span>
                           ) : (
-                            <button onClick={() => mockApi.fundCampaign(c.id)} className="text-xs font-semibold px-3 py-1.5 bg-blue-400/20 text-blue-200 rounded-lg hover:bg-blue-400/30 transition">Fund via Square</button>
+                            <span className="text-xs font-semibold px-3 py-1.5 bg-surface-2 border border-line text-faint rounded-lg" title="Brands are billed after the fact against a deposit. Prefunding a pool is not part of the model.">
+                              Funding coming soon
+                            </span>
                           )}
                         </div>
                       )}
@@ -2411,9 +2413,14 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
               </div>
             );
           })}
-          <button onClick={() => mockApi.openSubmissionUploader()} className="border-2 border-dashed border-line rounded-2xl flex flex-col items-center justify-center gap-3 p-8 text-muted hover:text-heading hover:border-line transition min-h-[320px]">
+          <button
+            type="button"
+            disabled
+            title="Video upload arrives with the creator side of KYRO, alongside Supabase Storage."
+            className="border-2 border-dashed border-line rounded-2xl flex flex-col items-center justify-center gap-3 p-8 text-muted min-h-[320px] opacity-50 cursor-not-allowed"
+          >
             <div className="w-14 h-14 rounded-full bg-surface-2 flex items-center justify-center"><Upload size={22} /></div>
-            <div className="text-center"><p className="font-semibold">Submit New Video</p><p className="text-xs text-faint mt-1">Upload to an active campaign</p></div>
+            <div className="text-center"><p className="font-semibold">Submit New Video</p><p className="text-xs text-faint mt-1">Upload arrives with the creator build</p></div>
           </button>
         </div>
       )}
@@ -2442,7 +2449,14 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
                 <div className="flex flex-wrap gap-1.5">
                   {m.tags.map((t) => (<span key={t} className="px-2 py-0.5 bg-surface-2 border border-line rounded text-xs text-body">{t}</span>))}
                 </div>
-                <button onClick={() => mockApi.applyToCampaign(m.id)} className="w-full px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition">Apply</button>
+                <button
+                  type="button"
+                  disabled
+                  title="Applying to a campaign writes to the applications table, which is not built yet."
+                  className="w-full px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold opacity-50 cursor-not-allowed"
+                >
+                  Apply
+                </button>
               </div>
             );
           })}
@@ -2759,7 +2773,14 @@ function AdminDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                     </div>
                   </button>
                   <div className="flex gap-2">
-                    <button onClick={() => mockApi.proposeMatch(cu.id)} className="flex-1 px-3 py-1.5 bg-gradient-kyro rounded-lg text-white text-xs font-semibold">Propose Match</button>
+                    <button
+                      type="button"
+                      disabled
+                      title="Proposing a match writes to the applications table, which is not built yet."
+                      className="flex-1 px-3 py-1.5 bg-gradient-kyro rounded-lg text-white text-xs font-semibold opacity-50 cursor-not-allowed"
+                    >
+                      Propose Match
+                    </button>
                     <button
                       type="button"
                       onClick={() => setSkipped((cur) => [...cur, cu.id])}
@@ -2794,7 +2815,12 @@ function CreatorPublicProfile({ creatorId, onBack }: { creatorId: CreatorId; onB
             <KyroLogo size={28} />
             <span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
           </div>
-          <button onClick={() => mockApi.shareProfile(c.id)} className="flex items-center gap-2 px-3 py-1.5 text-muted hover:text-heading text-sm">
+          <button
+            type="button"
+            disabled
+            title="Public profile links arrive with the creator profile build. There is no shareable URL yet."
+            className="flex items-center gap-2 px-3 py-1.5 text-muted text-sm opacity-50 cursor-not-allowed"
+          >
             <Share2 size={14} /> Share
           </button>
         </div>
@@ -2901,7 +2927,12 @@ function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () 
             <KyroLogo size={28} />
             <span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
           </div>
-          <button onClick={() => mockApi.shareProfile(b.id)} className="flex items-center gap-2 px-3 py-1.5 text-muted hover:text-heading text-sm">
+          <button
+            type="button"
+            disabled
+            title="Public profile links arrive with the brand profile build. There is no shareable URL yet."
+            className="flex items-center gap-2 px-3 py-1.5 text-muted text-sm opacity-50 cursor-not-allowed"
+          >
             <Share2 size={14} /> Share
           </button>
         </div>
@@ -3060,7 +3091,7 @@ function AboutPage({ onBack, onSignIn, onGetStarted }: { onBack: () => void; onS
             KYRO is built by a team obsessed with performance marketing — giving creators and the brands they love the tools to grow together, paid on real results.
           </p>
           <div className="flex flex-wrap gap-3 pt-3">
-            <a href="mailto:hello@kyro.com" className="flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-body hover:text-heading transition"><Mail size={16} /> hello@kyro.com</a>
+            <a href="mailto:chatwithkyro@gmail.com" className="flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-body hover:text-heading transition"><Mail size={16} /> chatwithkyro@gmail.com</a>
           </div>
         </section>
 
