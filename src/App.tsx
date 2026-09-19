@@ -35,6 +35,7 @@ import {
   listCampaignsWithStats,
   listConnections,
   listApplicationsForBrand,
+  listRosterForBrand,
   listMyApplications,
   listMySubmissions,
   listSubmissionsForBrand,
@@ -49,11 +50,11 @@ import {
   parsePercentToFraction,
   signCampaignAgreement,
 } from './lib/db';
-import type { BrandApplication, BrandBilling, BrandConnection, BrandUnbilled, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
+import type { BrandApplication, BrandBilling, RosterCreator, BrandConnection, BrandUnbilled, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
 import { uploadSubmissionVideo } from './lib/storage';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
-import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
+import { saveBankAccount, saveBrandBankAccount, startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -1659,6 +1660,11 @@ function DepositTracker({ billing, unbilled }: { billing: BrandBilling; unbilled
  * renders `CampaignCard[]` and never branches on "is this real data?" below the
  * top of the component — that decision gets made once and then forgotten.
  */
+/** "1 creator" / "3 creators". Module level so every panel counts the same way. */
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
 interface CampaignCard {
   id: string;
   name: string;
@@ -1812,11 +1818,14 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   const totalImpr = cards.reduce((s, c) => s + c.impressions, 0);
   const totalSubs = cards.reduce((s, c) => s + c.submissions, 0);
   const poolUsedPct = totalPool > 0 ? Math.round((totalSpent / totalPool) * 100) : 0;
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
   const busy = loading || workspaceLoading;
   const isEmpty = liveMode && !busy && !loadError && cards.length === 0;
   // Campaigns can only launch once the gates in docs/KYRO_MODEL.md §4 pass.
+  // Onboarding no longer blocks CREATING a campaign, only opening one to
+  // creators. A brand should be able to write the brief while they are still
+  // connecting Meta and Shopify; nothing can run until those are done anyway,
+  // and blocking setup on setup is the kind of dead end that loses signups.
   const gatesBlocked = liveMode && onboarding !== null && !onboarding.complete;
 
   // In live mode every sub-label is derived from real rows. The demo keeps its
@@ -1855,8 +1864,8 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
         </div>
         <button
           onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
-          disabled={workspaceLoading || gatesBlocked}
-          title={gatesBlocked ? 'Connect Meta and Shopify and sign the agreement first' : undefined}
+          disabled={workspaceLoading}
+          title={gatesBlocked ? 'You can draft a campaign now. Connect Meta and Shopify to open it to creators.' : undefined}
           className="flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
         >
           <Plus size={18} /> Create Campaign
@@ -1895,6 +1904,8 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
       )}
 
       {liveMode && brandId && <ApplicationsPanel brandId={brandId} />}
+
+      {liveMode && brandId && <CampaignRoster brandId={brandId} campaigns={allCards} />}
 
       {liveMode && brandId && <CreatorVideosPanel brandId={brandId} />}
 
@@ -2032,8 +2043,7 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
             </p>
             <button
               onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
-              disabled={gatesBlocked}
-              title={gatesBlocked ? 'Connect Meta and Shopify and sign the agreement first' : undefined}
+              title={gatesBlocked ? 'You can draft a campaign now. Connect Meta and Shopify to open it to creators.' : undefined}
               className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus size={18} /> Create your first campaign
@@ -2086,6 +2096,7 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                           campaignId={c.id}
                           status={c.status}
                           live={liveMode}
+                          blocked={gatesBlocked}
                           onActivated={() => void reload()}
                         />
                       )}
@@ -2587,11 +2598,13 @@ function ActivateCampaignRow({
   campaignId,
   status,
   live,
+  blocked,
   onActivated,
 }: {
   campaignId: string;
   status: string;
   live: boolean;
+  blocked: boolean;
   onActivated: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -2612,7 +2625,9 @@ function ActivateCampaignRow({
         <AlertCircle size={18} className="text-blue-400 flex-shrink-0" />
         <div className="min-w-0">
           <p className="text-sm text-blue-300">
-            {status === 'draft' ? 'Still a draft.' : 'Set up but not open yet.'} Creators can't see it until you open it.
+            {blocked
+              ? 'Finish connecting Meta and Shopify and sign the agreement to open this to creators.'
+              : `${status === 'draft' ? 'Still a draft.' : 'Set up but not open yet.'} Creators can't see it until you open it.`}
           </p>
           {error && <p className="text-xs text-pink-300 mt-0.5">{error}</p>}
         </div>
@@ -2621,8 +2636,9 @@ function ActivateCampaignRow({
         <button
           type="button"
           onClick={() => void activate()}
-          disabled={busy}
-          className="text-xs font-semibold px-3 py-1.5 bg-gradient-kyro text-white rounded-lg disabled:opacity-50 inline-flex items-center gap-1.5 whitespace-nowrap"
+          disabled={busy || blocked}
+          title={blocked ? 'Onboarding has to be finished first.' : undefined}
+          className="text-xs font-semibold px-3 py-1.5 bg-gradient-kyro text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5 whitespace-nowrap"
         >
           {busy && <RefreshCw size={12} className="animate-spin" />}
           Open to creators
@@ -2711,6 +2727,90 @@ function BrowseCampaigns({ creatorId }: { creatorId: string }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BRAND — CAMPAIGN ROSTER
+   Who is actually on each campaign, and whether they are producing.
+   ───────────────────────────────────────────────────────────── */
+function CampaignRoster({ brandId, campaigns }: { brandId: string; campaigns: CampaignCard[] }) {
+  const [roster, setRoster] = useState<Record<string, RosterCreator[]> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const res = await listRosterForBrand(brandId);
+    setRoster(res.data);
+    setError(res.error);
+  }, [brandId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const total = Object.values(roster ?? {}).reduce((sum, list) => sum + list.length, 0);
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="p-5 border-b border-line flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-heading">Creators on your campaigns</h2>
+          <p className="text-sm text-muted mt-0.5">Everyone you've accepted, and what they've posted.</p>
+        </div>
+        {total > 0 && (
+          <span className="text-sm font-mono text-muted whitespace-nowrap">{plural(total, 'creator')}</span>
+        )}
+      </div>
+
+      {error && <p className="p-5 text-sm text-pink-300">{error}</p>}
+      {roster === null && <p className="p-10 text-center text-sm text-muted">Loading…</p>}
+
+      {roster !== null && total === 0 && (
+        <div className="p-10 text-center">
+          <Users size={28} className="mx-auto text-faint mb-3" />
+          <p className="text-sm text-muted">No creators on your campaigns yet.</p>
+          <p className="text-xs text-faint mt-1">
+            Open a campaign to creators, then accept them from Creator applications above. They'll show here.
+          </p>
+        </div>
+      )}
+
+      {roster !== null && total > 0 && (
+        <div className="divide-y divide-line">
+          {campaigns
+            .filter((c) => (roster[c.id] ?? []).length > 0)
+            .map((c) => (
+              <div key={c.id} className="p-5 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-heading">{c.name}</p>
+                  <span className="text-xs text-faint whitespace-nowrap">{plural((roster[c.id] ?? []).length, 'creator')}</span>
+                </div>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {(roster[c.id] ?? []).map((r) => (
+                    <div key={r.applicationId} className="p-3 rounded-xl border border-line bg-surface-2 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-heading truncate">{r.handle}</p>
+                        <span className={`text-xs font-semibold whitespace-nowrap ${r.submissions > 0 ? 'text-emerald-400' : 'text-faint'}`}>
+                          {plural(r.submissions, 'video')}
+                        </span>
+                      </div>
+                      {r.niche.length > 0 && (
+                        <p className="text-xs text-faint truncate">{r.niche.join(' · ')}</p>
+                      )}
+                      {(r.instagramFollowers || r.tiktokFollowers) && (
+                        <p className="text-xs text-muted">
+                          {r.instagramFollowers ? `${fmtK(r.instagramFollowers)} IG` : ''}
+                          {r.instagramFollowers && r.tiktokFollowers ? ' · ' : ''}
+                          {r.tiktokFollowers ? `${fmtK(r.tiktokFollowers)} TT` : ''}
+                        </p>
+                      )}
+                      <p className="text-xs text-faint">Joined {new Date(r.joinedAt).toLocaleDateString()}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -4282,6 +4382,131 @@ function ConnectedAccountsPanel() {
   );
 }
 
+/**
+ * Brand billing.
+ *
+ * ACH is a real form. The card deposit is not, and cannot be built here: a
+ * card number must be tokenised inside the payment processor's own hosted
+ * field so it never touches KYRO's server. Building a card input that posts
+ * to our API would drag this codebase into PCI scope and gain nothing,
+ * because there is no processor to charge it with yet.
+ */
+function BrandBillingPanel() {
+  const [editing, setEditing] = useState(false);
+  const [holder, setHolder] = useState('');
+  const [bank, setBank] = useState('');
+  const [routing, setRouting] = useState('');
+  const [account, setAccount] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [saved, setSaved] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const field = "w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500";
+
+  const save = async () => {
+    setError(null);
+    if (account !== confirm) { setError('The two account numbers do not match.'); return; }
+    setSaving(true);
+    const res = await saveBrandBankAccount({
+      accountHolder: holder, bankName: bank, routingNumber: routing, accountNumber: account,
+    });
+    setSaving(false);
+    if (res.error) { setError(res.error); return; }
+    setRouting(''); setAccount(''); setConfirm('');
+    setSaved(res.accountLast4);
+    setEditing(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* ACH */}
+      <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-heading">Bank account for commission</p>
+            <p className="text-xs text-faint">Commission is billed by ACH, never to a card, so processing fees do not eat the 1% fee.</p>
+          </div>
+          {!editing && (
+            <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-purple-400 hover:text-purple-300 whitespace-nowrap">
+              {saved ? 'Change' : 'Add account'}
+            </button>
+          )}
+        </div>
+
+        {!editing && saved && (
+          <p className="text-sm text-heading tabular-nums">•••• •••• •••• {saved}{bank ? ` · ${bank}` : ''}</p>
+        )}
+
+        {editing && (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Name on the account</label>
+              <input value={holder} onChange={(e) => setHolder(e.target.value)} placeholder="Legal business name" className={field} autoComplete="off" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Bank name</label>
+              <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Chase" className={field} autoComplete="off" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Routing number (9 digits)</label>
+              <input value={routing} onChange={(e) => setRouting(e.target.value.replace(/\D/g, '').slice(0, 9))} inputMode="numeric" autoComplete="off" className={`${field} tabular-nums`} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Account number</label>
+              <input type="password" value={account} onChange={(e) => setAccount(e.target.value.replace(/\D/g, '').slice(0, 17))} inputMode="numeric" autoComplete="off" className={`${field} tabular-nums`} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Confirm account number</label>
+              <input value={confirm} onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 17))} inputMode="numeric" autoComplete="off" className={`${field} tabular-nums`} />
+            </div>
+            {error && <p className="text-xs text-pink-300">{error}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={saving || !holder || !routing || !account || !confirm}
+                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+              >
+                {saving && <RefreshCw size={14} className="animate-spin" />}
+                Save account
+              </button>
+              <button type="button" onClick={() => { setEditing(false); setError(null); setRouting(''); setAccount(''); setConfirm(''); }} className="px-4 py-2 rounded-lg border border-line text-sm text-muted hover:text-heading">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-faint leading-relaxed">
+          Your account number is encrypted before storage and is never sent back to your browser. Only the last four are shown.
+        </p>
+      </div>
+
+      {/* Card deposit */}
+      <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-heading">$2,500 refundable deposit</p>
+          <button
+            type="button"
+            disabled
+            title="A card number has to be entered inside the payment processor's own field. KYRO cannot accept one directly."
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line text-faint opacity-60 cursor-not-allowed whitespace-nowrap"
+          >
+            Add card
+          </button>
+        </div>
+        <p className="text-xs text-muted leading-relaxed">
+          Held on a card, released when you leave. Billing starts once your unbilled commission reaches 30% of it.
+        </p>
+        <p className="text-xs text-faint leading-relaxed">
+          Card entry is not open yet, and not because the form is unfinished. A card number must be typed into the payment processor's own hosted field so it never reaches KYRO's servers. That field appears here as soon as the processor account is connected.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
   const [open, setOpen] = useState<string | null>(null);
   const toggle = (key: string) => setOpen((cur) => (cur === key ? null : key));
@@ -4333,16 +4558,13 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
             open={open === 'payment'}
             onToggle={() => toggle('payment')}
           >
-            <NotYetPanel>
-              {role === 'creator' ? (
-                <p>Payouts run through a payout provider that also collects your tax form. Connecting it opens once your first commission clears.</p>
-              ) : (
-                <>
-                  <p>Billing is a $2,500 refundable deposit held on a card, with commission charged to your bank account by ACH. Never to the card, so card fees do not eat the 1% KYRO fee.</p>
-                  <p>Payment processing is not connected yet. You can create and run campaigns for testing, but nothing can be billed.</p>
-                </>
-              )}
-            </NotYetPanel>
+            {role === 'creator' ? (
+              <NotYetPanel>
+                <p>Your payout account and tax details live on the Payouts tab of your dashboard.</p>
+              </NotYetPanel>
+            ) : (
+              <BrandBillingPanel />
+            )}
           </SettingsRow>
 
           <SettingsRow label="Notifications" sub="Email and in-app" icon={Bell} open={open === 'notifications'} onToggle={() => toggle('notifications')}>

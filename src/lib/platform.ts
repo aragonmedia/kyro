@@ -194,3 +194,41 @@ export async function saveBankAccount(input: BankAccountInput): Promise<BankAcco
   }
   return { accountLast4: body.accountLast4 ?? null, error: null };
 }
+
+export interface BrandBankInput {
+  accountHolder: string;
+  bankName?: string;
+  routingNumber: string;
+  accountNumber: string;
+}
+
+/** Same sealed path as the creator payout account, for brand ACH billing. */
+export async function saveBrandBankAccount(input: BrandBankInput): Promise<BankAccountSaved> {
+  const sb = getSupabase();
+  if (!sb) return { accountLast4: null, error: 'Billing is unavailable in this build.' };
+
+  const { data, error } = await sb.auth.getSession();
+  const token = data?.session?.access_token;
+  if (error || !token) {
+    return { accountLast4: null, error: 'Your session has expired. Sign in again and retry.' };
+  }
+
+  let res: Response;
+  try {
+    res = await fetch('/api/billing/bank-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    return { accountLast4: null, error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+
+  let body: { accountLast4?: string; error?: string } = {};
+  try { body = (await res.json()) as typeof body; } catch { body = {}; }
+
+  if (!res.ok) {
+    return { accountLast4: null, error: body.error || `Could not save your billing account (${res.status}).` };
+  }
+  return { accountLast4: body.accountLast4 ?? null, error: null };
+}

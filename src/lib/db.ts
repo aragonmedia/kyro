@@ -1489,3 +1489,77 @@ export async function saveTaxDetails(
     return fail(false, describeError(e, 'Could not save your tax details.'));
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Campaign roster — who is on a campaign
+   ───────────────────────────────────────────────────────────── */
+
+export interface RosterCreator {
+  applicationId: string;
+  creatorId: string;
+  handle: string;
+  niche: string[];
+  instagramFollowers: number | null;
+  tiktokFollowers: number | null;
+  joinedAt: string;
+  submissions: number;
+}
+
+/**
+ * Accepted creators on a brand's campaigns, with how many videos each has
+ * posted. Answers the question a brand actually asks, which is "who is
+ * working on this and are they producing", not "who applied".
+ */
+export async function listRosterForBrand(brandId: string): Promise<Result<Record<string, RosterCreator[]>>> {
+  const sb = client();
+  if (!sb) return ok({});
+  try {
+    const { data: campaigns, error: cErr } = await sb
+      .from('campaigns')
+      .select('id, name')
+      .eq('brand_id', brandId);
+    if (cErr) return fail({}, describeError(cErr, 'Could not load your campaigns.'));
+
+    const ids = (campaigns ?? []).map((c) => (c as { id: string }).id);
+    if (ids.length === 0) return ok({});
+
+    const [appsRes, subsRes] = await Promise.all([
+      sb.from('applications')
+        .select('id, campaign_id, creator_id, created_at, creators(handle, niche, instagram_followers, tiktok_followers)')
+        .in('campaign_id', ids)
+        .eq('status', 'accepted'),
+      sb.from('submissions').select('campaign_id, creator_id').in('campaign_id', ids),
+    ]);
+
+    if (appsRes.error) return fail({}, describeError(appsRes.error, 'Could not load the roster.'));
+
+    // Count submissions in memory rather than per creator, to keep this to
+    // two queries no matter how large the roster gets.
+    const counts = new Map<string, number>();
+    for (const r of (subsRes.data ?? []) as Array<{ campaign_id: string; creator_id: string }>) {
+      const key = `${r.campaign_id}:${r.creator_id}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    const out: Record<string, RosterCreator[]> = {};
+    for (const r of (appsRes.data ?? []) as Array<{
+      id: string; campaign_id: string; creator_id: string; created_at: string;
+      creators: { handle: string | null; niche: string[] | null; instagram_followers: number | null; tiktok_followers: number | null } | Array<{ handle: string | null; niche: string[] | null; instagram_followers: number | null; tiktok_followers: number | null }> | null;
+    }>) {
+      const c = Array.isArray(r.creators) ? r.creators[0] : r.creators;
+      (out[r.campaign_id] ||= []).push({
+        applicationId: r.id,
+        creatorId: r.creator_id,
+        handle: c?.handle ?? 'creator',
+        niche: c?.niche ?? [],
+        instagramFollowers: c?.instagram_followers ?? null,
+        tiktokFollowers: c?.tiktok_followers ?? null,
+        joinedAt: r.created_at,
+        submissions: counts.get(`${r.campaign_id}:${r.creator_id}`) ?? 0,
+      });
+    }
+    return ok(out);
+  } catch (e) {
+    return fail({}, describeError(e, 'Could not load the roster.'));
+  }
+}
