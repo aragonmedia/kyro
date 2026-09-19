@@ -28,6 +28,22 @@ import {
 import { ensureMyBrand, ensureMyCreator } from './db';
 import type { Brand, Creator, Role } from './types';
 
+/** "Kevin Aragon" -> "Kevin". Keeps greetings short without losing the name. */
+function firstWord(value: string | null | undefined): string | null {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) return null;
+  return trimmed.split(/\s+/)[0];
+}
+
+/** Last-resort greeting source. "kevin.aragon@x.com" -> "Kevin". */
+function emailLocalPart(value: string | null): string | null {
+  const local = (value ?? '').split('@')[0];
+  if (!local) return null;
+  const first = local.split(/[._-]/)[0];
+  if (!first) return null;
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
 export interface SessionValue {
   /** False until the initial session restore has finished. */
   ready: boolean;
@@ -35,6 +51,15 @@ export interface SessionValue {
   configured: boolean;
   userId: string | null;
   email: string | null;
+  /** Name from the `profiles` row, as given at sign-up. */
+  fullName: string | null;
+  /**
+   * Something safe to greet the user with, always a non-empty string.
+   * full name, else the handle, else the local part of the email.
+   * Screens should use this rather than inventing their own fallback,
+   * which is how the creator dashboard ended up hardcoded to "Maya".
+   */
+  displayName: string;
   /** Role from the `profiles` row. Null means signed in but not onboarded. */
   role: Role | null;
   brand: Brand | null;
@@ -54,6 +79,8 @@ const EMPTY: SessionValue = {
   configured: false,
   userId: null,
   email: null,
+  fullName: null,
+  displayName: 'there',
   role: null,
   brand: null,
   creator: null,
@@ -130,6 +157,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [role, setRole] = useState<Role | null>(null);
+  const [fullName, setFullName] = useState<string | null>(null);
   const [brand, setBrand] = useState<Brand | null>(null);
   const [creator, setCreator] = useState<Creator | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
@@ -166,6 +194,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (!alive.current) return;
         setUserId(null);
         setEmail(null);
+        setFullName(null);
         setRole(null);
         setBrand(null);
         setCreator(null);
@@ -180,7 +209,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       const profile = await withTimeout(getMyProfile(), BOOT_TIMEOUT_MS, null);
       const nextRole = (profile?.role as Role | null) ?? null;
-      if (alive.current) setRole(nextRole);
+      if (alive.current) {
+        setRole(nextRole);
+        setFullName(profile?.fullName ?? null);
+      }
 
       if (nextRole) {
         if (alive.current) {
@@ -228,6 +260,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (!alive.current) return;
         setUserId(null);
         setEmail(null);
+        setFullName(null);
         setRole(null);
         setBrand(null);
         setCreator(null);
@@ -284,11 +317,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setWorkspaceError(null);
   }, []);
 
+  // Derived once here so every screen greets the user the same way.
+  const displayName =
+    firstWord(fullName) ||
+    firstWord(creator?.handle) ||
+    firstWord(emailLocalPart(email)) ||
+    'there';
+
   const value: SessionValue = {
     ready,
     configured,
     userId,
     email,
+    fullName,
+    displayName,
     role,
     brand,
     creator,

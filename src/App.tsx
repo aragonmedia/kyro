@@ -2179,6 +2179,7 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
    CREATOR DASHBOARD — with earning notifications + AI tags
    ───────────────────────────────────────────────────────────── */
 function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void }) {
+  const session = useSession();
   const [tab, setTab] = useState<'submissions' | 'browse' | 'payouts'>('submissions');
   const [liveEarnings, setLiveEarnings] = useState(2820);
   const [notification, setNotification] = useState<{ amount: number; orders: number } | null>(null);
@@ -2222,7 +2223,7 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
 
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-heading">Hey, Maya 👋</h1>
+          <h1 className="text-3xl md:text-4xl font-bold text-heading">Hey, {session.displayName} 👋</h1>
           <p className="text-muted mt-1">Your videos are working. Here's the latest.</p>
         </div>
       </div>

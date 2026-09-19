@@ -195,7 +195,7 @@ export async function signOut() {
  * back to the demo flow. Returns { role: null } for a real user who hasn't
  * finished onboarding yet.
  */
-export async function getMyProfile(): Promise<{ role: string | null; onboarded: boolean; email: string | null } | null> {
+export async function getMyProfile(): Promise<{ role: string | null; onboarded: boolean; email: string | null; fullName: string | null } | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
   const { data: u } = await supabase.auth.getUser();
@@ -203,14 +203,19 @@ export async function getMyProfile(): Promise<{ role: string | null; onboarded: 
   if (!uid) return null;
   const { data, error } = await supabase
     .from('profiles')
-    .select('role, onboarded, email')
+    .select('role, onboarded, email, full_name')
     .eq('id', uid)
     .maybeSingle();
   if (error) {
     console.error('[kyro] getMyProfile failed (is the profiles table created?)', error);
     return null;
   }
-  return { role: data?.role ?? null, onboarded: data?.onboarded ?? false, email: data?.email ?? null };
+  return {
+    role: data?.role ?? null,
+    onboarded: data?.onboarded ?? false,
+    email: data?.email ?? null,
+    fullName: data?.full_name ?? null,
+  };
 }
 
 /** Save the chosen role and mark onboarding complete for the signed-in user. */
