@@ -132,6 +132,7 @@ export interface CreatorRow {
   trolley_recipient_id: string | null;
   tax_form_status: 'not_collected' | 'pending' | 'complete';
   tax_form_submitted_at?: string | null;
+  payout_method?: 'ach' | 'wire' | null;
   payout_bank_name?: string | null;
   payout_bank_last4?: string | null;
   payout_updated_at?: string | null;
@@ -210,6 +211,7 @@ export function toCreator(row: CreatorRow): Creator {
     trolleyRecipientId: row.trolley_recipient_id ?? undefined,
     taxFormStatus: row.tax_form_status,
     taxFormSubmittedAt: row.tax_form_submitted_at ?? undefined,
+    payoutMethod: row.payout_method ?? undefined,
     payoutBankName: row.payout_bank_name ?? undefined,
     payoutBankLast4: row.payout_bank_last4 ?? undefined,
     payoutUpdatedAt: row.payout_updated_at ?? undefined,
@@ -1059,12 +1061,29 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
   }
 }
 
+/**
+ * What a creator cares about, which is not the raw status enum.
+ *
+ * Six database statuses collapse into three answers: has the brand used this,
+ * have they passed on it, or have they not looked yet.
+ */
+export type UsageState = 'in_use' | 'not_used' | 'awaiting';
+
+export function usageStateFor(status: string): UsageState {
+  if (status === 'approved' || status === 'live') return 'in_use';
+  if (status === 'rejected' || status === 'revision_requested') return 'not_used';
+  return 'awaiting';
+}
+
 export interface MySubmission {
   id: string;
   campaignId: string;
   campaignName: string;
   brandName: string;
   status: string;
+  usage: UsageState;
+  brandNote: string | null;
+  decidedAt: string | null;
   videoUrl: string | null;
   trackingToken: string | null;
   submittedAt: string;
@@ -1076,7 +1095,7 @@ export async function listMySubmissions(creatorId: string): Promise<Result<MySub
   try {
     const { data, error } = await sb
       .from('submissions')
-      .select('id, campaign_id, status, video_url, tracking_token, submitted_at, campaigns(name, brands(name))')
+      .select('id, campaign_id, status, brand_note, decided_at, video_url, tracking_token, submitted_at, campaigns(name, brands(name))')
       .eq('creator_id', creatorId)
       .order('submitted_at', { ascending: false });
 
@@ -1086,6 +1105,8 @@ export async function listMySubmissions(creatorId: string): Promise<Result<MySub
       id: string;
       campaign_id: string;
       status: string;
+      brand_note: string | null;
+      decided_at: string | null;
       video_url: string | null;
       tracking_token: string | null;
       submitted_at: string;
@@ -1102,6 +1123,9 @@ export async function listMySubmissions(creatorId: string): Promise<Result<MySub
           campaignName: campaign?.name ?? 'Campaign',
           brandName: brand?.name ?? '',
           status: r.status,
+          usage: usageStateFor(r.status),
+          brandNote: r.brand_note,
+          decidedAt: r.decided_at,
           videoUrl: r.video_url,
           trackingToken: r.tracking_token ?? null,
           submittedAt: r.submitted_at,
@@ -1148,39 +1172,108 @@ export async function createSubmission(input: {
   }
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Brand: reviewing what creators submitted
+   ───────────────────────────────────────────────────────────── */
+
+export interface CampaignSubmission {
+  id: string;
+  campaignId: string;
+  campaignName: string;
+  creatorId: string;
+  creatorHandle: string;
+  status: string;
+  usage: UsageState;
+  brandNote: string | null;
+  decidedAt: string | null;
+  videoUrl: string | null;
+  submittedAt: string;
+}
+
+/** Every video submitted across this brand's campaigns, newest first. */
+export async function listSubmissionsForBrand(brandId: string): Promise<Result<CampaignSubmission[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('submissions')
+      .select('id, campaign_id, creator_id, status, brand_note, decided_at, video_url, submitted_at, campaigns(name), creators(handle)')
+      .eq('brand_id', brandId)
+      .order('submitted_at', { ascending: false });
+
+    if (error) return fail([], describeError(error, 'Could not load submissions.'));
+
+    const rows = (data ?? []) as Array<{
+      id: string;
+      campaign_id: string;
+      creator_id: string;
+      status: string;
+      brand_note: string | null;
+      decided_at: string | null;
+      video_url: string | null;
+      submitted_at: string;
+      campaigns: { name: string } | { name: string }[] | null;
+      creators: { handle: string | null } | { handle: string | null }[] | null;
+    }>;
+
+    return ok(
+      rows.map((r) => {
+        const campaign = Array.isArray(r.campaigns) ? r.campaigns[0] : r.campaigns;
+        const creator = Array.isArray(r.creators) ? r.creators[0] : r.creators;
+        return {
+          id: r.id,
+          campaignId: r.campaign_id,
+          campaignName: campaign?.name ?? 'Campaign',
+          creatorId: r.creator_id,
+          creatorHandle: creator?.handle ?? 'creator',
+          status: r.status,
+          usage: usageStateFor(r.status),
+          brandNote: r.brand_note,
+          decidedAt: r.decided_at,
+          videoUrl: r.video_url,
+          submittedAt: r.submitted_at,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load submissions.'));
+  }
+}
+
 /**
- * Update the payout account KYRO displays for a creator.
+ * Record whether a brand is using a video.
  *
- * Bank name and last four only. This does not change where money goes: the
- * payout provider holds the real account against trolley_recipient_id, and
- * changing it there is a separate flow. The function refuses anything longer
- * than four digits so a full account number cannot be stored by accident.
+ * A pass REQUIRES a note. That is deliberate and enforced here rather than
+ * only in the form: the entire reason creators tolerate uploading without an
+ * approval gate is that they find out why something did not run and what to
+ * make next. A silent rejection puts them back where they started.
  */
-export async function updatePayoutDisplay(
-  creatorId: string,
-  bankName: string,
-  last4: string
+export async function setSubmissionUsage(
+  submissionId: string,
+  usage: 'in_use' | 'not_used',
+  note?: string
 ): Promise<Result<boolean>> {
   const sb = client();
   if (!sb) return ok(false);
 
-  const digits = last4.replace(/\D/g, '');
-  if (digits.length !== 4) return fail(false, 'Enter exactly the last 4 digits.');
-  if (!bankName.trim()) return fail(false, 'Enter the name of your bank.');
+  const trimmed = (note ?? '').trim();
+  if (usage === 'not_used' && trimmed.length < 10) {
+    return fail(false, 'Tell the creator why, and what you want in the next video. At least a sentence.');
+  }
 
   try {
     const { error } = await sb
-      .from('creators')
+      .from('submissions')
       .update({
-        payout_bank_name: bankName.trim(),
-        payout_bank_last4: digits,
-        payout_updated_at: new Date().toISOString(),
+        status: usage === 'in_use' ? 'live' : 'rejected',
+        brand_note: trimmed || null,
+        decided_at: new Date().toISOString(),
       })
-      .eq('id', creatorId);
+      .eq('id', submissionId);
 
-    if (error) return fail(false, describeError(error, 'Could not update your payout account.'));
+    if (error) return fail(false, describeError(error, 'Could not save that decision.'));
     return ok(true);
   } catch (e) {
-    return fail(false, describeError(e, 'Could not update your payout account.'));
+    return fail(false, describeError(e, 'Could not save that decision.'));
   }
 }

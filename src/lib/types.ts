@@ -59,6 +59,7 @@ export interface Creator {
   taxFormStatus: 'not_collected' | 'pending' | 'complete';
   taxFormSubmittedAt?: string;
   /** Display only. KYRO never stores a full account or routing number. */
+  payoutMethod?: 'ach' | 'wire';
   payoutBankName?: string;
   payoutBankLast4?: string;
   payoutUpdatedAt?: string;

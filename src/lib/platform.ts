@@ -129,3 +129,68 @@ export function takeConnectionOutcome(): ConnectOutcome | null {
     message: SHOPIFY_REASONS[reason] || 'The Shopify connection did not complete. Nothing was saved, so it is safe to retry.',
   };
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Payout account
+   ───────────────────────────────────────────────────────────── */
+
+export interface BankAccountInput {
+  method: 'ach' | 'wire';
+  accountHolder: string;
+  bankName?: string;
+  routingNumber: string;
+  accountNumber: string;
+  swiftCode?: string;
+  bankAddress?: string;
+}
+
+export interface BankAccountSaved {
+  accountLast4: string | null;
+  error: string | null;
+}
+
+/**
+ * Send bank details to KYRO's server to be encrypted and stored.
+ *
+ * Deliberately NOT a Supabase write. The creators table is readable by every
+ * signed-in user under RLS, so a full account number written from the browser
+ * would be sitting in a table any browser key can reach. This posts to a
+ * serverless endpoint which seals the numbers and stores them in a table only
+ * the service role can touch.
+ *
+ * The caller should clear the form state as soon as this resolves. The
+ * numbers should not linger in React state after they have been sent.
+ */
+export async function saveBankAccount(input: BankAccountInput): Promise<BankAccountSaved> {
+  const sb = getSupabase();
+  if (!sb) return { accountLast4: null, error: 'Payout details are unavailable in this build.' };
+
+  const { data, error } = await sb.auth.getSession();
+  const token = data?.session?.access_token;
+  if (error || !token) {
+    return { accountLast4: null, error: 'Your session has expired. Sign in again and retry.' };
+  }
+
+  let res: Response;
+  try {
+    res = await fetch('/api/payout/bank-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    return { accountLast4: null, error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+
+  let body: { accountLast4?: string; error?: string } = {};
+  try {
+    body = (await res.json()) as typeof body;
+  } catch {
+    body = {};
+  }
+
+  if (!res.ok) {
+    return { accountLast4: null, error: body.error || `Could not save your payout account (${res.status}).` };
+  }
+  return { accountLast4: body.accountLast4 ?? null, error: null };
+}

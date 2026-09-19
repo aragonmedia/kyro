@@ -35,18 +35,19 @@ import {
   listCampaignsWithStats,
   listConnections,
   listMySubmissions,
-  updatePayoutDisplay,
+  listSubmissionsForBrand,
+  setSubmissionUsage,
   normalizeMetaAdAccount,
   normalizeShopifyDomain,
   parseMoneyToCents,
   parsePercentToFraction,
   signCampaignAgreement,
 } from './lib/db';
-import type { BrandBilling, BrandConnection, BrandUnbilled, CampaignWithStats, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
+import type { BrandBilling, BrandConnection, BrandUnbilled, CampaignSubmission, CampaignWithStats, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
 import { uploadSubmissionVideo } from './lib/storage';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
-import { startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
+import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -1887,6 +1888,8 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
         <DepositTracker billing={billing} unbilled={unbilled} />
       )}
 
+      {liveMode && brandId && <CreatorVideosPanel brandId={brandId} />}
+
       {workspaceError && (
         <div className="flex items-start gap-3 p-4 rounded-xl border border-pink-400/30 bg-pink-400/10">
           <AlertCircle size={18} className="text-pink-400 flex-shrink-0 mt-0.5" />
@@ -2379,27 +2382,7 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
 
       {tab === 'submissions' && (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {mine.map((sub) => (
-            <div key={sub.id} className="bg-surface border border-line rounded-2xl overflow-hidden">
-              <div className="p-5 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="font-bold text-heading truncate">{sub.campaignName}</h3>
-                    <p className="text-xs text-muted truncate">{sub.brandName}</p>
-                  </div>
-                  <StatusPill status={sub.status} />
-                </div>
-                <p className="text-xs text-faint">
-                  Submitted {new Date(sub.submittedAt).toLocaleDateString()}
-                </p>
-                {sub.trackingToken && (
-                  <p className="text-xs text-faint font-mono truncate" title="The id that ties orders back to this video">
-                    Tracking {sub.trackingToken}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
+          {mine.map((sub) => <MySubmissionCard key={sub.id} sub={sub} />)}
           {SEED_CREATOR_SUBMISSIONS.map((s) => {
             const brand = BRANDS[s.brandId];
             return (
@@ -2458,7 +2441,7 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
             className="border-2 border-dashed border-line rounded-2xl flex flex-col items-center justify-center gap-3 p-8 text-muted hover:text-heading hover:border-purple-500/50 transition min-h-[320px] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <div className="w-14 h-14 rounded-full bg-surface-2 flex items-center justify-center"><Upload size={22} /></div>
-            <div className="text-center"><p className="font-semibold">Submit New Video</p><p className="text-xs text-faint mt-1">Upload to a live campaign</p></div>
+            <div className="text-center"><p className="font-semibold">Upload a Video</p><p className="text-xs text-faint mt-1">No approval needed to post</p></div>
           </button>
         </div>
       )}
@@ -2535,6 +2518,233 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
   );
 }
 
+/**
+ * One of the creator's own videos.
+ *
+ * The headline is whether the brand USED it, not where it sits in a review
+ * queue. When they passed, their reason is shown in full rather than
+ * summarised into a status pill, because that note is the thing the creator
+ * acts on when making the next video.
+ */
+function MySubmissionCard({ sub }: { sub: MySubmission }) {
+  const tone =
+    sub.usage === 'in_use'
+      ? { border: 'border-emerald-400/30', bg: 'bg-emerald-400/10', text: 'text-emerald-300', label: 'In use' }
+      : sub.usage === 'not_used'
+        ? { border: 'border-amber-400/30', bg: 'bg-amber-400/10', text: 'text-amber-300', label: 'Not used' }
+        : { border: 'border-line', bg: 'bg-surface-2', text: 'text-muted', label: 'With the brand' };
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-bold text-heading truncate">{sub.campaignName}</h3>
+            <p className="text-xs text-muted truncate">{sub.brandName}</p>
+          </div>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${tone.border} ${tone.bg} ${tone.text}`}>
+            {tone.label}
+          </span>
+        </div>
+
+        <p className="text-xs text-faint">
+          Uploaded {new Date(sub.submittedAt).toLocaleDateString()}
+          {sub.decidedAt && ` · answered ${new Date(sub.decidedAt).toLocaleDateString()}`}
+        </p>
+
+        {sub.usage === 'not_used' && (
+          <div className="p-3 rounded-xl border border-amber-400/25 bg-amber-400/5 space-y-1">
+            <p className="text-xs font-semibold text-amber-300">Why it wasn't used, and what they want next</p>
+            <p className="text-sm text-body leading-relaxed">
+              {sub.brandNote || 'The brand did not leave a note. Ask them in the campaign thread.'}
+            </p>
+          </div>
+        )}
+
+        {sub.usage === 'awaiting' && (
+          <p className="text-xs text-muted leading-relaxed">
+            The brand hasn't answered yet. You don't have to wait for them to upload your next video.
+          </p>
+        )}
+
+        {sub.usage === 'in_use' && sub.trackingToken && (
+          <p className="text-xs text-faint font-mono truncate" title="The id that ties orders back to this video">
+            Tracking {sub.trackingToken}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BRAND — CREATOR VIDEOS
+   Creators post without waiting. The brand decides what runs, and owes a
+   reason when it does not.
+   ───────────────────────────────────────────────────────────── */
+function SubmissionReviewCard({ sub, onDecided }: { sub: CampaignSubmission; onDecided: () => void }) {
+  const [writing, setWriting] = useState(false);
+  const [note, setNote] = useState(sub.brandNote ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const decide = async (usage: 'in_use' | 'not_used') => {
+    setError(null);
+    setBusy(true);
+    const res = await setSubmissionUsage(sub.id, usage, note);
+    setBusy(false);
+    if (res.error) { setError(res.error); return; }
+    setWriting(false);
+    onDecided();
+  };
+
+  const decided = sub.usage !== 'awaiting';
+
+  return (
+    <div className="p-5 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-heading truncate">{sub.creatorHandle}</p>
+          <p className="text-xs text-muted truncate">{sub.campaignName}</p>
+          <p className="text-xs text-faint mt-0.5">Uploaded {new Date(sub.submittedAt).toLocaleDateString()}</p>
+        </div>
+        {decided && (
+          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${
+            sub.usage === 'in_use'
+              ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+              : 'border-amber-400/30 bg-amber-400/10 text-amber-300'
+          }`}>
+            {sub.usage === 'in_use' ? 'In use' : 'Not used'}
+          </span>
+        )}
+      </div>
+
+      {decided && sub.brandNote && (
+        <p className="text-sm text-muted leading-relaxed border-l-2 border-line pl-3">{sub.brandNote}</p>
+      )}
+
+      {writing && (
+        <div className="space-y-2">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={3}
+            placeholder="Why this one isn't running, and what you want in the next video."
+            className="w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-sm text-heading placeholder-faint focus:outline-none focus:border-purple-500 resize-y"
+          />
+          <p className="text-xs text-faint">
+            The creator sees this. It is the only thing telling them what to make next, so be specific.
+          </p>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-pink-300">{error}</p>}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void decide('in_use')}
+          disabled={busy}
+          className="px-3 py-1.5 rounded-lg bg-gradient-kyro text-white text-xs font-semibold disabled:opacity-50 inline-flex items-center gap-1.5"
+        >
+          {busy && <RefreshCw size={12} className="animate-spin" />}
+          {sub.usage === 'in_use' ? 'Still in use' : 'Using this'}
+        </button>
+
+        {writing ? (
+          <>
+            <button
+              type="button"
+              onClick={() => void decide('not_used')}
+              disabled={busy}
+              className="px-3 py-1.5 rounded-lg border border-amber-400/40 bg-amber-400/10 text-amber-200 text-xs font-semibold disabled:opacity-50"
+            >
+              Send feedback
+            </button>
+            <button
+              type="button"
+              onClick={() => { setWriting(false); setNote(sub.brandNote ?? ''); setError(null); }}
+              className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setWriting(true)}
+            className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading"
+          >
+            {sub.usage === 'not_used' ? 'Edit feedback' : 'Not using it'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CreatorVideosPanel({ brandId }: { brandId: string }) {
+  const [rows, setRows] = useState<CampaignSubmission[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [onlyPending, setOnlyPending] = useState(false);
+
+  const load = useCallback(async () => {
+    const res = await listSubmissionsForBrand(brandId);
+    setRows(res.data);
+    setError(res.error);
+  }, [brandId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const all = rows ?? [];
+  const pending = all.filter((r) => r.usage === 'awaiting');
+  const shown = onlyPending ? pending : all;
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="p-5 border-b border-line flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-heading">Creator videos</h2>
+          <p className="text-sm text-muted mt-0.5">
+            Creators post without waiting on you. Say what you're running, and why when you're not.
+          </p>
+        </div>
+        {pending.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOnlyPending((v) => !v)}
+            className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading whitespace-nowrap"
+          >
+            {onlyPending ? 'Show all' : `${pending.length} awaiting you`}
+          </button>
+        )}
+      </div>
+
+      {error && <p className="p-5 text-sm text-pink-300">{error}</p>}
+
+      {rows === null && <p className="p-10 text-center text-sm text-muted">Loading…</p>}
+
+      {rows !== null && shown.length === 0 && (
+        <div className="p-10 text-center">
+          <FileVideo size={28} className="mx-auto text-faint mb-3" />
+          <p className="text-sm text-muted">
+            {onlyPending ? 'Nothing waiting on you.' : 'No videos yet.'}
+          </p>
+          {!onlyPending && (
+            <p className="text-xs text-faint mt-1">Creators on your live campaigns can upload at any time.</p>
+          )}
+        </div>
+      )}
+
+      <div className="divide-y divide-line">
+        {shown.map((sub) => (
+          <SubmissionReviewCard key={sub.id} sub={sub} onDecided={() => void load()} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────────────────────────────────────────────────
    CREATOR — SUBMIT A VIDEO
    Upload to private storage, then record the submission. The brand still
@@ -2597,7 +2807,7 @@ function SubmitVideoModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-app/80 backdrop-blur-sm" onClick={() => { if (!busy) onClose(); }}>
       <div className="bg-surface border border-line rounded-2xl max-w-lg w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-heading">Submit a video</h2>
+          <h2 className="text-xl font-bold text-heading">Upload a video</h2>
           <button type="button" onClick={onClose} disabled={busy} className="text-muted hover:text-heading disabled:opacity-40"><X size={20} /></button>
         </div>
 
@@ -2657,9 +2867,9 @@ function SubmitVideoModal({
             className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
           >
             {busy && <RefreshCw size={14} className="animate-spin" />}
-            {stage === 'uploading' ? 'Uploading…' : stage === 'saving' ? 'Saving…' : 'Submit for review'}
+            {stage === 'uploading' ? 'Uploading…' : stage === 'saving' ? 'Saving…' : 'Upload video'}
           </button>
-          <p className="text-xs text-faint">The brand reviews it before it runs as an ad.</p>
+          <p className="text-xs text-faint">Upload as many as you like. You'll see whether the brand used each one, and why if they didn't.</p>
         </div>
       </div>
     </div>
@@ -2672,34 +2882,59 @@ function SubmitVideoModal({
 function PayoutAccountCard() {
   const session = useSession();
   const creator = session.creator;
+
   const [editing, setEditing] = useState(false);
-  const [bank, setBank] = useState(creator?.payoutBankName ?? '');
-  const [last4, setLast4] = useState(creator?.payoutBankLast4 ?? '');
+  const [method, setMethod] = useState<'ach' | 'wire'>('ach');
+  const [holder, setHolder] = useState('');
+  const [bank, setBank] = useState('');
+  const [routing, setRouting] = useState('');
+  const [account, setAccount] = useState('');
+  const [confirmAccount, setConfirmAccount] = useState('');
+  const [swift, setSwift] = useState('');
+  const [bankAddress, setBankAddress] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setBank(creator?.payoutBankName ?? '');
-    setLast4(creator?.payoutBankLast4 ?? '');
-  }, [creator?.payoutBankName, creator?.payoutBankLast4]);
+  /** Wipe the numbers out of component state the moment we are done with them. */
+  const clearSecrets = () => {
+    setRouting(''); setAccount(''); setConfirmAccount(''); setSwift('');
+  };
 
   if (!creator) return null;
 
   const save = async () => {
     setError(null);
+    if (account !== confirmAccount) {
+      setError('The two account numbers do not match.');
+      return;
+    }
     setSaving(true);
-    const res = await updatePayoutDisplay(creator.id, bank, last4);
+    const res = await saveBankAccount({
+      method,
+      accountHolder: holder,
+      bankName: bank,
+      routingNumber: routing,
+      accountNumber: account,
+      swiftCode: method === 'wire' ? swift : undefined,
+      bankAddress: method === 'wire' ? bankAddress : undefined,
+    });
     setSaving(false);
     if (res.error) { setError(res.error); return; }
+    clearSecrets();
     await session.refresh();
     setEditing(false);
   };
 
+  const cancel = () => { clearSecrets(); setEditing(false); setError(null); };
+
   const taxDone = creator.taxFormStatus === 'complete';
+  const onFile = Boolean(creator.payoutBankLast4);
+
+  const field = "w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500";
 
   return (
     <div className="grid md:grid-cols-2 gap-5">
-      {/* Bank account */}
+      {/* Payout account */}
       <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -2708,16 +2943,19 @@ function PayoutAccountCard() {
           </div>
           {!editing && (
             <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-purple-400 hover:text-purple-300">
-              {creator.payoutBankLast4 ? 'Change' : 'Add'}
+              {onFile ? 'Change' : 'Add account'}
             </button>
           )}
         </div>
 
         {!editing && (
-          creator.payoutBankLast4 ? (
+          onFile ? (
             <div className="space-y-1">
               <p className="text-lg font-semibold text-heading tabular-nums">•••• •••• •••• {creator.payoutBankLast4}</p>
-              <p className="text-sm text-muted">{creator.payoutBankName}</p>
+              <p className="text-sm text-muted">
+                {creator.payoutBankName || 'Bank account'}
+                {creator.payoutMethod ? ` · ${creator.payoutMethod === 'wire' ? 'Wire' : 'ACH'}` : ''}
+              </p>
               {creator.payoutUpdatedAt && (
                 <p className="text-xs text-faint">Updated {new Date(creator.payoutUpdatedAt).toLocaleDateString()}</p>
               )}
@@ -2729,37 +2967,92 @@ function PayoutAccountCard() {
 
         {editing && (
           <div className="space-y-3">
+            <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg w-fit">
+              {(['ach', 'wire'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMethod(m)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded transition ${m === method ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}
+                >
+                  {m === 'ach' ? 'ACH' : 'Wire'}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Name on the account</label>
+              <input value={holder} onChange={(e) => setHolder(e.target.value)} placeholder="Full legal name" className={field} autoComplete="off" />
+            </div>
+
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted">Bank name</label>
-              <input
-                value={bank}
-                onChange={(e) => setBank(e.target.value)}
-                placeholder="Chase"
-                className="w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500"
-              />
+              <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Chase" className={field} autoComplete="off" />
             </div>
+
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Last 4 digits</label>
+              <label className="text-xs font-semibold text-muted">
+                {method === 'ach' ? 'Routing number (9 digits)' : 'Routing / sort code'}
+              </label>
               <input
-                value={last4}
-                onChange={(e) => setLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                value={routing}
+                onChange={(e) => setRouting(e.target.value.replace(/\D/g, '').slice(0, 11))}
                 inputMode="numeric"
-                placeholder="4321"
-                className="w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500 tabular-nums"
+                autoComplete="off"
+                className={`${field} tabular-nums`}
               />
             </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Account number</label>
+              <input
+                type="password"
+                value={account}
+                onChange={(e) => setAccount(e.target.value.replace(/\D/g, '').slice(0, 17))}
+                inputMode="numeric"
+                autoComplete="off"
+                className={`${field} tabular-nums`}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted">Confirm account number</label>
+              <input
+                value={confirmAccount}
+                onChange={(e) => setConfirmAccount(e.target.value.replace(/\D/g, '').slice(0, 17))}
+                inputMode="numeric"
+                autoComplete="off"
+                className={`${field} tabular-nums`}
+              />
+              <p className="text-xs text-faint">Typed twice because a wrong digit sends your money to a stranger.</p>
+            </div>
+
+            {method === 'wire' && (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted">SWIFT / BIC (optional)</label>
+                  <input value={swift} onChange={(e) => setSwift(e.target.value.toUpperCase().slice(0, 11))} autoComplete="off" className={field} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted">Bank address (optional)</label>
+                  <input value={bankAddress} onChange={(e) => setBankAddress(e.target.value)} autoComplete="off" className={field} />
+                </div>
+              </>
+            )}
+
             {error && <p className="text-xs text-pink-300">{error}</p>}
+
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => void save()}
-                disabled={saving}
-                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2"
+                disabled={saving || !holder || !routing || !account || !confirmAccount}
+                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
               >
                 {saving && <RefreshCw size={14} className="animate-spin" />}
-                Save
+                Save account
               </button>
-              <button type="button" onClick={() => { setEditing(false); setError(null); }} className="px-4 py-2 rounded-lg border border-line text-sm text-muted hover:text-heading">
+              <button type="button" onClick={cancel} className="px-4 py-2 rounded-lg border border-line text-sm text-muted hover:text-heading">
                 Cancel
               </button>
             </div>
@@ -2767,15 +3060,15 @@ function PayoutAccountCard() {
         )}
 
         <p className="text-xs text-faint leading-relaxed">
-          KYRO stores only your bank name and the last four digits, so you can recognise the account. Your full account and routing numbers live with the payout provider and are never held here.
+          Your account number is encrypted before it is stored and is never sent back to your browser. Only the last four digits are shown, here or anywhere else in KYRO.
         </p>
       </div>
 
-      {/* Tax form */}
+      {/* 1099 tax info */}
       <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
         <div className="flex items-center gap-2">
           <ShieldCheck size={16} className="text-body" />
-          <h3 className="font-semibold text-heading">Tax form</h3>
+          <h3 className="font-semibold text-heading">1099 tax info</h3>
         </div>
 
         <div className={`flex items-start gap-3 p-3 rounded-xl border ${taxDone ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-400/30 bg-amber-400/10'}`}>
@@ -2784,7 +3077,7 @@ function PayoutAccountCard() {
             : <AlertCircle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />}
           <div className="space-y-0.5">
             <p className={`text-sm font-semibold ${taxDone ? 'text-emerald-200' : 'text-amber-200'}`}>
-              {taxDone ? 'W-9 on file' : creator.taxFormStatus === 'pending' ? 'W-9 in review' : 'W-9 not submitted'}
+              {taxDone ? 'Tax info on file' : creator.taxFormStatus === 'pending' ? 'Tax info in review' : 'Tax info needed'}
             </p>
             {taxDone && creator.taxFormSubmittedAt && (
               <p className="text-xs text-emerald-200/70">Submitted {new Date(creator.taxFormSubmittedAt).toLocaleDateString()}</p>
@@ -2793,10 +3086,10 @@ function PayoutAccountCard() {
         </div>
 
         <p className="text-sm text-muted leading-relaxed">
-          US creators paid $600 or more in a calendar year get a 1099-NEC. KYRO needs a completed W-9 before it can release a payout, which is why the withdraw button stays locked until this is done.
+          Earn $600 or more in a calendar year and KYRO issues you a 1099-NEC. To do that we need your tax details on file first, which is why the withdraw button stays locked until this is done.
         </p>
         <p className="text-xs text-faint leading-relaxed">
-          The form is collected by the payout provider, not by KYRO, so your tax identification number never passes through this app.
+          Your details are collected by the payout provider, so your Social Security or EIN number never passes through KYRO.
         </p>
       </div>
     </div>
