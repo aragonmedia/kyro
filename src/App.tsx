@@ -55,6 +55,8 @@ import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { saveBankAccount, saveBrandBankAccount, startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
 import { EarningsCard } from './components/EarningsCard';
 import { CreatorOrders } from './components/CreatorOrders';
+import { CoverImage, VideoTile } from './components/MediaTile';
+import { CampaignCoverControl } from './components/CampaignCover';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -1603,6 +1605,7 @@ function plural(n: number, word: string): string {
 
 interface CampaignCard {
   id: string;
+  brandId: string | null;
   name: string;
   status: string;
   brandName: string;
@@ -1626,6 +1629,7 @@ function seedCampaignCards(): CampaignCard[] {
     brandName: BRANDS[c.brandId].name,
     seedBrandId: c.brandId,
     logoUrl: null,
+    brandId: null,
     cover: c.cover,
     poolDollars: c.pool,
     spentDollars: c.spent,
@@ -1640,6 +1644,7 @@ function seedCampaignCards(): CampaignCard[] {
 function dbCampaignCards(rows: CampaignWithStats[], brandName: string, logoUrl: string | null): CampaignCard[] {
   return rows.map((c) => ({
     id: c.id,
+    brandId: c.brandId,
     name: c.name,
     status: c.status,
     brandName,
@@ -2008,6 +2013,16 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                           </div>
                         </>
                       )}
+                      {liveMode && c.brandId && (
+                        <CampaignCoverControl
+                          campaignId={c.id}
+                          brandId={c.brandId}
+                          campaignName={c.name}
+                          coverUrl={c.cover}
+                          onChanged={() => void reload()}
+                        />
+                      )}
+
                       {(c.status === 'pending_fund' || c.status === 'draft') && (
                         <ActivateCampaignRow
                           campaignId={c.id}
@@ -2392,6 +2407,9 @@ function MySubmissionCard({ sub }: { sub: MySubmission }) {
 
   return (
     <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="relative aspect-video">
+        <VideoTile name={sub.campaignName} label={sub.brandName} />
+      </div>
       <div className="p-5 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -2545,10 +2563,15 @@ function BrowseCampaigns({ creatorId }: { creatorId: string }) {
           const status = statusFor(c.id);
           return (
             <div key={c.id} className="p-5 flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold text-heading truncate">{c.name}</p>
-                <p className="text-xs text-muted truncate">{c.brandName}</p>
-                {c.deliverableSpec && <p className="text-xs text-faint mt-1 line-clamp-2">{c.deliverableSpec}</p>}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border border-line">
+                  <CoverImage src={c.coverUrl} name={c.brandName || c.name} />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-heading truncate">{c.name}</p>
+                  <p className="text-xs text-muted truncate">{c.brandName}</p>
+                  {c.deliverableSpec && <p className="text-xs text-faint mt-1 line-clamp-2">{c.deliverableSpec}</p>}
+                </div>
               </div>
 
               {status === 'accepted' ? (

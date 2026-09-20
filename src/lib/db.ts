@@ -1015,6 +1015,7 @@ export interface OpenCampaign {
   brandId: string;
   brandName: string;
   status: string;
+  coverUrl: string | null;
   deliverableSpec: string | null;
 }
 
@@ -1039,7 +1040,7 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
   try {
     const { data, error } = await sb
       .from('campaigns')
-      .select('id, name, brand_id, status, deliverable_spec, brands(name)')
+      .select('id, name, brand_id, status, cover_url, deliverable_spec, brands(name, logo_url)')
       .in('status', ['live', 'pending_fund', 'draft'])
       .order('created_at', { ascending: false });
 
@@ -1050,8 +1051,9 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
       name: string;
       brand_id: string;
       status: string;
+      cover_url: string | null;
       deliverable_spec: string | null;
-      brands: { name: string } | { name: string }[] | null;
+      brands: { name: string; logo_url: string | null } | { name: string; logo_url: string | null }[] | null;
     }>;
 
     return ok(
@@ -1063,6 +1065,7 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
           brandId: r.brand_id,
           brandName: brand?.name ?? 'Unknown brand',
           status: r.status,
+          coverUrl: r.cover_url,
           deliverableSpec: r.deliverable_spec,
         };
       })
@@ -1753,5 +1756,18 @@ export async function listCreatorOrders(
     );
   } catch (e) {
     return fail([], describeError(e, 'Could not load your orders.'));
+  }
+}
+
+/** Point a campaign at its cover image. */
+export async function setCampaignCover(campaignId: string, coverUrl: string): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+  try {
+    const { error } = await sb.from('campaigns').update({ cover_url: coverUrl }).eq('id', campaignId);
+    if (error) return fail(false, describeError(error, 'Could not save the cover image.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not save the cover image.'));
   }
 }
