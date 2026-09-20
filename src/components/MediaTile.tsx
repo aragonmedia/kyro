@@ -88,20 +88,30 @@ export function VideoTile({
   name,
   label,
   src,
+  /**
+   * Whether to draw the play button.
+   *
+   * Off when the image already carries one — a frame captured from a player
+   * has it baked in, and stacking ours on top produces two concentric rings.
+   */
+  showPlay = true,
 }: {
   name: string;
   label?: string;
   src?: string | null;
+  showPlay?: boolean;
 }) {
   return (
     <div className="relative w-full h-full">
       <CoverImage src={src} name={name} />
-      <div className="absolute inset-0 bg-black/20" aria-hidden />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="w-12 h-12 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/30">
-          <Play size={18} className="text-white ml-0.5" fill="currentColor" />
+      {showPlay && <div className="absolute inset-0 bg-black/20" aria-hidden />}
+      {showPlay && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/30">
+            <Play size={18} className="text-white ml-0.5" fill="currentColor" />
+          </div>
         </div>
-      </div>
+      )}
       {label && (
         <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-black/70 to-transparent">
           <p className="text-xs font-semibold text-white/90 truncate">{label}</p>

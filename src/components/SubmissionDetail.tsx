@@ -78,7 +78,12 @@ export function SubmissionDetailModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="relative aspect-video">
-          <VideoTile name={sub.campaignName} label={sub.brandName} src={sub.thumbnailUrl ?? sub.coverUrl} />
+          <VideoTile
+          name={sub.campaignName}
+          label={sub.brandName}
+          src={sub.thumbnailUrl ?? sub.coverUrl}
+          showPlay={!sub.thumbnailUrl}
+        />
           <button
             type="button"
             onClick={onClose}

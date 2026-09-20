@@ -119,29 +119,50 @@ function Conversation({
   onRead: () => void;
 }) {
   const session = useSession();
+  const userId = session.userId;
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement | null>(null);
 
+  /**
+   * `onRead` refreshes the thread list, which re-renders this component's
+   * parent and hands back a new function each time. Depending on it directly
+   * put `load` on a new identity every render, which re-fired the effect
+   * below, which reset `messages` to null, which is why the pane sat on
+   * "Loading…" forever. Holding it in a ref keeps the callback current
+   * without making it a dependency.
+   */
+  const onReadRef = useRef(onRead);
+  useEffect(() => { onReadRef.current = onRead; }, [onRead]);
+
+  /** How many messages the badge was last cleared against. */
+  const seen = useRef(-1);
+
   const load = useCallback(
     async (scroll: boolean) => {
       const res = await listMessages(thread.id);
       setMessages(res.data);
       setError(res.error);
-      if (session.userId) {
-        await markThreadRead(thread.id, session.userId);
-        onRead();
+
+      // Only clear the badge when something actually arrived, so a quiet
+      // thread does not refetch the whole list every poll.
+      if (userId && res.data.length !== seen.current) {
+        seen.current = res.data.length;
+        await markThreadRead(thread.id, userId);
+        onReadRef.current();
       }
+
       if (scroll) {
         requestAnimationFrame(() => bottom.current?.scrollIntoView({ block: 'end' }));
       }
     },
-    [thread.id, session.userId, onRead]
+    [thread.id, userId]
   );
 
   useEffect(() => {
+    seen.current = -1;
     setMessages(null);
     void load(true);
     const timer = setInterval(() => void load(false), POLL_MS);
@@ -348,7 +369,7 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
 
         <div className={active ? '' : 'hidden md:block'}>
           {active ? (
-            <Conversation thread={active} onBack={() => setActiveId(null)} onRead={() => void load()} />
+            <Conversation thread={active} onBack={() => setActiveId(null)} onRead={load} />
           ) : (
             <div className="h-[70vh] min-h-[420px] flex flex-col items-center justify-center text-center p-8">
               <MessagesSquare size={30} className="text-faint mb-3" />

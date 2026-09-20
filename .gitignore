@@ -35,3 +35,6 @@ _to_delete/
 
 # Shopify CLI
 .shopify/
+
+# Files Claude sends into the chat land here via the desktop app.
+Claude outputs/
