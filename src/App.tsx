@@ -2291,9 +2291,10 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
 
       {creatorId && <EarningsCard creatorId={creatorId} />}
 
-      {/* Equal-width cells rather than a flex row, so the four labels do not
-          produce four different box widths on a phone. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-surface border border-line rounded-xl sm:w-fit">
+      {/* Stacked full-width rows on a phone, a single row from sm up. Four
+          labels of four different lengths never produce four different box
+          widths either way. */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-1 p-1 bg-surface border border-line rounded-xl sm:w-fit">
         {[
           { id: 'submissions', label: 'My Submissions', icon: FileVideo },
           { id: 'browse', label: 'Browse', icon: Search },
@@ -2303,14 +2304,16 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
           <button
             key={t.id}
             onClick={() => setTab(t.id as typeof tab)}
-            className={`relative flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition min-w-0 ${
+            className={`relative flex items-center justify-start sm:justify-center gap-2.5 sm:gap-2 px-4 sm:px-3 py-3 sm:py-2.5 rounded-lg text-sm font-semibold transition min-w-0 ${
               tab === t.id ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'
             }`}
           >
             <t.icon size={14} className="flex-shrink-0" />
             <span className="truncate">{t.label}</span>
+            {/* Stacked, the badge belongs at the far edge rather than tucked
+                against a label that no longer fills the row. */}
             {t.id === 'chat' && unread > 0 && (
-              <span className={`flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
+              <span className={`flex-shrink-0 ml-auto sm:ml-0 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
                 tab === 'chat' ? 'bg-white/25 text-white' : 'bg-gradient-kyro text-white'
               }`}>
                 {unread > 9 ? '9+' : unread}
