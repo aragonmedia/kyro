@@ -195,7 +195,7 @@ export async function signOut() {
  * back to the demo flow. Returns { role: null } for a real user who hasn't
  * finished onboarding yet.
  */
-export async function getMyProfile(): Promise<{ role: string | null; onboarded: boolean; email: string | null; fullName: string | null } | null> {
+export async function getMyProfile(): Promise<{ role: string | null; onboarded: boolean; email: string | null; fullName: string | null; notifyEmail: boolean } | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
   const { data: u } = await supabase.auth.getUser();
@@ -203,7 +203,7 @@ export async function getMyProfile(): Promise<{ role: string | null; onboarded: 
   if (!uid) return null;
   const { data, error } = await supabase
     .from('profiles')
-    .select('role, onboarded, email, full_name')
+    .select('role, onboarded, email, full_name, notify_email')
     .eq('id', uid)
     .maybeSingle();
   if (error) {
@@ -215,6 +215,7 @@ export async function getMyProfile(): Promise<{ role: string | null; onboarded: 
     onboarded: data?.onboarded ?? false,
     email: data?.email ?? null,
     fullName: data?.full_name ?? null,
+    notifyEmail: data?.notify_email ?? true,
   };
 }
 

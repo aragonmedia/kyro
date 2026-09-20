@@ -38,7 +38,9 @@ import {
   listMySubmissions,
   listSubmissionsForBrand,
   saveTaxDetails,
+  saveCreatorSocials,
   setApplicationStatus,
+  setEmailNotifications,
   setSubmissionUsage,
   updateCampaignStatus,
   applyToCampaign,
@@ -57,6 +59,8 @@ import { EarningsCard } from './components/EarningsCard';
 import { CreatorOrders } from './components/CreatorOrders';
 import { CoverImage, VideoTile } from './components/MediaTile';
 import { CampaignCoverControl } from './components/CampaignCover';
+import { SubmissionDetailModal } from './components/SubmissionDetail';
+import { PayoutsPanel } from './components/PayoutsPanel';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -295,44 +299,7 @@ const SEED_CREATOR_SUBMISSIONS = [
   },
 ];
 
-const SEED_MARKETPLACE = [
-  {
-    id: 'm1',
-    name: 'NS — Honey Drop',
-    brandId: 'ns' as BrandId,
-    budget: 8000,
-    commission: '15% of ad spend',
-    deliverable: '1 vertical video, 15–30s',
-    deadline: 'Apply by Jun 22',
-    tags: ['Wellness', 'F&B'],
-  },
-  {
-    id: 'm2',
-    name: 'Fuel — Recovery Wear',
-    brandId: 'fuel' as BrandId,
-    budget: 22000,
-    commission: '$8 per conversion',
-    deliverable: '2 videos, gym setting',
-    deadline: 'Apply by Jun 25',
-    tags: ['Fitness', 'Apparel'],
-  },
-  {
-    id: 'm3',
-    name: 'Lebanta — Capsule Drop',
-    brandId: 'lebanta' as BrandId,
-    budget: 15000,
-    commission: '12% of ad spend + $5/conv',
-    deliverable: 'Day-in-the-life 30s',
-    deadline: 'Apply by Jun 28',
-    tags: ['Apparel', 'Lifestyle'],
-  },
-];
 
-const SEED_PAYOUTS = [
-  { id: 'p1', date: 'Jun 1, 2026', amount: 2640, status: 'paid', method: 'Trolley · ACH', period: 'May 15–31' },
-  { id: 'p2', date: 'May 15, 2026', amount: 1980, status: 'paid', method: 'Trolley · ACH', period: 'May 1–14' },
-  { id: 'p3', date: 'May 1, 2026', amount: 2120, status: 'paid', method: 'Trolley · ACH', period: 'Apr 15–30' },
-];
 
 const SEED_CURATION = [
   { id: 'cu1', campaign: 'Bold Buns — Summer Drop', creatorId: 'sasha' as CreatorId, match: 94 },
@@ -2214,6 +2181,7 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
   const session = useSession();
   const creatorId = session.creator?.id ?? null;
   const [showSubmit, setShowSubmit] = useState(false);
+  const [openSub, setOpenSub] = useState<MySubmission | null>(null);
   const [mine, setMine] = useState<MySubmission[]>([]);
 
   const loadMine = useCallback(async () => {
@@ -2249,7 +2217,7 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
 
       {tab === 'submissions' && (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {mine.map((sub) => <MySubmissionCard key={sub.id} sub={sub} />)}
+          {mine.map((sub) => <MySubmissionCard key={sub.id} sub={sub} onOpen={() => setOpenSub(sub)} />)}
           {SEED_CREATOR_SUBMISSIONS.map((s) => {
             const brand = BRANDS[s.brandId];
             return (
@@ -2313,70 +2281,17 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
         </div>
       )}
 
-      {tab === 'browse' && (
-        <div className="space-y-5">
-        {creatorId && <BrowseCampaigns creatorId={creatorId} />}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {SEED_MARKETPLACE.map((m) => {
-            const brand = BRANDS[m.brandId];
-            return (
-              <div key={m.id} className="bg-surface border border-line rounded-2xl p-5 hover:border-line transition space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
-                    <BrandLogo brandId={m.brandId} size={40} />
-                    <div>
-                      <h3 className="text-lg font-bold text-heading">{m.name}</h3>
-                      <button onClick={() => onViewBrand(m.brandId)} className="text-sm text-muted hover:text-heading transition mt-0.5">{brand.name} →</button>
-                    </div>
-                  </div>
-                  <div className="px-2.5 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/20"><p className="text-xs font-semibold text-emerald-300">{fmt(m.budget)}</p></div>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-muted"><Award size={14} /><span>{m.commission}</span></div>
-                  <div className="flex items-center gap-2 text-muted"><FileVideo size={14} /><span>{m.deliverable}</span></div>
-                  <div className="flex items-center gap-2 text-muted"><Clock size={14} /><span>{m.deadline}</span></div>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {m.tags.map((t) => (<span key={t} className="px-2 py-0.5 bg-surface-2 border border-line rounded text-xs text-body">{t}</span>))}
-                </div>
-                <button
-                  type="button"
-                  disabled
-                  title="Applying to a campaign writes to the applications table, which is not built yet."
-                  className="w-full px-4 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold opacity-50 cursor-not-allowed"
-                >
-                  Apply
-                </button>
-              </div>
-            );
-          })}
-        </div>
+      {tab === 'browse' && creatorId && <BrowseCampaigns creatorId={creatorId} />}
+
+      {tab === 'payouts' && creatorId && (
+        <div className="space-y-6">
+          <PayoutsPanel creatorId={creatorId} />
+          <CreatorOrders creatorId={creatorId} />
+          <PayoutAccountCard />
         </div>
       )}
 
-      {tab === 'payouts' && (
-        <div className="space-y-6">
-        {creatorId && <CreatorOrders creatorId={creatorId} />}
-        <PayoutAccountCard />
-        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-line flex items-center justify-between">
-            <h2 className="text-xl font-bold text-heading">Payout History</h2>
-            <div className="flex items-center gap-2 text-sm text-muted"><RefreshCw size={14} /> Powered by Trolley</div>
-          </div>
-          <div className="divide-y divide-line">
-            {SEED_PAYOUTS.map((p) => (
-              <div key={p.id} className="p-5 flex items-center justify-between hover:bg-surface-2 transition">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-emerald-400/15 border border-emerald-400/30 flex items-center justify-center"><DollarSign size={16} className="text-emerald-400" /></div>
-                  <div><p className="text-heading font-semibold">{fmt(p.amount)}</p><p className="text-xs text-muted">{p.period} · {p.method}</p></div>
-                </div>
-                <div className="text-right"><p className="text-sm text-body">{p.date}</p><StatusPill status={p.status} /></div>
-              </div>
-            ))}
-          </div>
-        </div>
-        </div>
-      )}
+      {openSub && <SubmissionDetailModal sub={openSub} onClose={() => setOpenSub(null)} />}
 
       {showSubmit && creatorId && (
         <SubmitVideoModal
@@ -2397,7 +2312,7 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
  * summarised into a status pill, because that note is the thing the creator
  * acts on when making the next video.
  */
-function MySubmissionCard({ sub }: { sub: MySubmission }) {
+function MySubmissionCard({ sub, onOpen }: { sub: MySubmission; onOpen: () => void }) {
   const tone =
     sub.usage === 'in_use'
       ? { border: 'border-emerald-400/30', bg: 'bg-emerald-400/10', text: 'text-emerald-300', label: 'In use' }
@@ -2406,7 +2321,11 @@ function MySubmissionCard({ sub }: { sub: MySubmission }) {
         : { border: 'border-line', bg: 'bg-surface-2', text: 'text-muted', label: 'With the brand' };
 
   return (
-    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full text-left bg-surface border border-line rounded-2xl overflow-hidden hover:border-purple-500/40 transition"
+    >
       <div className="relative aspect-video">
         <VideoTile name={sub.campaignName} label={sub.brandName} />
       </div>
@@ -2446,8 +2365,10 @@ function MySubmissionCard({ sub }: { sub: MySubmission }) {
             Tracking {sub.trackingToken}
           </p>
         )}
+
+        <p className="text-xs text-purple-400 font-semibold pt-1">View performance →</p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -4050,16 +3971,6 @@ function SettingsRow({
   );
 }
 
-/** Panel for a feature that genuinely does not exist yet. Says so plainly. */
-function NotYetPanel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-1.5">
-      <p className="text-xs uppercase tracking-wider font-semibold text-faint">Not available yet</p>
-      <div className="text-sm text-muted leading-relaxed space-y-2">{children}</div>
-    </div>
-  );
-}
-
 function ProfilePanel() {
   const session = useSession();
   const [name, setName] = useState(session.fullName ?? '');
@@ -4180,6 +4091,183 @@ function SecurityPanel() {
   );
 }
 
+/**
+ * Creator social accounts.
+ *
+ * Instagram is required and TikTok is not, and the reason is mechanical
+ * rather than editorial: Meta partnership ads publish under the creator's own
+ * handle, so a brand cannot run the ad without it. TikTok is portfolio
+ * context; KYRO is Meta plus Shopify and TikTok Shop is a different product.
+ */
+function CreatorSocialsPanel() {
+  const session = useSession();
+  const creator = session.creator;
+  const strip = (v: string | undefined) => (v ?? '').replace(/^@+/, '');
+
+  const [ig, setIg] = useState(strip(creator?.social?.instagram?.handle));
+  const [tt, setTt] = useState(strip(creator?.social?.tiktok?.handle));
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    setIg(strip(creator?.social?.instagram?.handle));
+    setTt(strip(creator?.social?.tiktok?.handle));
+  }, [creator?.social?.instagram?.handle, creator?.social?.tiktok?.handle]);
+
+  if (!creator) return <p className="text-sm text-muted">No creator profile on this account yet.</p>;
+
+  const save = async () => {
+    setMsg(null);
+    setSaving(true);
+    const res = await saveCreatorSocials(creator.id, { instagram: ig, tiktok: tt });
+    setSaving(false);
+    if (res.error) { setMsg({ ok: false, text: res.error }); return; }
+    await session.refresh();
+    setMsg({ ok: true, text: 'Saved.' });
+  };
+
+  const field = "w-full pl-7 pr-3 py-2 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500";
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted">
+          Instagram <span className="text-pink-300">· required</span>
+        </label>
+        <div className="relative">
+          <span className="absolute left-3 top-2 text-muted">@</span>
+          <input value={ig} onChange={(e) => setIg(e.target.value.replace(/^@+/, ''))} placeholder="yourhandle" className={field} autoComplete="off" />
+        </div>
+        <p className="text-xs text-faint leading-relaxed">
+          Partnership ads publish under your handle, so a brand cannot run your video without this.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted">TikTok · optional</label>
+        <div className="relative">
+          <span className="absolute left-3 top-2 text-muted">@</span>
+          <input value={tt} onChange={(e) => setTt(e.target.value.replace(/^@+/, ''))} placeholder="yourhandle" className={field} autoComplete="off" />
+        </div>
+        <p className="text-xs text-faint">Context for brands reviewing you. KYRO does not run TikTok ads.</p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving || !ig.trim()}
+          className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+        >
+          {saving && <RefreshCw size={14} className="animate-spin" />}
+          Save
+        </button>
+        {msg && <span className={`text-xs ${msg.ok ? 'text-emerald-400' : 'text-pink-300'}`}>{msg.text}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** One switch, on the address the account was registered with. */
+function NotificationsPanel() {
+  const session = useSession();
+  const [on, setOn] = useState(session.notifyEmail);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { setOn(session.notifyEmail); }, [session.notifyEmail]);
+
+  const toggle = async () => {
+    if (!session.userId) return;
+    const next = !on;
+    setOn(next);           // optimistic: a switch that lags feels broken
+    setError(null);
+    setSaving(true);
+    const res = await setEmailNotifications(session.userId, next);
+    setSaving(false);
+    if (res.error) { setOn(!next); setError(res.error); return; }
+    await session.refresh();
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-line bg-surface-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-heading">Email me about activity</p>
+          <p className="text-xs text-faint truncate">{session.email ?? 'your account email'}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void toggle()}
+          disabled={saving}
+          role="switch"
+          aria-checked={on}
+          className={`relative w-11 h-6 rounded-full transition flex-shrink-0 disabled:opacity-60 ${on ? 'bg-gradient-kyro' : 'bg-line'}`}
+        >
+          <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${on ? 'left-6' : 'left-1'}`} />
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-pink-300">{error}</p>}
+
+      <p className="text-xs text-faint leading-relaxed">
+        Goes to the address you registered with, which is the only one KYRO can prove you control.
+        Covers a brand answering your video, a creator applying to your campaign, and payouts.
+      </p>
+      <p className="text-xs text-faint leading-relaxed">
+        Password resets and security email always send. Those are not optional.
+      </p>
+    </div>
+  );
+}
+
+/** What the creator has on file, summarised. Editing lives on Payouts. */
+function CreatorPaymentSummary() {
+  const session = useSession();
+  const creator = session.creator;
+  if (!creator) return <p className="text-sm text-muted">No creator profile on this account yet.</p>;
+
+  const bank = creator.payoutBankLast4;
+  const taxDone = creator.taxFormStatus === 'complete';
+
+  return (
+    <div className="space-y-3">
+      <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-1">
+        <p className="text-xs text-faint">Payout account</p>
+        {bank ? (
+          <>
+            <p className="text-sm font-semibold text-heading tabular-nums">
+              ···· ···· ···· {bank}
+            </p>
+            <p className="text-xs text-muted">
+              {creator.payoutBankName || 'Bank account'}
+              {creator.payoutMethod ? ` · ${creator.payoutMethod === 'wire' ? 'Wire' : 'ACH'}` : ''}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted">Nothing on file yet.</p>
+        )}
+      </div>
+
+      <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-1">
+        <p className="text-xs text-faint">Tax info</p>
+        <p className={`text-sm font-semibold ${taxDone ? 'text-emerald-400' : 'text-amber-300'}`}>
+          {taxDone ? 'On file' : creator.taxFormStatus === 'pending' ? 'In review' : 'Needed'}
+        </p>
+        {creator.taxFormSubmittedAt && (
+          <p className="text-xs text-muted">
+            Submitted {new Date(creator.taxFormSubmittedAt).toLocaleDateString()}
+          </p>
+        )}
+      </div>
+
+      <p className="text-xs text-faint">
+        Change either of these on the Payouts tab of your dashboard, where the full forms live.
+      </p>
+    </div>
+  );
+}
+
 function ConnectedAccountsPanel() {
   const session = useSession();
   const brandId = session.brand?.id ?? null;
@@ -4205,13 +4293,7 @@ function ConnectedAccountsPanel() {
     await load();
   };
 
-  if (session.role === 'creator') {
-    return (
-      <NotYetPanel>
-        <p>Linking your Instagram, TikTok and YouTube accounts arrives with the creator profile build. Until then, add your handles when you apply to a campaign.</p>
-      </NotYetPanel>
-    );
-  }
+  if (session.role === 'creator') return <CreatorSocialsPanel />;
 
   if (!brandId) {
     return <p className="text-sm text-muted">No brand workspace on this account yet.</p>;
@@ -4396,7 +4478,7 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
           </div>
         </div>
 
-        <div className="bg-surface border border-line rounded-2xl divide-y divide-line">
+        <div className="bg-surface border border-line rounded-2xl divide-y divide-line overflow-hidden">
           <SettingsRow label="Profile" sub="Name and email" icon={Users} open={open === 'profile'} onToggle={() => toggle('profile')}>
             <ProfilePanel />
           </SettingsRow>
@@ -4408,23 +4490,14 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
             open={open === 'payment'}
             onToggle={() => toggle('payment')}
           >
-            {role === 'creator' ? (
-              <NotYetPanel>
-                <p>Your payout account and tax details live on the Payouts tab of your dashboard.</p>
-              </NotYetPanel>
-            ) : (
-              <BrandBillingPanel />
-            )}
+            {role === 'creator' ? <CreatorPaymentSummary /> : <BrandBillingPanel />}
           </SettingsRow>
 
-          <SettingsRow label="Notifications" sub="Email and in-app" icon={Bell} open={open === 'notifications'} onToggle={() => toggle('notifications')}>
-            <NotYetPanel>
-              <p>KYRO does not send notifications yet, so there is nothing to configure. When it does, the first ones will be a creator applying to your campaign, a video submitted for review, and a billing run closing.</p>
-              <p>Transactional email such as password resets always sends and is not optional.</p>
-            </NotYetPanel>
+          <SettingsRow label="Notifications" sub="Email on activity" icon={Bell} open={open === 'notifications'} onToggle={() => toggle('notifications')}>
+            <NotificationsPanel />
           </SettingsRow>
 
-          <SettingsRow label="Connected Accounts" sub="Meta and Shopify" icon={Heart} open={open === 'connected'} onToggle={() => toggle('connected')}>
+          <SettingsRow label="Connected Accounts" sub={role === 'creator' ? 'Instagram and TikTok' : 'Meta and Shopify'} icon={Heart} open={open === 'connected'} onToggle={() => toggle('connected')}>
             <ConnectedAccountsPanel />
           </SettingsRow>
 

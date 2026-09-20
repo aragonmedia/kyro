@@ -53,6 +53,8 @@ export interface SessionValue {
   email: string | null;
   /** Name from the `profiles` row, as given at sign-up. */
   fullName: string | null;
+  /** Whether KYRO emails this account about activity. */
+  notifyEmail: boolean;
   /**
    * Something safe to greet the user with, always a non-empty string.
    * full name, else the handle, else the local part of the email.
@@ -80,6 +82,7 @@ const EMPTY: SessionValue = {
   userId: null,
   email: null,
   fullName: null,
+  notifyEmail: true,
   displayName: 'there',
   role: null,
   brand: null,
@@ -158,6 +161,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
+  const [notifyEmail, setNotifyEmail] = useState(true);
   const [brand, setBrand] = useState<Brand | null>(null);
   const [creator, setCreator] = useState<Creator | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
@@ -212,6 +216,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (alive.current) {
         setRole(nextRole);
         setFullName(profile?.fullName ?? null);
+        setNotifyEmail(profile?.notifyEmail ?? true);
       }
 
       if (nextRole) {
@@ -330,6 +335,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     userId,
     email,
     fullName,
+    notifyEmail,
     displayName,
     role,
     brand,

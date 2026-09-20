@@ -1771,3 +1771,168 @@ export async function setCampaignCover(campaignId: string, coverUrl: string): Pr
     return fail(false, describeError(e, 'Could not save the cover image.'));
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Submission detail + payouts
+   ───────────────────────────────────────────────────────────── */
+
+export interface SubmissionDetail {
+  orders: number;
+  revenueCents: Cents;
+  commissionCents: Cents;
+  impressions: number;
+  firstOrderAt: string | null;
+  lastOrderAt: string | null;
+}
+
+/**
+ * Performance of a single video.
+ *
+ * Computed from `earnings`, not from the denormalised counters on
+ * `submissions`. Those counters are only as fresh as whatever last wrote
+ * them; the earnings rows are the thing the creator is actually paid on, so
+ * they are the honest source.
+ */
+export async function getSubmissionDetail(submissionId: string): Promise<Result<SubmissionDetail>> {
+  const empty: SubmissionDetail = {
+    orders: 0, revenueCents: 0, commissionCents: 0,
+    impressions: 0, firstOrderAt: null, lastOrderAt: null,
+  };
+  const sb = client();
+  if (!sb) return ok(empty);
+
+  try {
+    const [earn, sub] = await Promise.all([
+      sb.from('earnings')
+        .select('commissionable_cents, commission_cents, created_at')
+        .eq('submission_id', submissionId)
+        .neq('state', 'reversed'),
+      sb.from('submissions').select('impressions').eq('id', submissionId).maybeSingle(),
+    ]);
+
+    if (earn.error) return fail(empty, describeError(earn.error, 'Could not load that video.'));
+
+    const rows = (earn.data ?? []) as Array<{
+      commissionable_cents: number; commission_cents: number; created_at: string;
+    }>;
+
+    let revenue = 0, commission = 0;
+    let first: string | null = null, last: string | null = null;
+    for (const r of rows) {
+      revenue += r.commissionable_cents;
+      commission += r.commission_cents;
+      if (!first || r.created_at < first) first = r.created_at;
+      if (!last || r.created_at > last) last = r.created_at;
+    }
+
+    return ok({
+      orders: rows.length,
+      revenueCents: revenue,
+      commissionCents: commission,
+      impressions: ((sub.data as { impressions?: number } | null)?.impressions) ?? 0,
+      firstOrderAt: first,
+      lastOrderAt: last,
+    });
+  } catch (e) {
+    return fail(empty, describeError(e, 'Could not load that video.'));
+  }
+}
+
+export interface PayoutRow {
+  id: string;
+  amountCents: Cents;
+  status: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export async function listPayouts(creatorId: string): Promise<Result<PayoutRow[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('payouts')
+      .select('id, amount_cents, status, period_start, period_end, created_at, completed_at')
+      .eq('creator_id', creatorId)
+      .order('created_at', { ascending: false });
+
+    if (error) return fail([], describeError(error, 'Could not load your payouts.'));
+    return ok(
+      (data ?? []).map((r) => {
+        const row = r as {
+          id: string; amount_cents: number; status: string;
+          period_start: string | null; period_end: string | null;
+          created_at: string; completed_at: string | null;
+        };
+        return {
+          id: row.id,
+          amountCents: row.amount_cents,
+          status: row.status,
+          periodStart: row.period_start,
+          periodEnd: row.period_end,
+          createdAt: row.created_at,
+          completedAt: row.completed_at,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your payouts.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Creator social handles + notification preference
+   ───────────────────────────────────────────────────────────── */
+
+/**
+ * Save the creator's social handles.
+ *
+ * Instagram is required, and not as profile decoration. Meta partnership ads
+ * publish under the creator's own handle, so without it the brand physically
+ * cannot run the ad. TikTok is optional: KYRO is Meta plus Shopify, and
+ * TikTok Shop is a different product.
+ */
+export async function saveCreatorSocials(
+  creatorId: string,
+  input: { instagram: string; tiktok?: string }
+): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+
+  const clean = (v: string | undefined) => (v ?? '').trim().replace(/^@+/, '');
+  const ig = clean(input.instagram);
+  const tt = clean(input.tiktok);
+
+  if (!ig) return fail(false, 'Instagram is required. Partnership ads run under your handle.');
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(ig)) return fail(false, 'That Instagram handle does not look right.');
+  if (tt && !/^[A-Za-z0-9._]{1,30}$/.test(tt)) return fail(false, 'That TikTok handle does not look right.');
+
+  try {
+    const { error } = await sb
+      .from('creators')
+      .update({
+        instagram_handle: `@${ig}`,
+        tiktok_handle: tt ? `@${tt}` : null,
+      })
+      .eq('id', creatorId);
+    if (error) return fail(false, describeError(error, 'Could not save your accounts.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not save your accounts.'));
+  }
+}
+
+/** Turn activity email on or off for the signed-in account. */
+export async function setEmailNotifications(userId: string, on: boolean): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+  try {
+    const { error } = await sb.from('profiles').update({ notify_email: on }).eq('id', userId);
+    if (error) return fail(false, describeError(error, 'Could not save that preference.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not save that preference.'));
+  }
+}
