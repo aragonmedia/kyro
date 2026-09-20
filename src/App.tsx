@@ -2562,7 +2562,7 @@ function MySubmissionCard({
   return (
     <div className="bg-surface border border-line rounded-2xl overflow-hidden flex flex-col">
       <button type="button" onClick={onOpen} className="relative aspect-[9/16] block w-full group">
-        <VideoTile name={sub.campaignName} label={sub.brandName} src={sub.coverUrl} />
+        <VideoTile name={sub.campaignName} label={sub.brandName} src={sub.thumbnailUrl ?? sub.coverUrl} />
         <span className={`absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full text-[10px] font-bold border backdrop-blur-sm ${tone.border} ${tone.bg} ${tone.text}`}>
           {tone.label}
         </span>

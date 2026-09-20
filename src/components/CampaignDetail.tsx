@@ -31,10 +31,14 @@ export function BrandMark({
       style={{ width: size, height: size }}
     >
       {show ? (
+        // Logos are stored as square tiles carrying their own background, so
+        // they fill the chip. `contain` would leave the app's surface colour
+        // showing through a transparent mark, which is how a dark green
+        // wordmark disappears on a dark surface.
         <img
           src={logoUrl as string}
           alt={name}
-          className="w-full h-full object-contain p-1"
+          className="w-full h-full object-cover"
           onError={() => setBroken(true)}
         />
       ) : (

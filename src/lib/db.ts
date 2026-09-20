@@ -1128,7 +1128,9 @@ export interface MySubmission {
   videoUrl: string | null;
   trackingToken: string | null;
   submittedAt: string;
-  /** The campaign's product image, shown on the card and in the detail view. */
+  /** A frame from the video itself, when there is one. */
+  thumbnailUrl: string | null;
+  /** The campaign's product image. The fallback when there is no frame. */
   coverUrl: string | null;
 }
 
@@ -1139,7 +1141,7 @@ export async function listMySubmissions(creatorId: string): Promise<Result<MySub
     const { data, error } = await sb
       .from('submissions')
       .select(
-        'id, campaign_id, status, brand_note, decided_at, video_url, tracking_token, submitted_at, campaigns(name, cover_url, brands(name))'
+        'id, campaign_id, status, brand_note, decided_at, video_url, thumbnail_url, tracking_token, submitted_at, campaigns(name, cover_url, brands(name))'
       )
       .eq('creator_id', creatorId)
       .order('submitted_at', { ascending: false });
@@ -1153,6 +1155,7 @@ export async function listMySubmissions(creatorId: string): Promise<Result<MySub
       brand_note: string | null;
       decided_at: string | null;
       video_url: string | null;
+      thumbnail_url: string | null;
       tracking_token: string | null;
       submitted_at: string;
       campaigns:
@@ -1177,6 +1180,7 @@ export async function listMySubmissions(creatorId: string): Promise<Result<MySub
           videoUrl: r.video_url,
           trackingToken: r.tracking_token ?? null,
           submittedAt: r.submitted_at,
+          thumbnailUrl: r.thumbnail_url,
           coverUrl: campaign?.cover_url ?? null,
         };
       })
