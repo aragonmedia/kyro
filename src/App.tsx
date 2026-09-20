@@ -2291,31 +2291,34 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
 
       {creatorId && <EarningsCard creatorId={creatorId} />}
 
-      {/* Stacked full-width rows on a phone, a single row from sm up. Four
-          labels of four different lengths never produce four different box
-          widths either way. */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-1 p-1 bg-surface border border-line rounded-xl sm:w-fit">
+      {/* Two by two on a phone, one compact row from sm up. Each cell carries
+          its own border at phone width so it reads as four things; on desktop
+          the outer card comes back and the cells sit inside it. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-1 sm:p-1 sm:bg-surface sm:border sm:border-line sm:rounded-xl sm:w-fit">
         {[
-          { id: 'submissions', label: 'My Submissions', icon: FileVideo },
-          { id: 'browse', label: 'Browse', icon: Search },
-          { id: 'chat', label: 'Chat', icon: MessagesSquare },
-          { id: 'payouts', label: 'Payouts', icon: Wallet },
+          { id: 'submissions', short: 'Videos', label: 'My Submissions', icon: FileVideo },
+          { id: 'browse', short: 'Browse', label: 'Browse', icon: Search },
+          { id: 'chat', short: 'Chat', label: 'Chat', icon: MessagesSquare },
+          { id: 'payouts', short: 'Payouts', label: 'Payouts', icon: Wallet },
         ].map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id as typeof tab)}
-            className={`relative flex items-center justify-start sm:justify-center gap-2.5 sm:gap-2 px-4 sm:px-3 py-3 sm:py-2.5 rounded-lg text-sm font-semibold transition min-w-0 ${
-              tab === t.id ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'
+            className={`flex items-center gap-2.5 sm:gap-2 px-4 sm:px-4 py-4 sm:py-2.5 rounded-xl sm:rounded-lg text-sm font-semibold transition border sm:border-0 ${
+              tab === t.id
+                ? 'bg-gradient-kyro text-white border-transparent'
+                : 'bg-surface-2 sm:bg-transparent border-line sm:border-transparent text-muted hover:text-heading'
             }`}
           >
-            <t.icon size={14} className="flex-shrink-0" />
-            <span className="truncate">{t.label}</span>
-            {/* Stacked, the badge belongs at the far edge rather than tucked
-                against a label that no longer fills the row. */}
+            <t.icon size={16} className="flex-shrink-0" />
+            <span className="sm:hidden truncate">{t.short}</span>
+            <span className="hidden sm:inline">{t.label}</span>
             {t.id === 'chat' && unread > 0 && (
-              <span className={`flex-shrink-0 ml-auto sm:ml-0 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
-                tab === 'chat' ? 'bg-white/25 text-white' : 'bg-gradient-kyro text-white'
-              }`}>
+              <span
+                className={`ml-auto sm:ml-0 flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                  tab === 'chat' ? 'bg-white/25 text-white' : 'bg-gradient-kyro text-white'
+                }`}
+              >
                 {unread > 9 ? '9+' : unread}
               </span>
             )}
