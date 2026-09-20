@@ -40,6 +40,13 @@ export interface Brand {
   category: string;
   metaAdAccountId?: string;     // populated when Meta is connected
   approvalStatus: 'pending' | 'approved' | 'rejected';
+  /** Collected by the setup wizard. */
+  websiteUrl?: string;
+  description?: string;
+  businessType?: string;
+  currency: string;
+  /** False until the brand has been through setup. */
+  setupComplete: boolean;
   createdAt: string;
 }
 

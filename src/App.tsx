@@ -67,6 +67,8 @@ import { SubmissionDetailModal } from './components/SubmissionDetail';
 import { PayoutsPanel } from './components/PayoutsPanel';
 import { ChatPanel, useUnreadTotal } from './components/Chat';
 import { BrandMark, CampaignDetailModal } from './components/CampaignDetail';
+import { BrandPerformanceCard } from './components/BrandPerformance';
+import { BrandSetupWizard } from './components/BrandSetup';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -1790,7 +1792,8 @@ function PageHead({ title, sub, action }: { title: string; sub?: string; action?
    BRAND DASHBOARD
    ───────────────────────────────────────────────────────────── */
 function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => void }) {
-  const { brand, configured, workspaceLoading, workspaceError } = useSession();
+  const session = useSession();
+  const { brand, configured, workspaceLoading, workspaceError } = session;
 
   // Live mode means real keys AND a brands row we own. Anything short of that
   // (no keys, demo role switcher, workspace still provisioning) shows SEED.
@@ -1879,14 +1882,32 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
    * These used to carry hand-written deltas like "+18% vs last week" that
    * nothing computed. A number a brand cannot trace back to an order is worse
    * than no number, so when there is nothing yet the row says so.
+   *
+   * The KYRO fee is deliberately absent. It belongs on the invoice, under
+   * Finance, not on the screen a brand opens every morning.
    */
-  const noData = totalOrders === 0 && totalCommission === 0;
   const kpis = [
-    { label: 'Creator Commission', value: fmt(totalCommission), sub: `across ${plural(allCards.length, 'campaign')}`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-    { label: 'KYRO Fee', value: fmt(totalCommission * 0.01), sub: '1% of commission', icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-    { label: 'Attributed Orders', value: totalOrders.toLocaleString(), sub: `from ${plural(totalSubs, 'video')}`, icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
+    { label: 'Campaigns', value: allCards.filter((c) => c.status === 'live').length.toString(), sub: `of ${plural(allCards.length, 'campaign')} total`, icon: Layers, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
+    { label: 'Videos submitted', value: totalSubs.toLocaleString(), sub: 'across every campaign', icon: FileVideo, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
+    { label: 'Attributed orders', value: totalOrders.toLocaleString(), sub: 'bought after watching', icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
     { label: 'Impressions', value: totalImpr > 0 ? fmtK(totalImpr) : '—', sub: totalImpr > 0 ? 'from live ads' : 'needs Meta access', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
   ];
+
+  if (liveMode && brand && brandId && !brand.setupComplete) {
+    return (
+      <BrandSetupWizard
+        brandId={brandId}
+        brandName={brand.name}
+        displayName={session.displayName}
+        connectionsSlot={
+          onboarding
+            ? <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
+            : <p className="text-sm text-muted">Loading your connections…</p>
+        }
+        onDone={() => void session.refresh()}
+      />
+    );
+  }
 
   const createButton = (
     <button
@@ -1958,6 +1979,8 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                 <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
               )}
 
+              {liveMode && brandId && <BrandPerformanceCard brandId={brandId} />}
+
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {kpis.map((s, i) => (
                   <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
@@ -1971,13 +1994,6 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                   </div>
                 ))}
               </div>
-
-              {liveMode && noData && !busy && (
-                <p className="text-sm text-muted leading-relaxed">
-                  These fill in as orders come through. An order counts once Shopify tells KYRO it
-                  was placed after someone saw one of your creators' videos.
-                </p>
-              )}
 
               {/* Creator leaderboard */}
               <div className="bg-surface border border-line rounded-2xl overflow-hidden">

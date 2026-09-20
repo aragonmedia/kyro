@@ -93,6 +93,34 @@ const COVER_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
  * needs no signing. That matters because covers render in a grid: signing
  * each one would be a round trip per card.
  */
+/** A brand's logo. Same bucket as covers: both are public brand imagery. */
+export async function uploadBrandLogo(
+  brandId: string,
+  file: File
+): Promise<{ url: string | null; error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { url: null, error: 'Uploads are unavailable in this build.' };
+
+  if (!COVER_TYPES.has(file.type)) {
+    return { url: null, error: 'Use a JPG, PNG or WebP image.' };
+  }
+  if (file.size > MAX_COVER_BYTES) {
+    return { url: null, error: 'That image is over 5 MB. Export a smaller one.' };
+  }
+
+  const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+  const path = `${brandId}/logo-${crypto.randomUUID()}.${ext}`;
+
+  const { error } = await sb.storage.from(COVERS_BUCKET).upload(path, file, {
+    contentType: file.type,
+    upsert: false,
+  });
+  if (error) return { url: null, error: error.message || 'Upload failed. Try again.' };
+
+  const { data } = sb.storage.from(COVERS_BUCKET).getPublicUrl(path);
+  return { url: data?.publicUrl ?? null, error: null };
+}
+
 export async function uploadCampaignCover(
   brandId: string,
   file: File

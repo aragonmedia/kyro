@@ -113,6 +113,11 @@ export interface BrandRow {
   accent: string | null;
   meta_ad_account_id: string | null;
   approval_status: 'pending' | 'approved' | 'rejected';
+  website_url: string | null;
+  description: string | null;
+  business_type: string | null;
+  currency: string | null;
+  setup_complete: boolean | null;
   created_at: string;
 }
 
@@ -187,6 +192,13 @@ export function toBrand(row: BrandRow): Brand {
     category: row.category ?? '',
     metaAdAccountId: row.meta_ad_account_id ?? undefined,
     approvalStatus: row.approval_status,
+    websiteUrl: row.website_url ?? undefined,
+    description: row.description ?? undefined,
+    businessType: row.business_type ?? undefined,
+    currency: row.currency ?? 'USD',
+    // Brands created before 0015 have no column value at all. Treating the
+    // absence as "done" keeps an existing account out of the wizard.
+    setupComplete: row.setup_complete ?? true,
     createdAt: row.created_at,
   };
 }
@@ -2223,5 +2235,163 @@ export async function markThreadRead(threadId: string, userId: string): Promise<
       );
   } catch {
     /* A stale badge is not worth interrupting the conversation over. */
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Brand setup
+   ───────────────────────────────────────────────────────────── */
+
+export interface BrandSetupInput {
+  name: string;
+  websiteUrl?: string;
+  businessType?: string;
+  description?: string;
+  currency?: string;
+  logoUrl?: string | null;
+}
+
+/**
+ * Save what the setup wizard collected and mark the brand as set up.
+ *
+ * `setup_complete` is written here rather than inferred from whether the
+ * optional fields are filled: a brand who skipped the website step has still
+ * finished setup and should not be asked again on every sign-in.
+ */
+export async function completeBrandSetup(
+  brandId: string,
+  input: BrandSetupInput
+): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+
+  const name = input.name.trim();
+  if (!name) return fail(false, 'Give the brand a name.');
+
+  const site = (input.websiteUrl ?? '').trim();
+  if (site && !/^https?:\/\/[^\s.]+\.[^\s]{2,}$/i.test(site)) {
+    return fail(false, 'That website address does not look right. Include https://');
+  }
+
+  try {
+    const { error } = await sb
+      .from('brands')
+      .update({
+        name,
+        website_url: site || null,
+        business_type: input.businessType || null,
+        description: (input.description ?? '').trim() || null,
+        currency: input.currency || 'USD',
+        ...(input.logoUrl ? { logo_url: input.logoUrl } : {}),
+        setup_complete: true,
+      })
+      .eq('id', brandId);
+
+    if (error) return fail(false, describeError(error, 'Could not save your brand.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not save your brand.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Brand performance
+   ───────────────────────────────────────────────────────────── */
+
+export interface BrandPerformance {
+  windowDays: number;
+  /** Commission earned by creators in the window — what the brand owes. */
+  windowCents: Cents;
+  series: EarningsPoint[];
+  orders: number;
+  revenueCents: Cents;
+  /** Distinct creators who drove an order in the window. */
+  creators: number;
+  /** Distinct videos that drove an order in the window. */
+  videos: number;
+}
+
+const emptyBrandPerformance = (windowDays: number): BrandPerformance => ({
+  windowDays,
+  windowCents: 0,
+  series: [],
+  orders: 0,
+  revenueCents: 0,
+  creators: 0,
+  videos: 0,
+});
+
+/**
+ * Daily commission across a brand's campaigns, shaped like the creator chart.
+ *
+ * Same source rows as the creator side reads — `earnings` — so a brand and a
+ * creator looking at the same campaign are looking at the same numbers. The
+ * series is zero-filled so an empty day is a gap rather than a compression.
+ */
+export async function getBrandPerformance(
+  brandId: string,
+  windowDays = 30
+): Promise<Result<BrandPerformance>> {
+  const sb = client();
+  if (!sb) return ok(emptyBrandPerformance(windowDays));
+
+  const since = new Date();
+  since.setUTCHours(0, 0, 0, 0);
+  since.setUTCDate(since.getUTCDate() - (windowDays - 1));
+
+  try {
+    const { data, error } = await sb
+      .from('earnings')
+      .select('commission_cents, commissionable_cents, creator_id, submission_id, created_at')
+      .eq('brand_id', brandId)
+      .neq('state', 'reversed')
+      .gte('created_at', since.toISOString());
+
+    if (error) {
+      return fail(emptyBrandPerformance(windowDays), describeError(error, 'Could not load performance.'));
+    }
+
+    const rows = (data ?? []) as Array<{
+      commission_cents: number;
+      commissionable_cents: number;
+      creator_id: string | null;
+      submission_id: string | null;
+      created_at: string;
+    }>;
+
+    const byDay = new Map<string, number>();
+    const creators = new Set<string>();
+    const videos = new Set<string>();
+    let windowCents = 0;
+    let revenueCents = 0;
+
+    for (const r of rows) {
+      const day = r.created_at.slice(0, 10);
+      byDay.set(day, (byDay.get(day) ?? 0) + r.commission_cents);
+      windowCents += r.commission_cents;
+      revenueCents += r.commissionable_cents;
+      if (r.creator_id) creators.add(r.creator_id);
+      if (r.submission_id) videos.add(r.submission_id);
+    }
+
+    const series: EarningsPoint[] = [];
+    for (let i = 0; i < windowDays; i += 1) {
+      const d = new Date(since);
+      d.setUTCDate(since.getUTCDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      series.push({ date: key, cents: byDay.get(key) ?? 0 });
+    }
+
+    return ok({
+      windowDays,
+      windowCents,
+      series,
+      orders: rows.length,
+      revenueCents,
+      creators: creators.size,
+      videos: videos.size,
+    });
+  } catch (e) {
+    return fail(emptyBrandPerformance(windowDays), describeError(e, 'Could not load performance.'));
   }
 }
