@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { X, RefreshCw } from 'lucide-react';
+import { MessagesSquare, X, RefreshCw } from 'lucide-react';
 import { getSubmissionDetail, type MySubmission, type SubmissionDetail } from '../lib/db';
 import { VideoTile } from './MediaTile';
 
@@ -34,9 +34,11 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 export function SubmissionDetailModal({
   sub,
   onClose,
+  onMessage,
 }: {
   sub: MySubmission;
   onClose: () => void;
+  onMessage: () => void;
 }) {
   const [data, setData] = useState<SubmissionDetail | null>(null);
 
@@ -105,7 +107,7 @@ export function SubmissionDetailModal({
           </div>
 
           {sub.usage === 'not_used' && (
-            <div className="p-4 rounded-xl border border-amber-400/25 bg-amber-400/5 space-y-1">
+            <div className="p-4 rounded-xl border border-amber-400/25 bg-amber-400/5 space-y-2">
               <p className="text-xs font-semibold text-amber-300">
                 Why it wasn't used, and what they want next
               </p>
@@ -114,6 +116,16 @@ export function SubmissionDetailModal({
               </p>
             </div>
           )}
+
+          {/* A note you cannot answer is a verdict, not feedback. */}
+          <button
+            type="button"
+            onClick={onMessage}
+            className="w-full px-4 py-2.5 rounded-lg border border-line bg-surface-2 text-sm font-semibold text-body hover:text-heading inline-flex items-center justify-center gap-2"
+          >
+            <MessagesSquare size={14} />
+            {sub.usage === 'not_used' ? 'Reply to the brand' : 'Message the brand'}
+          </button>
 
           {data === null ? (
             <div className="flex items-center justify-center py-8 text-muted">

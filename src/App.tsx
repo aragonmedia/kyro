@@ -1,11 +1,12 @@
 import {
   Menu, X, ArrowRight, Star, TrendingUp, Zap, DollarSign,
-  CheckCircle, Clock, Briefcase, Camera, Shield, ChevronRight,
+  CheckCircle, Briefcase, Camera, Shield, ChevronRight,
   Plus, Upload, Eye, Users, Wallet, FileVideo, AlertCircle, Activity,
   Sparkles, Bell, LogOut, Filter, Search, Award, Target,
   ArrowUpRight, RefreshCw, MessageSquare, Globe, Mail, Trophy, Hash,
   Instagram, Youtube, ShieldCheck, Cpu, Layers, Heart,
-  ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3, PieChart, Calendar, ArrowDownRight, ImagePlus
+  ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3, PieChart, Calendar, ArrowDownRight, ImagePlus,
+  MessagesSquare
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { mockApi } from './lib/api';
@@ -45,6 +46,8 @@ import {
   updateCampaignStatus,
   applyToCampaign,
   setCampaignCover,
+  openCampaignThread,
+  openSubmissionThread,
   normalizeMetaAdAccount,
   normalizeShopifyDomain,
   parseMoneyToCents,
@@ -62,6 +65,8 @@ import { CoverImage, VideoTile } from './components/MediaTile';
 import { CampaignCoverControl } from './components/CampaignCover';
 import { SubmissionDetailModal } from './components/SubmissionDetail';
 import { PayoutsPanel } from './components/PayoutsPanel';
+import { ChatPanel, useUnreadTotal } from './components/Chat';
+import { BrandMark, CampaignDetailModal } from './components/CampaignDetail';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -87,13 +92,16 @@ function ThemeSegmented() {
     { val: 'light' as const, Icon: Sun, label: 'Light' },
     { val: 'dark' as const, Icon: Moon, label: 'Dark' },
   ];
+  // In the settings card this sits in a flex column on mobile, where a
+  // content-width row of buttons stretches to full width and leaves the two
+  // options stranded on the left. Equal flex cells fill it evenly instead.
   return (
-    <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg">
+    <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg w-full sm:w-fit">
       {opts.map(({ val, Icon, label }) => (
         <button
           key={val}
           onClick={() => setTheme(val)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition ${theme === val ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-md text-sm font-semibold transition ${theme === val ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}
         >
           <Icon size={14} /> {label}
         </button>
@@ -254,53 +262,6 @@ const SEED_LEADERBOARD = [
   { creatorId: 'maya' as CreatorId, orders: 430, ads: 4, views: 21400, brandId: 'jaje' as BrandId },
   { creatorId: 'priya' as CreatorId, orders: 422, ads: 1, views: 40100, brandId: 'fuel' as BrandId },
 ];
-
-const SEED_CREATOR_SUBMISSIONS = [
-  {
-    id: 's1',
-    campaignId: 'c1',
-    brandId: 'boldbuns' as BrandId,
-    status: 'live',
-    earnings: 1840,
-    pending: 320,
-    impressions: 68400,
-    spend: 1840,
-    orders: 124,
-    submittedAt: '6 days ago',
-    aiTags: ['Problem/Solution', 'Gen-Z', 'Activewear'],
-    thumb: 'https://images.pexels.com/photos/2294353/pexels-photo-2294353.jpeg?auto=compress&cs=tinysrgb&w=300',
-  },
-  {
-    id: 's2',
-    campaignId: 'c3',
-    brandId: 'jaje' as BrandId,
-    status: 'live',
-    earnings: 980,
-    pending: 180,
-    impressions: 41200,
-    spend: 980,
-    orders: 62,
-    submittedAt: '3 days ago',
-    aiTags: ['Unboxing', 'Wellness', 'Routine'],
-    thumb: 'https://images.pexels.com/photos/1183266/pexels-photo-1183266.jpeg?auto=compress&cs=tinysrgb&w=300',
-  },
-  {
-    id: 's3',
-    campaignId: 'c2',
-    brandId: 'fuel' as BrandId,
-    status: 'in_review',
-    earnings: 0,
-    pending: 0,
-    impressions: 0,
-    spend: 0,
-    orders: 0,
-    submittedAt: '8 hours ago',
-    aiTags: ['Testimonial', 'Fitness'],
-    thumb: 'https://images.pexels.com/photos/1239288/pexels-photo-1239288.jpeg?auto=compress&cs=tinysrgb&w=300',
-  },
-];
-
-
 
 const SEED_CURATION = [
   { id: 'cu1', campaign: 'Bold Buns — Summer Drop', creatorId: 'sasha' as CreatorId, match: 94 },
@@ -1805,6 +1766,18 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
 
       {liveMode && brandId && <CreatorVideosPanel brandId={brandId} />}
 
+      {liveMode && brandId && (
+        <div className="space-y-3" id="brand-messages">
+          <div>
+            <h2 className="text-xl font-bold text-heading">Messages</h2>
+            <p className="text-sm text-muted mt-0.5">
+              Your campaign rooms, and the private threads creators start about their videos.
+            </p>
+          </div>
+          <ChatPanel />
+        </div>
+      )}
+
       {workspaceError && (
         <div className="flex items-start gap-3 p-4 rounded-xl border border-pink-400/30 bg-pink-400/10">
           <AlertCircle size={18} className="text-pink-400 flex-shrink-0 mt-0.5" />
@@ -2259,21 +2232,54 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
 /* ─────────────────────────────────────────────────────────────
    CREATOR DASHBOARD — with earning notifications + AI tags
    ───────────────────────────────────────────────────────────── */
-function CreatorDashboard({ onViewBrand, onViewOrders }: { onViewBrand: (id: BrandId) => void; onViewOrders: () => void }) {
+function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
   const session = useSession();
   const creatorId = session.creator?.id ?? null;
   const [showSubmit, setShowSubmit] = useState(false);
+  const [submitFor, setSubmitFor] = useState<string | null>(null);
   const [openSub, setOpenSub] = useState<MySubmission | null>(null);
   const [mine, setMine] = useState<MySubmission[]>([]);
+  const [accepted, setAccepted] = useState<OpenCampaign[]>([]);
+  const [tab, setTab] = useState<'submissions' | 'browse' | 'chat' | 'payouts'>('submissions');
+  const [section, setSection] = useState<'in_use' | 'not_used' | 'campaigns'>('in_use');
+  const [chatThreadId, setChatThreadId] = useState<string | null>(null);
+  const unread = useUnreadTotal();
 
   const loadMine = useCallback(async () => {
-    if (!creatorId) { setMine([]); return; }
-    const res = await listMySubmissions(creatorId);
-    setMine(res.data);
+    if (!creatorId) { setMine([]); setAccepted([]); return; }
+    const [subs, apps, campaigns] = await Promise.all([
+      listMySubmissions(creatorId),
+      listMyApplications(creatorId),
+      listCampaignsOpenToCreators(),
+    ]);
+    setMine(subs.data);
+    const onIt = new Set(apps.data.filter((a) => a.status === 'accepted').map((a) => a.campaignId));
+    setAccepted(campaigns.data.filter((c) => onIt.has(c.id)));
   }, [creatorId]);
 
   useEffect(() => { void loadMine(); }, [loadMine]);
-  const [tab, setTab] = useState<'submissions' | 'browse' | 'payouts'>('submissions');
+
+  /** Open the private thread with the brand about one video. */
+  const messageBrand = async (submissionId: string) => {
+    const res = await openSubmissionThread(submissionId);
+    if (res.data) {
+      setChatThreadId(res.data);
+      setTab('chat');
+    }
+  };
+
+  const inUse = mine.filter((s) => s.usage === 'in_use');
+  const notUsed = mine.filter((s) => s.usage === 'not_used');
+  const awaiting = mine.filter((s) => s.usage === 'awaiting');
+
+  const SECTIONS = [
+    { id: 'not_used' as const, label: 'Not used', count: notUsed.length },
+    { id: 'in_use' as const, label: 'In use', count: inUse.length },
+    { id: 'campaigns' as const, label: 'Active campaigns', count: accepted.length },
+  ];
+
+  const shown = section === 'in_use' ? inUse : section === 'not_used' ? notUsed : [];
+
   return (
     <div className="max-w-7xl mx-auto space-y-8 relative">
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
@@ -2285,85 +2291,140 @@ function CreatorDashboard({ onViewBrand, onViewOrders }: { onViewBrand: (id: Bra
 
       {creatorId && <EarningsCard creatorId={creatorId} />}
 
-      <div className="flex items-center gap-1 p-1 bg-surface border border-line rounded-xl w-fit">
+      {/* Equal-width cells rather than a flex row, so the four labels do not
+          produce four different box widths on a phone. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-surface border border-line rounded-xl sm:w-fit">
         {[
           { id: 'submissions', label: 'My Submissions', icon: FileVideo },
-          { id: 'browse', label: 'Browse Campaigns', icon: Search },
+          { id: 'browse', label: 'Browse', icon: Search },
+          { id: 'chat', label: 'Chat', icon: MessagesSquare },
           { id: 'payouts', label: 'Payouts', icon: Wallet },
         ].map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id as 'submissions' | 'browse' | 'payouts')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${tab === t.id ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}>
-            <t.icon size={14} /> {t.label}
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id as typeof tab)}
+            className={`relative flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition min-w-0 ${
+              tab === t.id ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'
+            }`}
+          >
+            <t.icon size={14} className="flex-shrink-0" />
+            <span className="truncate">{t.label}</span>
+            {t.id === 'chat' && unread > 0 && (
+              <span className={`flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                tab === 'chat' ? 'bg-white/25 text-white' : 'bg-gradient-kyro text-white'
+              }`}>
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
       {tab === 'submissions' && (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {mine.map((sub) => <MySubmissionCard key={sub.id} sub={sub} onOpen={() => setOpenSub(sub)} />)}
-          {SEED_CREATOR_SUBMISSIONS.map((s) => {
-            const brand = BRANDS[s.brandId];
-            return (
-              <div key={s.id} className="bg-surface border border-line rounded-2xl overflow-hidden hover:border-line transition group">
-                <div className="relative aspect-video">
-                  <img src={s.thumb} alt={s.id} className="w-full h-full object-cover" />
-                  <div className="absolute top-3 left-3"><StatusPill status={s.status} /></div>
-                  <div className="absolute top-3 right-3 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-md flex items-center gap-1">
-                    <Cpu size={10} className="text-pink-400" />
-                    <span className="text-[10px] font-semibold text-heading">AI tagged</span>
-                  </div>
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 to-transparent"></div>
-                  <div className="absolute bottom-3 left-3 right-3">
-                    <button onClick={() => onViewBrand(s.brandId)} className="flex items-center gap-2 group/brand">
-                      <BrandLogo brandId={s.brandId} size={20} />
-                      <p className="text-heading font-bold text-sm group-hover/brand:underline">{brand.name}</p>
-                    </button>
-                    <p className="text-body text-xs">{s.submittedAt}</p>
-                  </div>
-                </div>
-                <div className="p-5 space-y-3">
-                  <div className="flex flex-wrap gap-1">
-                    {s.aiTags.map((tag) => (
-                      <span key={tag} className="px-2 py-0.5 bg-pink-400/10 border border-pink-400/20 rounded text-[10px] font-semibold text-pink-300">{tag}</span>
-                    ))}
-                  </div>
-                  {s.status === 'live' ? (
-                    <>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div><p className="text-xs text-faint">Orders</p><p className="text-sm font-bold text-heading">{s.orders}</p></div>
-                        <div><p className="text-xs text-faint">Impressions</p><p className="text-sm font-bold text-heading">{fmtK(s.impressions)}</p></div>
-                        <div><p className="text-xs text-faint">Spend</p><p className="text-sm font-bold text-heading">{fmt(s.spend)}</p></div>
-                      </div>
-                      <div className="p-3 bg-emerald-400/10 border border-emerald-400/20 rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div><p className="text-xs text-muted">Earned</p><p className="text-lg font-bold text-emerald-400">{fmt(s.earnings)}</p></div>
-                          <div className="text-right"><p className="text-xs text-muted">Pending</p><p className="text-sm font-semibold text-amber-300">{fmt(s.pending)}</p></div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="p-3 bg-amber-400/10 border border-amber-400/20 rounded-lg flex items-center gap-2">
-                      <Clock size={16} className="text-amber-400" />
-                      <p className="text-sm text-amber-200">Awaiting brand review</p>
-                    </div>
-                  )}
-                </div>
+        <div className="space-y-6">
+          {/* Uploading is the thing a creator came to do, so it sits above the
+              archive of what they already sent rather than at the end of it. */}
+          {accepted.length > 0 && (
+            <div className="bg-surface border border-line rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="font-semibold text-heading">
+                  You're on {plural(accepted.length, 'campaign')}
+                </p>
+                <p className="text-sm text-muted mt-0.5">
+                  Post whenever you like. No approval needed before you upload.
+                </p>
               </div>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => setShowSubmit(true)}
-            disabled={!creatorId}
-            title={creatorId ? undefined : 'Sign in as a creator to submit a video.'}
-            className="border-2 border-dashed border-line rounded-2xl flex flex-col items-center justify-center gap-3 p-8 text-muted hover:text-heading hover:border-purple-500/50 transition min-h-[320px] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <div className="w-14 h-14 rounded-full bg-surface-2 flex items-center justify-center"><Upload size={22} /></div>
-            <div className="text-center"><p className="font-semibold">Upload a Video</p><p className="text-xs text-faint mt-1">No approval needed to post</p></div>
-          </button>
+              <button
+                type="button"
+                onClick={() => { setSubmitFor(null); setShowSubmit(true); }}
+                className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold inline-flex items-center gap-2 whitespace-nowrap"
+              >
+                <Upload size={16} /> Upload a video
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            {SECTIONS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setSection(s.id)}
+                className={`px-3.5 py-2 rounded-lg text-sm font-semibold border transition ${
+                  section === s.id
+                    ? 'bg-gradient-kyro text-white border-transparent'
+                    : 'bg-surface border-line text-muted hover:text-heading'
+                }`}
+              >
+                {s.label}
+                <span className={`ml-2 text-xs ${section === s.id ? 'text-white/70' : 'text-faint'}`}>
+                  {s.count}
+                </span>
+              </button>
+            ))}
+            {awaiting.length > 0 && section !== 'campaigns' && (
+              <span className="text-xs text-faint ml-1">
+                {plural(awaiting.length, 'video')} still with the brand
+              </span>
+            )}
+          </div>
+
+          {section === 'campaigns' ? (
+            <ActiveCampaigns
+              campaigns={accepted}
+              onUpload={(id) => { setSubmitFor(id); setShowSubmit(true); }}
+              onChat={async (id) => {
+                const res = await openCampaignThread(id);
+                if (res.data) { setChatThreadId(res.data); setTab('chat'); }
+              }}
+            />
+          ) : (
+            <>
+              {/* Portrait tiles: the video is 9:16, so the card should be too.
+                  A landscape frame around vertical footage reads as the wrong
+                  medium before a creator has read a word. */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
+                {shown.map((sub) => (
+                  <MySubmissionCard
+                    key={sub.id}
+                    sub={sub}
+                    onOpen={() => setOpenSub(sub)}
+                    onMessage={() => void messageBrand(sub.id)}
+                  />
+                ))}
+              </div>
+
+              {shown.length === 0 && (
+                <div className="bg-surface border border-line rounded-2xl p-10 text-center">
+                  <FileVideo size={28} className="mx-auto text-faint mb-3" />
+                  <p className="text-sm text-muted">
+                    {section === 'in_use'
+                      ? 'Nothing running yet.'
+                      : 'Nothing has been passed on. Good sign.'}
+                  </p>
+                  <p className="text-xs text-faint mt-1">
+                    {section === 'in_use'
+                      ? 'Videos the brand is running show up here with what they earned.'
+                      : 'When a brand passes on a video they have to say why and what they want instead.'}
+                  </p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
-      {tab === 'browse' && creatorId && <BrowseCampaigns creatorId={creatorId} />}
+      {tab === 'browse' && creatorId && (
+        <BrowseCampaigns
+          creatorId={creatorId}
+          onChat={async (id) => {
+            const res = await openCampaignThread(id);
+            if (res.data) { setChatThreadId(res.data); setTab('chat'); }
+          }}
+        />
+      )}
+
+      {tab === 'chat' && <ChatPanel openThreadId={chatThreadId} />}
 
       {tab === 'payouts' && creatorId && (
         <div className="space-y-6">
@@ -2373,12 +2434,19 @@ function CreatorDashboard({ onViewBrand, onViewOrders }: { onViewBrand: (id: Bra
         </div>
       )}
 
-      {openSub && <SubmissionDetailModal sub={openSub} onClose={() => setOpenSub(null)} />}
+      {openSub && (
+        <SubmissionDetailModal
+          sub={openSub}
+          onClose={() => setOpenSub(null)}
+          onMessage={() => { const id = openSub.id; setOpenSub(null); void messageBrand(id); }}
+        />
+      )}
 
       {showSubmit && creatorId && (
         <SubmitVideoModal
           creatorId={creatorId}
-          onClose={() => setShowSubmit(false)}
+          presetCampaignId={submitFor}
+          onClose={() => { setShowSubmit(false); setSubmitFor(null); }}
           onSubmitted={() => void loadMine()}
         />
       )}
@@ -2387,14 +2455,103 @@ function CreatorDashboard({ onViewBrand, onViewOrders }: { onViewBrand: (id: Bra
 }
 
 /**
- * One of the creator's own videos.
+ * The campaigns a creator is actually on.
  *
- * The headline is whether the brand USED it, not where it sits in a review
- * queue. When they passed, their reason is shown in full rather than
- * summarised into a status pill, because that note is the thing the creator
- * acts on when making the next video.
+ * Distinct from Browse, which is about finding work. This is the work they
+ * already have, with the two things they do with it: post, and ask.
  */
-function MySubmissionCard({ sub, onOpen }: { sub: MySubmission; onOpen: () => void }) {
+function ActiveCampaigns({
+  campaigns,
+  onUpload,
+  onChat,
+}: {
+  campaigns: OpenCampaign[];
+  onUpload: (campaignId: string) => void;
+  onChat: (campaignId: string) => void;
+}) {
+  const [detail, setDetail] = useState<OpenCampaign | null>(null);
+
+  if (campaigns.length === 0) {
+    return (
+      <div className="bg-surface border border-line rounded-2xl p-10 text-center">
+        <Briefcase size={28} className="mx-auto text-faint mb-3" />
+        <p className="text-sm text-muted">You're not on any campaigns yet.</p>
+        <p className="text-xs text-faint mt-1">Browse open campaigns and apply to the ones that fit.</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="grid md:grid-cols-2 gap-4">
+        {campaigns.map((c) => (
+          <div key={c.id} className="bg-surface border border-line rounded-2xl overflow-hidden">
+            <div className="flex items-center gap-3 p-4 border-b border-line">
+              <div className="w-14 h-14 rounded-xl overflow-hidden border border-line flex-shrink-0">
+                <CoverImage src={c.coverUrl} name={c.brandName} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-heading truncate">{c.name}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <BrandMark name={c.brandName} logoUrl={c.brandLogoUrl} size={16} />
+                  <p className="text-xs text-muted truncate">{c.brandName}</p>
+                </div>
+              </div>
+              {c.commissionBps != null && (
+                <span className="text-sm font-bold text-emerald-400 tabular-nums whitespace-nowrap">
+                  {(c.commissionBps / 100).toFixed(c.commissionBps % 100 === 0 ? 0 : 1)}%
+                </span>
+              )}
+            </div>
+            <div className="p-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => onUpload(c.id)}
+                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold inline-flex items-center gap-2"
+              >
+                <Upload size={14} /> Upload a video
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetail(c)}
+                className="px-3 py-2 rounded-lg border border-line bg-surface-2 text-sm font-semibold text-muted hover:text-heading"
+              >
+                View campaign
+              </button>
+              <button
+                type="button"
+                onClick={() => onChat(c.id)}
+                className="px-3 py-2 rounded-lg border border-line bg-surface-2 text-sm font-semibold text-muted hover:text-heading inline-flex items-center gap-2"
+              >
+                <MessagesSquare size={14} /> Chat
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {detail && (
+        <CampaignDetailModal
+          campaign={detail}
+          status="accepted"
+          onClose={() => setDetail(null)}
+          onApply={() => {}}
+          onUpload={() => onUpload(detail.id)}
+        />
+      )}
+    </>
+  );
+}
+
+function MySubmissionCard({
+  sub,
+  onOpen,
+  onMessage,
+}: {
+  sub: MySubmission;
+  onOpen: () => void;
+  onMessage: () => void;
+}) {
   const tone =
     sub.usage === 'in_use'
       ? { border: 'border-emerald-400/30', bg: 'bg-emerald-400/10', text: 'text-emerald-300', label: 'In use' }
@@ -2403,54 +2560,50 @@ function MySubmissionCard({ sub, onOpen }: { sub: MySubmission; onOpen: () => vo
         : { border: 'border-line', bg: 'bg-surface-2', text: 'text-muted', label: 'With the brand' };
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="w-full text-left bg-surface border border-line rounded-2xl overflow-hidden hover:border-purple-500/40 transition"
-    >
-      <div className="relative aspect-video">
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden flex flex-col">
+      <button type="button" onClick={onOpen} className="relative aspect-[9/16] block w-full group">
         <VideoTile name={sub.campaignName} label={sub.brandName} src={sub.coverUrl} />
-      </div>
-      <div className="p-5 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="font-bold text-heading truncate">{sub.campaignName}</h3>
-            <p className="text-xs text-muted truncate">{sub.brandName}</p>
-          </div>
-          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${tone.border} ${tone.bg} ${tone.text}`}>
-            {tone.label}
-          </span>
-        </div>
+        <span className={`absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full text-[10px] font-bold border backdrop-blur-sm ${tone.border} ${tone.bg} ${tone.text}`}>
+          {tone.label}
+        </span>
+      </button>
 
-        <p className="text-xs text-faint">
-          Uploaded {new Date(sub.submittedAt).toLocaleDateString()}
-          {sub.decidedAt && ` · answered ${new Date(sub.decidedAt).toLocaleDateString()}`}
-        </p>
+      <div className="p-3.5 space-y-2.5 flex-1 flex flex-col">
+        <button type="button" onClick={onOpen} className="text-left min-w-0">
+          <h3 className="font-bold text-heading text-sm truncate">{sub.campaignName}</h3>
+          <p className="text-xs text-muted truncate">{sub.brandName}</p>
+          <p className="text-[11px] text-faint mt-1">
+            Uploaded {new Date(sub.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </p>
+        </button>
 
         {sub.usage === 'not_used' && (
-          <div className="p-3 rounded-xl border border-amber-400/25 bg-amber-400/5 space-y-1">
-            <p className="text-xs font-semibold text-amber-300">Why it wasn't used, and what they want next</p>
-            <p className="text-sm text-body leading-relaxed">
-              {sub.brandNote || 'The brand did not leave a note. Ask them in the campaign thread.'}
+          <div className="p-2.5 rounded-lg border border-amber-400/25 bg-amber-400/5">
+            <p className="text-[11px] font-semibold text-amber-300 mb-1">Why, and what they want next</p>
+            <p className="text-xs text-body leading-relaxed line-clamp-4">
+              {sub.brandNote || 'The brand did not leave a note.'}
             </p>
           </div>
         )}
 
-        {sub.usage === 'awaiting' && (
-          <p className="text-xs text-muted leading-relaxed">
-            The brand hasn't answered yet. You don't have to wait for them to upload your next video.
-          </p>
-        )}
-
-        {sub.usage === 'in_use' && sub.trackingToken && (
-          <p className="text-xs text-faint font-mono truncate" title="The id that ties orders back to this video">
-            Tracking {sub.trackingToken}
-          </p>
-        )}
-
-        <p className="text-xs text-purple-400 font-semibold pt-1">View performance →</p>
+        <div className="flex items-center gap-2 pt-1 mt-auto">
+          <button
+            type="button"
+            onClick={onMessage}
+            className="flex-1 px-2.5 py-1.5 rounded-lg border border-line bg-surface-2 text-[11px] font-semibold text-muted hover:text-heading inline-flex items-center justify-center gap-1.5"
+          >
+            <MessagesSquare size={12} /> Reply
+          </button>
+          <button
+            type="button"
+            onClick={onOpen}
+            className="flex-1 px-2.5 py-1.5 rounded-lg border border-line bg-surface-2 text-[11px] font-semibold text-purple-300 hover:text-purple-200"
+          >
+            Performance
+          </button>
+        </div>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -2523,10 +2676,11 @@ function ActivateCampaignRow({
 /* ─────────────────────────────────────────────────────────────
    CREATOR — BROWSE AND APPLY
    ───────────────────────────────────────────────────────────── */
-function BrowseCampaigns({ creatorId }: { creatorId: string }) {
+function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (campaignId: string) => void }) {
   const [campaigns, setCampaigns] = useState<OpenCampaign[] | null>(null);
   const [apps, setApps] = useState<MyApplication[]>([]);
   const [applying, setApplying] = useState<OpenCampaign | null>(null);
+  const [detail, setDetail] = useState<OpenCampaign | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -2556,39 +2710,73 @@ function BrowseCampaigns({ creatorId }: { creatorId: string }) {
         {(campaigns ?? []).map((c) => {
           const status = statusFor(c.id);
           return (
-            <div key={c.id} className="p-5 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
+            <div key={c.id} className="p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border border-line">
                   <CoverImage src={c.coverUrl} name={c.brandName || c.name} />
                 </div>
                 <div className="min-w-0">
                   <p className="font-semibold text-heading truncate">{c.name}</p>
-                  <p className="text-xs text-muted truncate">{c.brandName}</p>
-                  {c.deliverableSpec && <p className="text-xs text-faint mt-1 line-clamp-2">{c.deliverableSpec}</p>}
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <BrandMark name={c.brandName} logoUrl={c.brandLogoUrl} size={18} />
+                    <p className="text-xs text-muted truncate">{c.brandName}</p>
+                    {c.commissionBps != null && (
+                      <span className="text-xs font-semibold text-emerald-400 tabular-nums whitespace-nowrap">
+                        · {(c.commissionBps / 100).toFixed(c.commissionBps % 100 === 0 ? 0 : 1)}% per order
+                      </span>
+                    )}
+                  </div>
+                  {c.contentStyle && (
+                    <p className="text-xs text-faint mt-1 line-clamp-2">{c.contentStyle}</p>
+                  )}
                 </div>
               </div>
 
-              {status === 'accepted' ? (
-                <span className="px-3 py-1.5 rounded-lg border border-emerald-400/30 bg-emerald-400/10 text-emerald-300 text-xs font-semibold whitespace-nowrap">
-                  You're on this campaign
-                </span>
-              ) : status === 'pending' ? (
-                <span className="px-3 py-1.5 rounded-lg border border-line bg-surface-2 text-muted text-xs font-semibold whitespace-nowrap">
-                  Applied
-                </span>
-              ) : (
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => setApplying(c)}
-                  className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold inline-flex items-center gap-2 whitespace-nowrap"
+                  onClick={() => setDetail(c)}
+                  className="px-3 py-2 rounded-lg border border-line bg-surface-2 text-sm font-semibold text-muted hover:text-heading whitespace-nowrap"
                 >
-                  {status === 'rejected' ? 'Apply again' : 'Apply'}
+                  View campaign
                 </button>
-              )}
+
+                {status === 'accepted' ? (
+                  <button
+                    type="button"
+                    onClick={() => onChat(c.id)}
+                    className="px-3 py-2 rounded-lg border border-emerald-400/30 bg-emerald-400/10 text-emerald-300 text-sm font-semibold inline-flex items-center gap-2 whitespace-nowrap"
+                  >
+                    <MessagesSquare size={14} /> Chat
+                  </button>
+                ) : status === 'pending' ? (
+                  <span className="px-3 py-2 rounded-lg border border-line bg-surface-2 text-muted text-sm font-semibold whitespace-nowrap">
+                    Applied
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setApplying(c)}
+                    className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold whitespace-nowrap"
+                  >
+                    {status === 'rejected' ? 'Apply again' : 'Apply'}
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
       </div>
+
+      {detail && (
+        <CampaignDetailModal
+          campaign={detail}
+          status={statusFor(detail.id)}
+          onClose={() => setDetail(null)}
+          onApply={() => setApplying(detail)}
+          onUpload={() => {}}
+        />
+      )}
 
       {applying && (
         <ApplyModal
@@ -2622,7 +2810,11 @@ function ApplyModal({
   onClose: () => void;
   onApplied: () => void;
 }) {
+  const session = useSession();
   const [message, setMessage] = useState('');
+  const [instagram, setInstagram] = useState(
+    (session.creator?.social?.instagram?.handle ?? '').replace(/^@+/, '')
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -2635,9 +2827,31 @@ function ApplyModal({
   const send = async () => {
     setError(null);
     setBusy(true);
+
+    // The handle is saved to the profile, not just attached to this one
+    // application: partnership ads publish under it, so it has to survive
+    // past the application. The existing TikTok handle is passed through
+    // rather than dropped, since this form does not collect it.
+    const ig = instagram.trim().replace(/^@+/, '');
+    if (!ig) {
+      setBusy(false);
+      setError('Add your Instagram handle. Partnership ads run under your own account.');
+      return;
+    }
+    const saved = await saveCreatorSocials(creatorId, {
+      instagram: ig,
+      tiktok: (session.creator?.social?.tiktok?.handle ?? '').replace(/^@+/, ''),
+    });
+    if (saved.error) {
+      setBusy(false);
+      setError(saved.error);
+      return;
+    }
+
     const res = await applyToCampaign(campaign.id, creatorId, message);
     setBusy(false);
     if (res.error) { setError(res.error); return; }
+    await session.refresh();
     onApplied();
     onClose();
   };
@@ -2703,6 +2917,28 @@ function ApplyModal({
           )}
 
           <div className="space-y-1.5">
+            <label htmlFor="apply-ig" className="text-xs font-semibold text-muted">
+              Instagram handle
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted text-sm">@</span>
+              <input
+                id="apply-ig"
+                value={instagram}
+                onChange={(e) => setInstagram(e.target.value)}
+                disabled={busy}
+                placeholder="yourhandle"
+                autoCapitalize="none"
+                autoCorrect="off"
+                className="w-full pl-8 pr-4 py-2.5 bg-surface-2 border border-line rounded-lg text-sm text-heading placeholder:text-faint focus:outline-none focus:border-purple-500"
+              />
+            </div>
+            <p className="text-xs text-faint">
+              Ads run under your own account, so the brand needs the handle before they can accept you.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
             <label htmlFor="apply-note" className="text-xs font-semibold text-muted">
               Note to the brand <span className="text-faint font-normal">(optional)</span>
             </label>
@@ -2722,7 +2958,7 @@ function ApplyModal({
           <div className="p-3 rounded-lg border border-line bg-surface-2">
             <p className="text-xs text-muted leading-relaxed">
               The brand reviews applications. Once you're on, you can upload videos whenever you
-              like — no per-video approval. KYRO takes a 1% fee on what you earn.
+              like — no per-video approval, and you keep the full commission on every order.
             </p>
           </div>
 
@@ -2944,7 +3180,19 @@ function SubmissionReviewCard({ sub, onDecided }: { sub: CampaignSubmission; onD
   const [writing, setWriting] = useState(false);
   const [note, setNote] = useState(sub.brandNote ?? '');
   const [busy, setBusy] = useState(false);
+  const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Opening the thread creates it if it does not exist yet, then scrolls the
+  // brand's own inbox further down the page to it.
+  const openThread = async () => {
+    setError(null);
+    setOpening(true);
+    const res = await openSubmissionThread(sub.id);
+    setOpening(false);
+    if (res.error) { setError(res.error); return; }
+    document.getElementById('brand-messages')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const decide = async (usage: 'in_use' | 'not_used') => {
     setError(null);
@@ -3028,13 +3276,24 @@ function SubmissionReviewCard({ sub, onDecided }: { sub: CampaignSubmission; onD
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={() => setWriting(true)}
-            className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading"
-          >
-            {sub.usage === 'not_used' ? 'Edit feedback' : 'Not using it'}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setWriting(true)}
+              className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading"
+            >
+              {sub.usage === 'not_used' ? 'Edit feedback' : 'Not using it'}
+            </button>
+            {/* A note is a verdict. This is where the back and forth happens. */}
+            <button
+              type="button"
+              onClick={() => void openThread()}
+              disabled={opening}
+              className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <MessagesSquare size={12} /> Message {sub.creatorHandle}
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -3110,15 +3369,17 @@ function CreatorVideosPanel({ brandId }: { brandId: string }) {
    ───────────────────────────────────────────────────────────── */
 function SubmitVideoModal({
   creatorId,
+  presetCampaignId,
   onClose,
   onSubmitted,
 }: {
   creatorId: string;
+  presetCampaignId?: string | null;
   onClose: () => void;
   onSubmitted: () => void;
 }) {
   const [campaigns, setCampaigns] = useState<OpenCampaign[] | null>(null);
-  const [campaignId, setCampaignId] = useState('');
+  const [campaignId, setCampaignId] = useState(presetCampaignId ?? '');
   const [file, setFile] = useState<File | null>(null);
   const [stage, setStage] = useState<'idle' | 'uploading' | 'saving'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -3128,9 +3389,11 @@ function SubmitVideoModal({
       const res = await listCampaignsOpenToCreators();
       setCampaigns(res.data);
       if (res.error) setError(res.error);
-      if (res.data.length === 1) setCampaignId(res.data[0].id);
+      // Opened from a specific campaign, or there is only one to choose from.
+      if (presetCampaignId) setCampaignId(presetCampaignId);
+      else if (res.data.length === 1) setCampaignId(res.data[0].id);
     })();
-  }, []);
+  }, [presetCampaignId]);
 
   const chosen = campaigns?.find((c) => c.id === campaignId) ?? null;
   const busy = stage !== 'idle';
@@ -4855,7 +5118,9 @@ function App() {
   const [adminEntry, setAdminEntry] = useState(initial.admin);
   const [role, setRole] = useState<Role>(initial.admin ? 'admin' : 'brand');
   const [profileCreatorId, setProfileCreatorId] = useState<CreatorId>('maya');
-  const [profileBrandId, setProfileBrandId] = useState<BrandId>('boldbuns');
+  // The public brand page is still reachable by route; nothing inside the app
+  // links to it now that the creator dashboard reads from the database.
+  const [profileBrandId] = useState<BrandId>('boldbuns');
   const [restored, setRestored] = useState(false);
 
   // Keep in sync with browser back/forward
@@ -5054,10 +5319,7 @@ function App() {
     <AppShell role={role} onSwitch={setRole} onSignOut={() => void doSignOut()} onSettings={() => setView('settings')} showDemoSwitch={showDemoSwitch}>
       {role === 'brand' && <BrandDashboard onViewCreator={(id) => { setProfileCreatorId(id); setView('creator-profile'); }} />}
       {role === 'creator' && (
-        <CreatorDashboard
-          onViewBrand={(id) => { setProfileBrandId(id); setView('brand-profile'); }}
-          onViewOrders={() => { setView('affiliate-orders'); nav('/orders'); }}
-        />
+        <CreatorDashboard onViewOrders={() => { setView('affiliate-orders'); nav('/orders'); }} />
       )}
       {role === 'admin' && <AdminDashboard onViewCreator={(id) => { setProfileCreatorId(id); setView('creator-profile'); }} />}
     </AppShell>

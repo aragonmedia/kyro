@@ -107,16 +107,11 @@ whether or not you continue the Campaign.
 
 ### 8. KYRO Fee
 
-KYRO charges **1%**, applied to a single base determined by how your Campaign pays Creators:
+KYRO charges **1% of Attributed Sales**. Campaigns pay Creators on sales commission, so
+there is one base and it is never stacked.
 
-| Your Campaign pays Creators on | KYRO Fee is 1% of |
-|---|---|
-| Sales commission (% of value, or per order) | Attributed sales |
-| Ad performance | Ad spend |
-| Flat rate (per submission, retainer, bonus) | Creator earnings |
-
-Fees are never stacked. One base per payout type. The KYRO Fee is charged alongside
-Creator Commission on the same cycle.
+**The KYRO Fee is charged to you, not to the Creator.** It is billed alongside Creator
+Commission on the same cycle, and nothing is deducted from what a Creator earns.
 
 ### 9. Content license — scope, term and conditions
 

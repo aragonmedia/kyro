@@ -1023,6 +1023,9 @@ export interface OpenCampaign {
   commissionBps: number | null;
   /** Days an earning sits in `clearing` before it can be withdrawn. */
   clearingDays: number | null;
+  /** What the video should feel like, as opposed to what format it is. */
+  contentStyle: string | null;
+  brandLogoUrl: string | null;
 }
 
 /**
@@ -1047,7 +1050,7 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
     const { data, error } = await sb
       .from('campaigns')
       .select(
-        'id, name, brand_id, status, cover_url, deliverable_spec, brief, commission_rate_bps, clearing_days, brands(name, logo_url)'
+        'id, name, brand_id, status, cover_url, deliverable_spec, brief, content_style, commission_rate_bps, clearing_days, brands(name, logo_url)'
       )
       .in('status', ['live', 'pending_fund', 'draft'])
       .order('created_at', { ascending: false });
@@ -1062,6 +1065,7 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
       cover_url: string | null;
       deliverable_spec: string | null;
       brief: string | null;
+      content_style: string | null;
       commission_rate_bps: number | null;
       clearing_days: number | null;
       brands: { name: string; logo_url: string | null } | { name: string; logo_url: string | null }[] | null;
@@ -1080,6 +1084,8 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
             coverUrl: r.cover_url,
             deliverableSpec: r.deliverable_spec,
             brief: r.brief,
+            contentStyle: r.content_style,
+            brandLogoUrl: brand?.logo_url ?? null,
             commissionBps: r.commission_rate_bps,
             clearingDays: r.clearing_days,
           };
@@ -1985,5 +1991,233 @@ export async function setEmailNotifications(userId: string, on: boolean): Promis
     return ok(true);
   } catch (e) {
     return fail(false, describeError(e, 'Could not save that preference.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Campaign products
+
+   What a creator would actually be selling. Filled in by the brand today,
+   shaped so a Shopify product sync can write the same rows later without the
+   read path changing.
+   ───────────────────────────────────────────────────────────── */
+
+export interface CampaignProduct {
+  id: string;
+  campaignId: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  priceCents: Cents | null;
+  externalUrl: string | null;
+}
+
+export async function listCampaignProducts(campaignId: string): Promise<Result<CampaignProduct[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('campaign_products')
+      .select('id, campaign_id, name, description, image_url, price_cents, external_url')
+      .eq('campaign_id', campaignId)
+      .order('position', { ascending: true });
+
+    if (error) return fail([], describeError(error, 'Could not load the products.'));
+
+    return ok(
+      (data ?? []).map((r) => {
+        const row = r as {
+          id: string;
+          campaign_id: string;
+          name: string;
+          description: string | null;
+          image_url: string | null;
+          price_cents: number | null;
+          external_url: string | null;
+        };
+        return {
+          id: row.id,
+          campaignId: row.campaign_id,
+          name: row.name,
+          description: row.description,
+          imageUrl: row.image_url,
+          priceCents: row.price_cents,
+          externalUrl: row.external_url,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load the products.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Chat
+
+   Two thread shapes, deliberately different:
+
+     campaign   — the brand and every accepted creator, together
+     submission — one creator and the brand, about one video
+
+   Both are reached through database functions rather than direct inserts.
+   Membership is checked server side, so a thread id guessed by a client is
+   worth nothing.
+   ───────────────────────────────────────────────────────────── */
+
+export type ThreadKind = 'campaign' | 'submission';
+
+export interface ThreadSummary {
+  id: string;
+  kind: ThreadKind;
+  campaignId: string;
+  campaignName: string;
+  brandName: string;
+  submissionId: string | null;
+  lastBody: string | null;
+  lastSender: string | null;
+  lastAt: string | null;
+  unread: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  threadId: string;
+  senderUserId: string;
+  senderName: string;
+  senderRole: string | null;
+  body: string;
+  createdAt: string;
+}
+
+/** Every thread the signed-in user can see, newest activity first. */
+export async function listMyThreads(): Promise<Result<ThreadSummary[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb.rpc('my_threads');
+    if (error) return fail([], describeError(error, 'Could not load your messages.'));
+
+    return ok(
+      (data ?? []).map((r: Record<string, unknown>) => ({
+        id: r.thread_id as string,
+        kind: r.kind as ThreadKind,
+        campaignId: r.campaign_id as string,
+        campaignName: (r.campaign_name as string) ?? 'Campaign',
+        brandName: (r.brand_name as string) ?? '',
+        submissionId: (r.submission_id as string | null) ?? null,
+        lastBody: (r.last_body as string | null) ?? null,
+        lastSender: (r.last_sender as string | null) ?? null,
+        lastAt: (r.last_at as string | null) ?? null,
+        unread: Number(r.unread ?? 0),
+      }))
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your messages.'));
+  }
+}
+
+/** The shared thread for a campaign, created on first open. */
+export async function openCampaignThread(campaignId: string): Promise<Result<string | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb.rpc('campaign_thread', { p_campaign_id: campaignId });
+    if (error) return fail(null, describeError(error, 'Could not open that conversation.'));
+    return ok((data as string) ?? null);
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not open that conversation.'));
+  }
+}
+
+/** The private thread with the brand about one video. */
+export async function openSubmissionThread(submissionId: string): Promise<Result<string | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb.rpc('submission_thread', { p_submission_id: submissionId });
+    if (error) return fail(null, describeError(error, 'Could not open that conversation.'));
+    return ok((data as string) ?? null);
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not open that conversation.'));
+  }
+}
+
+export async function listMessages(threadId: string, limit = 200): Promise<Result<ChatMessage[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('messages')
+      .select('id, thread_id, sender_user_id, sender_name, sender_role, body, created_at')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true })
+      .limit(limit);
+
+    if (error) return fail([], describeError(error, 'Could not load the conversation.'));
+
+    return ok(
+      (data ?? []).map((r) => {
+        const row = r as {
+          id: string;
+          thread_id: string;
+          sender_user_id: string;
+          sender_name: string;
+          sender_role: string | null;
+          body: string;
+          created_at: string;
+        };
+        return {
+          id: row.id,
+          threadId: row.thread_id,
+          senderUserId: row.sender_user_id,
+          senderName: row.sender_name,
+          senderRole: row.sender_role,
+          body: row.body,
+          createdAt: row.created_at,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load the conversation.'));
+  }
+}
+
+/**
+ * Send a message.
+ *
+ * Only the thread and the body go over the wire. Who sent it, under what name
+ * and in what role is stamped by a database trigger from the session, so a
+ * creator cannot post as the brand by editing a payload.
+ */
+export async function sendMessage(threadId: string, body: string): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+
+  const text = body.trim();
+  if (!text) return fail(false, 'Write something first.');
+  if (text.length > 4000) return fail(false, 'That message is too long.');
+
+  try {
+    const { error } = await sb.from('messages').insert({ thread_id: threadId, body: text });
+    if (error) return fail(false, describeError(error, 'Could not send that message.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not send that message.'));
+  }
+}
+
+/** Clear the unread badge for a thread. Best effort: never blocks reading. */
+export async function markThreadRead(threadId: string, userId: string): Promise<void> {
+  const sb = client();
+  if (!sb) return;
+  try {
+    await sb
+      .from('thread_reads')
+      .upsert(
+        { thread_id: threadId, user_id: userId, last_read_at: new Date().toISOString() },
+        { onConflict: 'thread_id,user_id' }
+      );
+  } catch {
+    /* A stale badge is not worth interrupting the conversation over. */
   }
 }
