@@ -474,7 +474,6 @@ export async function ensureMyCreator(opts?: {
 export interface NewCampaignInput {
   name: string;
   brief?: string;
-  poolTargetCents: Cents;
   commissionType: CommissionType;
   commissionPercentSpend?: number | null;
   commissionPerConversionCents?: Cents | null;
@@ -501,7 +500,6 @@ export async function createCampaign(
 
   const name = input.name.trim();
   if (!name) return fail(null, 'Give the campaign a name.');
-  if (input.poolTargetCents < 0) return fail(null, 'Pool budget must be zero or more.');
 
   try {
     const { data, error } = await sb
@@ -515,7 +513,6 @@ export async function createCampaign(
         commission_type: input.commissionType,
         commission_percent_spend: input.commissionPercentSpend ?? null,
         commission_per_conversion_cents: input.commissionPerConversionCents ?? null,
-        pool_target_cents: input.poolTargetCents,
         pool_balance_cents: 0,
         spent_cents: 0,
         deliverable_spec: input.deliverableSpec?.trim() || null,
@@ -1561,5 +1558,200 @@ export async function listRosterForBrand(brandId: string): Promise<Result<Record
     return ok(out);
   } catch (e) {
     return fail({}, describeError(e, 'Could not load the roster.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Creator earnings
+   ───────────────────────────────────────────────────────────── */
+
+export interface EarningsPoint {
+  /** ISO date, YYYY-MM-DD. */
+  date: string;
+  cents: Cents;
+}
+
+export interface CreatorEarnings {
+  windowDays: number;
+  /** Total earned inside the window. Not the lifetime total. */
+  windowCents: Cents;
+  /** One entry per day in the window, zero-filled. */
+  series: EarningsPoint[];
+  pendingCents: Cents;
+  clearingCents: Cents;
+  availableCents: Cents;
+  paidCents: Cents;
+  /** Soonest available_at still in the future, or null. */
+  nextClearsAt: string | null;
+}
+
+const emptyEarnings = (windowDays: number): CreatorEarnings => ({
+  windowDays,
+  windowCents: 0,
+  series: [],
+  pendingCents: 0,
+  clearingCents: 0,
+  availableCents: 0,
+  paidCents: 0,
+  nextClearsAt: null,
+});
+
+/**
+ * Daily earnings for the chart, plus the balance breakdown.
+ *
+ * Aggregated in memory rather than with a grouped query, matching how
+ * listCampaignsWithStats works: two flat reads beat a round trip per day, and
+ * a creator's earning rows inside a 90-day window are not numerous.
+ *
+ * The series is zero-filled across every day in the window. A bar chart that
+ * silently omits empty days compresses the gaps and misstates the trend.
+ */
+export async function getCreatorEarnings(
+  creatorId: string,
+  windowDays = 30
+): Promise<Result<CreatorEarnings>> {
+  const sb = client();
+  if (!sb) return ok(emptyEarnings(windowDays));
+
+  const since = new Date();
+  since.setUTCHours(0, 0, 0, 0);
+  since.setUTCDate(since.getUTCDate() - (windowDays - 1));
+
+  try {
+    const [earningsRes, balanceRes] = await Promise.all([
+      sb
+        .from('earnings')
+        .select('commission_cents, state, available_at, created_at')
+        .eq('creator_id', creatorId)
+        .neq('state', 'reversed')
+        .gte('created_at', since.toISOString()),
+      sb.from('creator_balances').select('*').eq('creator_id', creatorId).maybeSingle(),
+    ]);
+
+    if (earningsRes.error) {
+      return fail(emptyEarnings(windowDays), describeError(earningsRes.error, 'Could not load your earnings.'));
+    }
+
+    const rows = (earningsRes.data ?? []) as Array<{
+      commission_cents: number;
+      state: string;
+      available_at: string | null;
+      created_at: string;
+    }>;
+
+    const byDay = new Map<string, number>();
+    let windowCents = 0;
+    let nextClearsAt: string | null = null;
+    const now = Date.now();
+
+    for (const r of rows) {
+      const day = r.created_at.slice(0, 10);
+      byDay.set(day, (byDay.get(day) ?? 0) + r.commission_cents);
+      windowCents += r.commission_cents;
+      if (r.available_at && Date.parse(r.available_at) > now) {
+        if (!nextClearsAt || Date.parse(r.available_at) < Date.parse(nextClearsAt)) {
+          nextClearsAt = r.available_at;
+        }
+      }
+    }
+
+    const series: EarningsPoint[] = [];
+    for (let i = 0; i < windowDays; i += 1) {
+      const d = new Date(since);
+      d.setUTCDate(since.getUTCDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      series.push({ date: key, cents: byDay.get(key) ?? 0 });
+    }
+
+    const bal = (balanceRes.data ?? {}) as Record<string, number>;
+
+    return ok({
+      windowDays,
+      windowCents,
+      series,
+      pendingCents: bal.pending_cents ?? 0,
+      clearingCents: bal.clearing_cents ?? 0,
+      availableCents: bal.available_cents ?? 0,
+      paidCents: bal.paid_cents ?? 0,
+      nextClearsAt,
+    });
+  } catch (e) {
+    return fail(emptyEarnings(windowDays), describeError(e, 'Could not load your earnings.'));
+  }
+}
+
+export interface CreatorOrderRow {
+  earningId: string;
+  orderNumber: string | null;
+  campaignName: string;
+  brandName: string;
+  placedAt: string;
+  /** Order value the commission was calculated on. */
+  commissionableCents: Cents;
+  commissionBps: number;
+  commissionCents: Cents;
+  state: string;
+  availableAt: string | null;
+}
+
+/**
+ * Every attributed order behind a creator's balance, newest first.
+ *
+ * Creators do not trust a single balance figure, and they are right not to.
+ * This is the itemised version: which order, from which campaign, what it was
+ * worth, what rate applied, and when it clears.
+ */
+export async function listCreatorOrders(
+  creatorId: string,
+  limit = 100
+): Promise<Result<CreatorOrderRow[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('earnings')
+      .select(
+        'id, commissionable_cents, commission_bps, commission_cents, state, available_at, created_at, orders(external_number, placed_at), campaigns(name), brands(name)'
+      )
+      .eq('creator_id', creatorId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) return fail([], describeError(error, 'Could not load your orders.'));
+
+    const rows = (data ?? []) as Array<{
+      id: string;
+      commissionable_cents: number;
+      commission_bps: number;
+      commission_cents: number;
+      state: string;
+      available_at: string | null;
+      created_at: string;
+      orders: { external_number: string | null; placed_at: string } | Array<{ external_number: string | null; placed_at: string }> | null;
+      campaigns: { name: string } | Array<{ name: string }> | null;
+      brands: { name: string } | Array<{ name: string }> | null;
+    }>;
+
+    const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+
+    return ok(
+      rows.map((r) => {
+        const order = one(r.orders);
+        return {
+          earningId: r.id,
+          orderNumber: order?.external_number ?? null,
+          campaignName: one(r.campaigns)?.name ?? 'Campaign',
+          brandName: one(r.brands)?.name ?? '',
+          placedAt: order?.placed_at ?? r.created_at,
+          commissionableCents: r.commissionable_cents,
+          commissionBps: r.commission_bps,
+          commissionCents: r.commission_cents,
+          state: r.state,
+          availableAt: r.available_at,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your orders.'));
   }
 }

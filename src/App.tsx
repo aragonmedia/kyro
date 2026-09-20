@@ -27,8 +27,6 @@ import {
   connectProvider,
   createCampaign,
   disconnectProvider,
-  ensureBrandBilling,
-  getBrandUnbilled,
   getOnboardingStatus,
   createSubmission,
   listCampaignsOpenToCreators,
@@ -50,11 +48,13 @@ import {
   parsePercentToFraction,
   signCampaignAgreement,
 } from './lib/db';
-import type { BrandApplication, BrandBilling, RosterCreator, BrandConnection, BrandUnbilled, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
+import type { BrandApplication, RosterCreator, BrandConnection, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
 import { uploadSubmissionVideo } from './lib/storage';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { saveBankAccount, saveBrandBankAccount, startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
+import { EarningsCard } from './components/EarningsCard';
+import { CreatorOrders } from './components/CreatorOrders';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -1134,7 +1134,7 @@ function RolePicker({
   const allOptions = [
     { role: 'brand' as Role, icon: Briefcase, title: "I'm a Brand", desc: 'Launch creator-led ads on Meta, fund campaigns, see ROI in real time.', border: 'border-blue-400/30 hover:border-blue-400/60' },
     { role: 'creator' as Role, icon: Camera, title: "I'm a Creator", desc: 'Apply to brand campaigns, submit videos, earn from ad performance.', border: 'border-purple-400/30 hover:border-purple-400/60' },
-    { role: 'admin' as Role, icon: Shield, title: 'Admin', desc: 'Oversee platform, curate matches, manage funding pools.', border: 'border-pink-400/30 hover:border-pink-400/60' },
+    { role: 'admin' as Role, icon: Shield, title: 'Admin', desc: 'Oversee the platform, curate matches, and keep commission flowing.', border: 'border-pink-400/30 hover:border-pink-400/60' },
   ];
   const options = allOptions.filter((o) => roles.includes(o.role));
   return (
@@ -1539,7 +1539,7 @@ function OnboardingGates({
           index={3}
           icon={Wallet}
           title="Add payment methods"
-          blurb="A card holds the $2,500 refundable deposit. Commission is billed to your bank account by ACH, never to the card."
+          blurb="Commission on attributed orders is billed to your bank account by ACH. There is no ad budget to fund and no deposit to hold."
           done={status.paymentReady}
           optional={!status.paymentReady}
         >
@@ -1596,70 +1596,6 @@ function OnboardingGates({
   );
 }
 
-/**
- * Deposit usage. Brands are billed when unbilled accrual reaches the trigger
- * (30% of deposit by default), so this is the number they should be able to
- * see at any moment without asking.
- */
-function DepositTracker({ billing, unbilled }: { billing: BrandBilling; unbilled: BrandUnbilled }) {
-  const deposit = billing.depositCents;
-  const used = unbilled.totalCents;
-  const pct = deposit > 0 ? Math.min(100, Math.round((used / deposit) * 100)) : 0;
-  const triggerPct = Math.round(billing.billingTriggerBps / 100);
-  const triggerCents = Math.round((deposit * billing.billingTriggerBps) / 10000);
-  const overTrigger = used >= triggerCents && triggerCents > 0;
-
-  return (
-    <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-heading">Accrued this cycle</h2>
-          <p className="text-sm text-muted mt-0.5">
-            Billed at {triggerPct}% of your deposit ({fmt(centsToDollars(triggerCents))}) or monthly, whichever comes first.
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-2xl font-bold text-heading tabular-nums">{fmt(centsToDollars(used))}</p>
-          <p className="text-xs text-faint">of {fmt(centsToDollars(deposit))} deposit</p>
-        </div>
-      </div>
-
-      <div>
-        <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${overTrigger ? 'bg-amber-400' : 'bg-gradient-kyro'}`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <div className="flex justify-between text-xs text-faint mt-1.5">
-          <span>{pct}% used</span>
-          <span>{overTrigger ? 'Above billing threshold' : `Bills at ${triggerPct}%`}</span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 pt-1 border-t border-line">
-        <div className="pt-3">
-          <p className="text-xs text-faint">Creator commission</p>
-          <p className="text-sm font-bold text-heading tabular-nums">{fmt(centsToDollars(unbilled.commissionCents))}</p>
-        </div>
-        <div className="pt-3">
-          <p className="text-xs text-faint">KYRO fee</p>
-          <p className="text-sm font-bold text-heading tabular-nums">{fmt(centsToDollars(unbilled.feeCents))}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   BRAND DASHBOARD
-   ───────────────────────────────────────────────────────────── */
-
-/**
- * One shape for a campaign row, whichever source it came from. The dashboard
- * renders `CampaignCard[]` and never branches on "is this real data?" below the
- * top of the component — that decision gets made once and then forgotten.
- */
 /** "1 creator" / "3 creators". Module level so every panel counts the same way. */
 function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -1757,21 +1693,13 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   const [loading, setLoading] = useState(liveMode);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
-  const [billing, setBilling] = useState<BrandBilling | null>(null);
-  const [unbilled, setUnbilled] = useState<BrandUnbilled | null>(null);
 
   // Onboarding gates + deposit usage. Loaded alongside campaigns rather than
   // inside reload() so signing the agreement doesn't refetch the campaign list.
   const loadGates = useCallback(async () => {
     if (!brandId) return;
-    const [status, bill, owed] = await Promise.all([
-      getOnboardingStatus(brandId),
-      ensureBrandBilling(brandId),
-      getBrandUnbilled(brandId),
-    ]);
+    const status = await getOnboardingStatus(brandId);
     setOnboarding(status.data);
-    setBilling(bill.data);
-    setUnbilled(owed.data);
   }, [brandId]);
 
   useEffect(() => { void loadGates(); }, [loadGates]);
@@ -1812,12 +1740,11 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
     return !q || c.name.toLowerCase().includes(q);
   });
 
-  const totalPool = allCards.reduce((s, c) => s + c.poolDollars, 0);
-  const totalSpent = allCards.reduce((s, c) => s + c.spentDollars, 0);
+  // Commission owed, not budget. KYRO has no pools to fund.
+  const totalCommission = allCards.reduce((s, c) => s + c.spentDollars, 0);
   const totalOrders = allCards.reduce((s, c) => s + c.orders, 0);
   const totalImpr = cards.reduce((s, c) => s + c.impressions, 0);
   const totalSubs = cards.reduce((s, c) => s + c.submissions, 0);
-  const poolUsedPct = totalPool > 0 ? Math.round((totalSpent / totalPool) * 100) : 0;
 
   const busy = loading || workspaceLoading;
   const isEmpty = liveMode && !busy && !loadError && cards.length === 0;
@@ -1832,14 +1759,14 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   // original illustrative copy.
   const kpis = liveMode
     ? [
-        { label: 'Pool Budget', value: fmt(totalPool), sub: `across ${plural(cards.length, 'campaign')}`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-        { label: 'Spend to Date', value: fmt(totalSpent), sub: `${poolUsedPct}% of budget`, icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
+        { label: 'Creator Commission', value: fmt(totalCommission), sub: `across ${plural(cards.length, 'campaign')}`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
+        { label: 'KYRO Fee', value: fmt(totalCommission * 0.01), sub: '1% of commission', icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
         { label: 'Conversions', value: totalOrders.toLocaleString(), sub: `from ${plural(totalSubs, 'submission')}`, icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
         { label: 'Impressions', value: fmtK(totalImpr), sub: 'from live ads', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
       ]
     : [
-        { label: 'Total Pool Funded', value: fmt(totalPool), sub: `across ${cards.length} campaigns`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-        { label: 'Spend to Date', value: fmt(totalSpent), sub: `${poolUsedPct}% of pool`, icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
+        { label: 'Creator Commission', value: fmt(totalCommission), sub: `across ${cards.length} campaigns`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
+        { label: 'KYRO Fee', value: fmt(totalCommission * 0.01), sub: '1% of commission', icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
         { label: 'Conversions', value: totalOrders.toLocaleString(), sub: '+18% vs last week', icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
         { label: 'Impressions', value: fmtK(totalImpr), sub: 'organic reach via creators', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
       ];
@@ -1897,10 +1824,6 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
 
       {liveMode && brandId && onboarding && !onboarding.complete && (
         <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
-      )}
-
-      {liveMode && onboarding?.complete && billing && unbilled && (
-        <DepositTracker billing={billing} unbilled={unbilled} />
       )}
 
       {liveMode && brandId && <ApplicationsPanel brandId={brandId} />}
@@ -2039,7 +1962,7 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
             </div>
             <p className="text-lg font-bold text-heading">No campaigns yet</p>
             <p className="text-sm text-muted mt-1.5 max-w-sm mx-auto">
-              A campaign is where you set the budget, the commission, and what you want creators to make.
+              A campaign is where you set the commission and what you want creators to make.
             </p>
             <button
               onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
@@ -2054,7 +1977,6 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
         {!busy && !loadError && cards.length > 0 && (
           <div className="divide-y divide-line">
             {cards.map((c) => {
-              const poolPct = c.poolDollars ? Math.round((c.spentDollars / c.poolDollars) * 100) : 0;
               return (
                 <div key={c.id} className="p-5 hover:bg-surface-2 transition cursor-pointer">
                   <div className="flex flex-col lg:flex-row gap-5">
@@ -2079,15 +2001,10 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                       </div>
                       {c.status === 'live' && (
                         <>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            <div><p className="text-xs text-faint">Spend</p><p className="text-sm font-bold text-heading">{fmt(c.spentDollars)}</p></div>
-                            <div><p className="text-xs text-faint">Pool</p><p className="text-sm font-bold text-heading">{fmt(c.poolDollars)}</p></div>
-                            <div><p className="text-xs text-faint">Conversions</p><p className="text-sm font-bold text-emerald-400">{c.orders.toLocaleString()}</p></div>
-                            <div><p className="text-xs text-faint">ROAS</p><p className="text-sm font-bold text-purple-400">{c.roas === null ? '—' : `${c.roas}x`}</p></div>
-                          </div>
-                          <div>
-                            <div className="flex justify-between text-xs text-faint mb-1.5"><span>Pool depletion</span><span>{poolPct}%</span></div>
-                            <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden"><div className={`h-full ${poolPct > 80 ? 'bg-pink-500' : 'bg-gradient-kyro'} rounded-full transition-all`} style={{ width: `${Math.min(poolPct, 100)}%` }}></div></div>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div><p className="text-xs text-faint">Commission</p><p className="text-sm font-bold text-heading">{fmt(c.spentDollars)}</p></div>
+                            <div><p className="text-xs text-faint">Attributed orders</p><p className="text-sm font-bold text-emerald-400">{c.orders.toLocaleString()}</p></div>
+                            <div><p className="text-xs text-faint">Creators</p><p className="text-sm font-bold text-purple-400">{c.creators}</p></div>
                           </div>
                         </>
                       )}
@@ -2131,7 +2048,6 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
  */
 function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string | null; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState('');
-  const [pool, setPool] = useState('');
   const [commissionType, setCommissionType] = useState<CommissionType>('percent_spend');
   const [percent, setPercent] = useState('');
   const [perConversion, setPerConversion] = useState('');
@@ -2152,8 +2068,6 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
     const next: Record<string, string> = {};
     if (!name.trim()) next.name = 'Give the campaign a name.';
 
-    const poolCents = parseMoneyToCents(pool);
-    if (poolCents === null) next.pool = 'Enter a budget, like 25,000.';
 
     let percentFraction: number | null = null;
     if (wantsPercent) {
@@ -2169,13 +2083,12 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
 
     setErrors(next);
     if (Object.keys(next).length > 0) return;
-    if (poolCents === null) return;
 
     setSaving(true);
     setSubmitError(null);
 
     if (!brandId) {
-      await mockApi.createCampaign({ name: name.trim(), poolTargetCents: poolCents });
+      await mockApi.createCampaign({ name: name.trim() });
       setSaving(false);
       onClose();
       return;
@@ -2185,7 +2098,6 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
       name: name.trim(),
       brief: brief.trim(),
       deliverableSpec: deliverable.trim(),
-      poolTargetCents: poolCents,
       commissionType,
       commissionPercentSpend: percentFraction,
       commissionPerConversionCents: perConversionCents,
@@ -2223,17 +2135,6 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
             {errors.name && <p className="text-xs text-pink-300 mt-1.5">{errors.name}</p>}
           </div>
 
-          <div>
-            <label className={label}>Pool Budget</label>
-            <div className="relative">
-              <span className="absolute left-4 top-2.5 text-muted">$</span>
-              <input value={pool} onChange={(e) => setPool(e.target.value)} inputMode="decimal" className={`${field} pl-8 ${borderFor('pool')}`} placeholder="25,000" />
-            </div>
-            {errors.pool
-              ? <p className="text-xs text-pink-300 mt-1.5">{errors.pool}</p>
-              : <p className="text-xs text-faint mt-1.5">What you plan to spend. You fund the pool separately before the campaign goes live.</p>}
-          </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={label}>Commission Type</label>
@@ -2242,9 +2143,8 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
                 onChange={(e) => setCommissionType(e.target.value as CommissionType)}
                 className="w-full px-3 py-2.5 bg-surface-2 border border-line rounded-lg text-heading focus:outline-none focus:border-purple-500"
               >
-                <option value="percent_spend">% of ad spend</option>
-                <option value="per_conversion">Per conversion</option>
-                <option value="hybrid">Hybrid</option>
+                <option value="percent_spend">% of order value</option>
+                <option value="per_conversion">Flat fee per order</option>
               </select>
             </div>
             {wantsPercent && (
@@ -2309,46 +2209,8 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
 
   useEffect(() => { void loadMine(); }, [loadMine]);
   const [tab, setTab] = useState<'submissions' | 'browse' | 'payouts'>('submissions');
-  const [liveEarnings, setLiveEarnings] = useState(2820);
-  const [notification, setNotification] = useState<{ amount: number; orders: number } | null>(null);
-
-  useEffect(() => {
-    const id = setInterval(() => setLiveEarnings((e) => e + Math.random() * 2.4), 1500);
-    return () => clearInterval(id);
-  }, []);
-
-  // Trybe-style earning notification — fires every ~20s
-  useEffect(() => {
-    const id = setInterval(() => {
-      setNotification({ amount: 24 + Math.floor(Math.random() * 16), orders: 1 + Math.floor(Math.random() * 3) });
-      setTimeout(() => setNotification(null), 5000);
-    }, 20000);
-    // Show one immediately for the demo
-    setTimeout(() => {
-      setNotification({ amount: 24, orders: 2 });
-      setTimeout(() => setNotification(null), 5000);
-    }, 3000);
-    return () => clearInterval(id);
-  }, []);
-
-  const totalPaid = SEED_PAYOUTS.reduce((s, p) => s + p.amount, 0);
   return (
     <div className="max-w-7xl mx-auto space-y-8 relative">
-      {/* Earning notification toast */}
-      {notification && (
-        <div className="fixed top-20 right-4 z-50 animate-in slide-in-from-right">
-          <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-emerald-500/95 to-emerald-600/95 backdrop-blur-md border border-emerald-400/50 rounded-xl shadow-2xl shadow-emerald-500/30 max-w-xs">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-              <DollarSign size={20} className="text-white" />
-            </div>
-            <div>
-              <p className="text-white font-bold text-base">You just earned +${notification.amount}</p>
-              <p className="text-emerald-100 text-xs">{notification.orders} order{notification.orders > 1 ? 's' : ''} · just now</p>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-bold text-heading">Hey, {session.displayName} 👋</h1>
@@ -2356,23 +2218,7 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-3xl border border-line bg-surface p-6 md:p-8">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/15 rounded-full blur-3xl translate-x-1/3 -translate-y-1/3 pointer-events-none"></div>
-        <div className="relative z-10 grid md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 space-y-3">
-            <p className="text-xs font-semibold text-muted uppercase tracking-widest">Earnings — this period</p>
-            <div className="flex items-baseline gap-3">
-              <span className="text-5xl md:text-6xl font-bold bg-gradient-kyro bg-clip-text text-transparent tabular-nums">${liveEarnings.toFixed(2)}</span>
-              <span className="text-emerald-400 text-sm font-semibold flex items-center gap-1"><ArrowUpRight size={14} /> live</span>
-            </div>
-            <p className="text-sm text-muted">Bi-weekly payout via Trolley — next on <span className="text-heading font-semibold">Jun 15, 2026</span></p>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
-            <div className="p-4 rounded-xl bg-emerald-400/10 border border-emerald-400/20"><p className="text-xs text-muted">Total Paid</p><p className="text-xl font-bold text-emerald-400">{fmt(totalPaid)}</p></div>
-            <div className="p-4 rounded-xl bg-blue-400/10 border border-blue-400/20"><p className="text-xs text-muted">Active Videos</p><p className="text-xl font-bold text-blue-400">2 live</p></div>
-          </div>
-        </div>
-      </div>
+      {creatorId && <EarningsCard creatorId={creatorId} />}
 
       <div className="flex items-center gap-1 p-1 bg-surface border border-line rounded-xl w-fit">
         {[
@@ -2495,6 +2341,7 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
 
       {tab === 'payouts' && (
         <div className="space-y-6">
+        {creatorId && <CreatorOrders creatorId={creatorId} />}
         <PayoutAccountCard />
         <div className="bg-surface border border-line rounded-2xl overflow-hidden">
           <div className="p-5 border-b border-line flex items-center justify-between">
@@ -4425,7 +4272,7 @@ function BrandBillingPanel() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-heading">Bank account for commission</p>
-            <p className="text-xs text-faint">Commission is billed by ACH, never to a card, so processing fees do not eat the 1% fee.</p>
+            <p className="text-xs text-faint">Creator commission on attributed orders, plus KYRO's 1%, billed by ACH. There is no ad budget to fund and no deposit to hold.</p>
           </div>
           {!editing && (
             <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-purple-400 hover:text-purple-300 whitespace-nowrap">
@@ -4483,26 +4330,6 @@ function BrandBillingPanel() {
         </p>
       </div>
 
-      {/* Card deposit */}
-      <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold text-heading">$2,500 refundable deposit</p>
-          <button
-            type="button"
-            disabled
-            title="A card number has to be entered inside the payment processor's own field. KYRO cannot accept one directly."
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line text-faint opacity-60 cursor-not-allowed whitespace-nowrap"
-          >
-            Add card
-          </button>
-        </div>
-        <p className="text-xs text-muted leading-relaxed">
-          Held on a card, released when you leave. Billing starts once your unbilled commission reaches 30% of it.
-        </p>
-        <p className="text-xs text-faint leading-relaxed">
-          Card entry is not open yet, and not because the form is unfinished. A card number must be typed into the payment processor's own hosted field so it never reaches KYRO's servers. That field appears here as soon as the processor account is connected.
-        </p>
-      </div>
     </div>
   );
 }
@@ -4553,7 +4380,7 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
 
           <SettingsRow
             label="Payment Method"
-            sub={role === 'creator' ? 'Payout account' : 'Deposit and billing'}
+            sub={role === 'creator' ? 'Payout account' : 'Commission billing'}
             icon={Wallet}
             open={open === 'payment'}
             onToggle={() => toggle('payment')}
