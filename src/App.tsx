@@ -69,6 +69,7 @@ import { ChatPanel, useUnreadTotal } from './components/Chat';
 import { BrandMark, CampaignDetailModal } from './components/CampaignDetail';
 import { BrandPerformanceCard } from './components/BrandPerformance';
 import { BrandSetupWizard } from './components/BrandSetup';
+import { SupportWidget } from './components/SupportWidget';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -1155,6 +1156,7 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, showDemoSwitch = true
         </div>
       </header>
       <main className="px-4 sm:px-6 lg:px-8 py-8">{children}</main>
+      <SupportWidget context={`${roleLabels[role]} portal`} />
     </div>
   );
 }

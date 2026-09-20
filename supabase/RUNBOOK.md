@@ -1,101 +1,81 @@
-# SQL runbook — after this push
+# SQL runbook
 
-Five files, in this order, all in the **Supabase SQL editor**. Paste the whole
-file, hit Run, check the result panel against "you should see" before moving on.
+All of these run in the **Supabase SQL editor**. Paste the whole file, hit Run,
+check the result against "you should see" before moving on.
 
-**Push and let Vercel finish first.** Three of these write image paths like
-`/campaign-covers/bold-buns.jpg`. Those are files served from your own domain.
-If the deploy hasn't landed, the paths are correct in the database but resolve
-to nothing in the browser, and it looks like the SQL failed when it didn't.
+**Push and let Vercel finish first.** Several of these write image paths served
+from your own domain. If the deploy hasn't landed the database is correct but
+the browser shows nothing, which looks exactly like failed SQL.
 
-Every file is safe to run twice. If you lose your place, start over from 1.
-
----
-
-## 1. `supabase/migrations/0014_products_and_chat.sql`
-
-Creates the products table, the chat tables, and adds `content_style` to
-campaigns. Nothing after this works without it.
-
-**You should see:** one row — `content_style_col 1`, and `products`, `threads`,
-`messages` all `0`. Zeros are correct here; this only builds the tables.
+Every file is safe to run twice. Lost your place? Run
+`supabase/diagnose.sql` — it reports which steps have run.
 
 ---
 
-## 2. `supabase/seed/set_demo_covers.sql`
+## Already done
 
-Points the three campaigns at the product images and fixes the brand taglines.
-
-Skip only if you already ran it in an earlier batch. Running it again is
-harmless.
-
-**You should see:** four rows. Bold Buns, Fuel and Jaje Health each with a
-`cover_url` starting `/campaign-covers/`. Lebanta's is `null` — that one is
-deliberate, it has no product shot yet.
+1. `migrations/0014_products_and_chat.sql` — products, content direction, chat
+2. `seed/set_demo_covers.sql` — campaign cover images
+3. `seed/seed_products.sql` — content direction and product listings
+4. `seed/set_brand_logos.sql` — brand logos
+5. `seed/set_submission_thumbs.sql` — video frames on the six submissions
+6. `migrations/0015_brand_setup.sql` — brand setup columns
 
 ---
 
-## 3. `supabase/seed/seed_products.sql`
+## To run now, in this order
 
-Content direction for all four campaigns, plus the product listings.
+### 7. `seed/adopt_bold_buns.sql`
 
-Must run **after** 1, because it writes to `content_style` and
-`campaign_products`, and both are created in step 1.
+Makes the brand test account **be** Bold Buns. Moves every campaign,
+submission, order and earning off the seeded demo brand onto the brand row
+your account already owns, then deletes the emptied demo row.
 
-**You should see:** four rows, one per brand, each with a truncated style
-string and a product count — Bold Buns 2, Fuel 2, Jaje Health 2, Lebanta 1.
+Why moving rather than just reassigning: `getMyBrand()` takes the *oldest*
+brand a user owns, and the auto-provisioned one predates the seed. Setting
+`owner_user_id` on the demo row would have changed nothing visible.
 
-⚠ The prices and the bundle products in this file are **demo values**. Only
-Bold Buns' $49.99 comes from your own graphic. Replace them before anyone reads
-this as live data.
+It deliberately leaves `brand_connections` alone, so Shopify and Meta stay
+unconnected and the live connect demo still works.
 
----
+**You should see:** one row — Bold Buns, handle `bold-buns`, `setup_complete`
+true, with 1 campaign, 2 submissions, and a non-zero order and earning count.
 
-## 4. `supabase/seed/set_brand_logos.sql`
+### 8. `seed/seed_chat.sql`
 
-Points the four brands at the logos in `public/brand-logos/`.
+A real conversation between the brand and creator test accounts: four messages
+in the Bold Buns campaign room, three in a private thread about the video the
+brand passed on.
 
-**You should see:** four rows, every one with a `logo_url` like
-`/brand-logos/bold-buns.png`. No nulls.
+⚠ This **disables the `messages_stamp_sender` trigger** for the length of the
+insert, then turns it back on in the same transaction. That trigger is what
+stops a client posting as someone else — the SQL editor has no `auth.uid()`,
+so seeded messages can't be stamped. The last query in the file proves the
+trigger is back on.
 
----
-
-## 5. `supabase/seed/set_submission_thumbs.sql`
-
-Gives the six demo submissions a video frame instead of a generated colour
-tile.
-
-**Only run this once six images are actually in `public/submission-thumbs/`
-and pushed.** Until then, skip it: with no `thumbnail_url` the cards fall back
-to the campaign's product image, which looks fine. Point the column at files
-that do not exist and every card does a failed request before falling back.
-
-**You should see:** six rows — three `live`, then three `rejected` — each with
-a `thumbnail_url` from `/submission-thumbs/1.jpg` to `6.jpg`.
+**You should see:** two result tables. First: `campaign 4`, `submission 3`.
+Second: the trigger with verdict **"ON — senders are stamped from the
+session"**. If that second one says OFF, stop and tell me.
 
 ---
 
 ## Then check it in the app
 
-Sign in as the creator.
+**As the brand**
 
-**Browse Campaigns**
+- Dashboard shows the revenue chart with the 7/30/90 selector, and no KYRO fee
+- Submissions has videos to review
+- Creators shows the roster
+- Chat has the campaign room and the private thread
+- Finance is the only place the 1% appears
 
-- Each row shows a logo chip next to the brand name
-- Each row shows the commission rate and a line of style direction
-- **View campaign** opens products with images and prices
+**As the creator**
 
-**My Submissions**
+- The same two conversations, from the other side
+- Reply on a card opens the private thread
 
-- Three filters: Not used, In use, Active campaigns
-- Cards are 9:16 portrait
-- **Reply** on a card opens a private thread with the brand in Chat
+**Both**
 
-**Chat**
-
-- A room per campaign you're accepted on
-- Private threads from the Reply buttons
-- Send a message, then check it appears on the brand side
-
-If a logo chip shows a gradient letter instead of the logo, step 4 ran but the
-file isn't deployed yet — check the push, not the SQL.
+- Send a message from one account, confirm it arrives on the other with the
+  right sender name and a BRAND tag where it should be. That exercises the
+  trigger, which is the part worth proving before Monday rather than on Monday.
