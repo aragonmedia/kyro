@@ -6,7 +6,7 @@ import {
   ArrowUpRight, RefreshCw, MessageSquare, Globe, Mail, Trophy, Hash,
   Instagram, Youtube, ShieldCheck, Cpu, Layers, Heart,
   ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3, PieChart, Calendar, ArrowDownRight, ImagePlus,
-  MessagesSquare
+  MessagesSquare, Settings as SettingsIcon
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { mockApi } from './lib/api';
@@ -1607,6 +1607,188 @@ function CampaignRowSkeleton() {
   );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   BRAND — NAVIGATION
+
+   A brand's work is seven different jobs, not one scroll. The sidebar names
+   them so the brand can go straight to the one they came for, and so a page
+   can be deep without burying everything under it.
+
+   Desktop gets a fixed rail. A phone gets a floating bar with the four things
+   a brand touches daily, and everything else behind the menu — a seven-item
+   rail on a phone is a wall.
+   ───────────────────────────────────────────────────────────── */
+
+type BrandPage = 'dashboard' | 'campaigns' | 'submissions' | 'creators' | 'chat' | 'finance' | 'settings';
+
+const BRAND_NAV: Array<{ id: BrandPage; label: string; icon: typeof Users; primary?: boolean }> = [
+  { id: 'dashboard', label: 'Dashboard', icon: BarChart3, primary: true },
+  { id: 'campaigns', label: 'Campaigns', icon: Layers, primary: true },
+  { id: 'submissions', label: 'Submissions', icon: FileVideo, primary: true },
+  { id: 'creators', label: 'Creators', icon: Users },
+  { id: 'chat', label: 'Chat', icon: MessagesSquare, primary: true },
+  { id: 'finance', label: 'Finance', icon: DollarSign },
+];
+
+function BrandSidebar({
+  page,
+  onGo,
+  brandName,
+  logoUrl,
+  unread,
+}: {
+  page: BrandPage;
+  onGo: (p: BrandPage) => void;
+  brandName: string;
+  logoUrl: string | null;
+  unread: number;
+}) {
+  const item = (id: BrandPage, label: string, Icon: typeof Users) => {
+    const on = page === id;
+    return (
+      <button
+        key={id}
+        type="button"
+        onClick={() => onGo(id)}
+        className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition ${
+          on ? 'bg-surface-2 text-heading' : 'text-muted hover:text-heading hover:bg-surface-2/60'
+        }`}
+      >
+        {on && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-gradient-kyro" />}
+        <Icon size={16} className="flex-shrink-0" />
+        <span className="truncate">{label}</span>
+        {id === 'chat' && unread > 0 && (
+          <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-kyro text-white text-[10px] font-bold flex items-center justify-center">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
+      </button>
+    );
+  };
+
+  return (
+    <aside className="hidden lg:flex flex-col gap-1 w-56 flex-shrink-0">
+      <div className="flex items-center gap-2.5 p-3 mb-2 rounded-xl border border-line bg-surface">
+        <BrandAvatar name={brandName} logoUrl={logoUrl} size={32} />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-heading truncate">{brandName}</p>
+          <p className="text-[11px] text-faint">Brand · Owner</p>
+        </div>
+      </div>
+
+      {BRAND_NAV.map((n) => item(n.id, n.label, n.icon))}
+
+      <p className="text-[11px] font-semibold text-faint uppercase tracking-wider px-3 pt-5 pb-1">
+        Configuration
+      </p>
+      {item('settings', 'Settings', SettingsIcon)}
+    </aside>
+  );
+}
+
+function BrandMobileNav({
+  page,
+  onGo,
+  unread,
+}: {
+  page: BrandPage;
+  onGo: (p: BrandPage) => void;
+  unread: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const primary = BRAND_NAV.filter((n) => n.primary);
+
+  return (
+    <>
+      {/* Floating rather than docked, so it reads as a control over the page
+          instead of a second browser chrome. */}
+      <div className="lg:hidden fixed bottom-4 inset-x-4 z-40 flex items-center gap-2">
+        <div className="flex-1 flex items-center justify-around gap-1 p-1.5 rounded-2xl bg-surface/95 backdrop-blur-md border border-line shadow-lg shadow-black/20">
+          {primary.map((n) => {
+            const on = page === n.id;
+            return (
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => onGo(n.id)}
+                aria-label={n.label}
+                className={`relative flex-1 flex items-center justify-center py-2.5 rounded-xl transition ${
+                  on ? 'bg-gradient-kyro text-white' : 'text-muted'
+                }`}
+              >
+                <n.icon size={18} />
+                {n.id === 'chat' && unread > 0 && (
+                  <span className="absolute top-1 right-1/2 translate-x-3.5 min-w-[15px] h-[15px] px-1 rounded-full bg-gradient-kyro text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-surface">
+                    {unread > 9 ? '9+' : unread}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="All sections"
+          className="w-12 h-12 rounded-2xl bg-surface/95 backdrop-blur-md border border-line shadow-lg shadow-black/20 flex items-center justify-center text-body"
+        >
+          <Menu size={18} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="lg:hidden fixed inset-0 z-50 bg-app/80 backdrop-blur-sm flex items-end" onClick={() => setOpen(false)}>
+          <div
+            className="w-full bg-surface border-t border-line rounded-t-2xl p-4 pb-8 space-y-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p className="font-bold text-heading">Go to</p>
+              <button type="button" onClick={() => setOpen(false)} className="text-muted hover:text-heading">
+                <X size={18} />
+              </button>
+            </div>
+            {[...BRAND_NAV, { id: 'settings' as BrandPage, label: 'Settings', icon: SettingsIcon }].map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => { onGo(n.id); setOpen(false); }}
+                className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition ${
+                  page === n.id ? 'bg-gradient-kyro text-white' : 'bg-surface-2 text-body'
+                }`}
+              >
+                <n.icon size={16} />
+                {n.label}
+                {n.id === 'chat' && unread > 0 && (
+                  <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-kyro text-white text-[10px] font-bold flex items-center justify-center">
+                    {unread > 9 ? '9+' : unread}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** A page heading, so every section announces itself the same way. */
+function PageHead({ title, sub, action }: { title: string; sub?: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h1 className="text-2xl md:text-3xl font-bold text-heading">{title}</h1>
+        {sub && <p className="text-muted mt-1 text-sm">{sub}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BRAND DASHBOARD
+   ───────────────────────────────────────────────────────────── */
 function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => void }) {
   const { brand, configured, workspaceLoading, workspaceError } = useSession();
 
@@ -1615,6 +1797,7 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   const liveMode = configured && Boolean(brand);
   const brandId = brand?.id ?? null;
 
+  const [page, setPage] = useState<BrandPage>('dashboard');
   const [showCreate, setShowCreate] = useState(false);
   const [query, setQuery] = useState('');
   const [showAllLeaders, setShowAllLeaders] = useState(false);
@@ -1627,6 +1810,7 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   const [loading, setLoading] = useState(liveMode);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
+  const unread = useUnreadTotal();
 
   // Onboarding gates + deposit usage. Loaded alongside campaigns rather than
   // inside reload() so signing the agreement doesn't refetch the campaign list.
@@ -1677,8 +1861,8 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   // Commission owed, not budget. KYRO has no pools to fund.
   const totalCommission = allCards.reduce((s, c) => s + c.spentDollars, 0);
   const totalOrders = allCards.reduce((s, c) => s + c.orders, 0);
-  const totalImpr = cards.reduce((s, c) => s + c.impressions, 0);
-  const totalSubs = cards.reduce((s, c) => s + c.submissions, 0);
+  const totalImpr = allCards.reduce((s, c) => s + c.impressions, 0);
+  const totalSubs = allCards.reduce((s, c) => s + c.submissions, 0);
 
   const busy = loading || workspaceLoading;
   const isEmpty = liveMode && !busy && !loadError && cards.length === 0;
@@ -1689,298 +1873,366 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   // and blocking setup on setup is the kind of dead end that loses signups.
   const gatesBlocked = liveMode && onboarding !== null && !onboarding.complete;
 
-  // In live mode every sub-label is derived from real rows. The demo keeps its
-  // original illustrative copy.
-  const kpis = liveMode
-    ? [
-        { label: 'Creator Commission', value: fmt(totalCommission), sub: `across ${plural(cards.length, 'campaign')}`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-        { label: 'KYRO Fee', value: fmt(totalCommission * 0.01), sub: '1% of commission', icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-        { label: 'Conversions', value: totalOrders.toLocaleString(), sub: `from ${plural(totalSubs, 'submission')}`, icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-        { label: 'Impressions', value: fmtK(totalImpr), sub: 'from live ads', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
-      ]
-    : [
-        { label: 'Creator Commission', value: fmt(totalCommission), sub: `across ${cards.length} campaigns`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-        { label: 'KYRO Fee', value: fmt(totalCommission * 0.01), sub: '1% of commission', icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-        { label: 'Conversions', value: totalOrders.toLocaleString(), sub: '+18% vs last week', icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-        { label: 'Impressions', value: fmtK(totalImpr), sub: 'organic reach via creators', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
-      ];
+  /**
+   * Every figure and every sub-label is derived from the rows above.
+   *
+   * These used to carry hand-written deltas like "+18% vs last week" that
+   * nothing computed. A number a brand cannot trace back to an order is worse
+   * than no number, so when there is nothing yet the row says so.
+   */
+  const noData = totalOrders === 0 && totalCommission === 0;
+  const kpis = [
+    { label: 'Creator Commission', value: fmt(totalCommission), sub: `across ${plural(allCards.length, 'campaign')}`, icon: Wallet, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
+    { label: 'KYRO Fee', value: fmt(totalCommission * 0.01), sub: '1% of commission', icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
+    { label: 'Attributed Orders', value: totalOrders.toLocaleString(), sub: `from ${plural(totalSubs, 'video')}`, icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
+    { label: 'Impressions', value: totalImpr > 0 ? fmtK(totalImpr) : '—', sub: totalImpr > 0 ? 'from live ads' : 'needs Meta access', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
+  ];
+
+  const createButton = (
+    <button
+      onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
+      disabled={workspaceLoading}
+      title={gatesBlocked ? 'You can draft a campaign now. Connect Meta and Shopify to open it to creators.' : undefined}
+      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <Plus size={18} /> Create Campaign
+    </button>
+  );
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8">
-      <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <div className="flex items-center gap-4">
-          {liveMode && brand
-            ? <BrandAvatar name={brand.name} logoUrl={brand.logoUrl} size={56} />
-            : <BrandLogo brandId="boldbuns" size={56} />}
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-heading">
-              Welcome back, {liveMode && brand ? brand.name : 'Bold Buns'}
-            </h1>
-            <p className="text-muted mt-1">
-              {isEmpty
-                ? 'Create your first campaign to start working with creators.'
-                : "Here's how your campaigns are performing right now."}
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
-          disabled={workspaceLoading}
-          title={gatesBlocked ? 'You can draft a campaign now. Connect Meta and Shopify to open it to creators.' : undefined}
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-        >
-          <Plus size={18} /> Create Campaign
-        </button>
-      </div>
+    <div className="max-w-7xl mx-auto">
+      <div className="flex gap-8">
+        <BrandSidebar
+          page={page}
+          onGo={setPage}
+          brandName={liveMode && brand ? brand.name : 'Bold Buns'}
+          logoUrl={liveMode && brand ? brand.logoUrl || null : null}
+          unread={unread}
+        />
 
-      {connectOutcome && (
-        <div
-          className={`flex items-start gap-3 p-4 rounded-xl border ${
-            connectOutcome.ok
-              ? 'border-emerald-400/30 bg-emerald-400/10'
-              : 'border-pink-400/30 bg-pink-400/10'
-          }`}
-        >
-          {connectOutcome.ok
-            ? <CheckCircle size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
-            : <AlertCircle size={18} className="text-pink-400 flex-shrink-0 mt-0.5" />}
-          <p className={`text-sm flex-1 ${connectOutcome.ok ? 'text-emerald-200' : 'text-pink-200'}`}>
-            {connectOutcome.message}
-          </p>
-          <button
-            onClick={() => setConnectOutcome(null)}
-            className="text-xs text-muted hover:text-heading px-2 py-0.5"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {liveMode && brandId && onboarding && !onboarding.complete && (
-        <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
-      )}
-
-      {liveMode && brandId && <ApplicationsPanel brandId={brandId} />}
-
-      {liveMode && brandId && <CampaignRoster brandId={brandId} campaigns={allCards} />}
-
-      {liveMode && brandId && <CreatorVideosPanel brandId={brandId} />}
-
-      {liveMode && brandId && (
-        <div className="space-y-3" id="brand-messages">
-          <div>
-            <h2 className="text-xl font-bold text-heading">Messages</h2>
-            <p className="text-sm text-muted mt-0.5">
-              Your campaign rooms, and the private threads creators start about their videos.
-            </p>
-          </div>
-          <ChatPanel />
-        </div>
-      )}
-
-      {workspaceError && (
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-pink-400/30 bg-pink-400/10">
-          <AlertCircle size={18} className="text-pink-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <p className="font-semibold text-heading">We couldn't finish setting up your brand workspace.</p>
-            <p className="text-muted mt-0.5">{workspaceError}</p>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((s, i) => (
-          <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
-            <div className="flex items-center justify-between mb-3"><s.icon size={20} className={s.color} /><span className="text-xs text-faint">Last 30d</span></div>
-            <p className="text-xs text-muted mb-1">{s.label}</p>
-            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-xs text-faint mt-1">{s.sub}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Creator leaderboard (Trybe-style) */}
-      <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between p-5 border-b border-line">
-          <div className="flex items-center gap-2">
-            <Trophy size={18} className="text-amber-400" />
-            <h2 className="text-xl font-bold text-heading">Creator Leaderboard</h2>
-            <span className="text-xs text-faint ml-2">Last 7 days</span>
-          </div>
-          {!liveMode && SEED_LEADERBOARD.length > 3 && (
-            <button
-              type="button"
-              onClick={() => setShowAllLeaders((v) => !v)}
-              className="text-xs text-muted hover:text-heading"
+        <div className="flex-1 min-w-0 space-y-6 pb-24 lg:pb-0">
+          {/* Shown on every page: a failed or successful Shopify install is
+              account-level news, not campaign-page news. */}
+          {connectOutcome && (
+            <div
+              className={`flex items-start gap-3 p-4 rounded-xl border ${
+                connectOutcome.ok
+                  ? 'border-emerald-400/30 bg-emerald-400/10'
+                  : 'border-pink-400/30 bg-pink-400/10'
+              }`}
             >
-              {showAllLeaders ? 'Show less' : 'View all'}
-            </button>
-          )}
-        </div>
-        {liveMode ? (
-          <div className="p-10 text-center">
-            <Trophy size={28} className="mx-auto text-faint mb-3" />
-            <p className="text-sm text-muted">No performance data yet.</p>
-            <p className="text-xs text-faint mt-1">Creators rank here once their approved videos are running as ads.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-line">
-            {(showAllLeaders ? SEED_LEADERBOARD : SEED_LEADERBOARD.slice(0, 3)).map((l, i) => {
-              const c = SEED_CREATORS[l.creatorId];
-              const brandRef = BRANDS[l.brandId];
-              return (
-                <button key={l.creatorId} onClick={() => onViewCreator(l.creatorId)} className="w-full p-4 flex items-center gap-4 hover:bg-surface-2 transition text-left">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-kyro text-white font-bold text-sm">{i + 1}</div>
-                  <img src={c.avatar} alt={c.name} className="w-10 h-10 rounded-full object-cover" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-heading truncate">{c.name}</p>
-                    <p className="text-xs text-muted">{c.handle} · for {brandRef.name}</p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-6 text-right">
-                    <div><p className="text-xs text-faint">Orders</p><p className="text-sm font-bold text-emerald-400">{l.orders}</p></div>
-                    <div className="hidden sm:block"><p className="text-xs text-faint">Ads</p><p className="text-sm font-bold text-heading">{l.ads}</p></div>
-                    <div className="hidden sm:block"><p className="text-xs text-faint">Views</p><p className="text-sm font-bold text-heading">{fmtK(l.views)}</p></div>
-                  </div>
-                  <ChevronRight size={16} className="text-faint" />
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between p-5 border-b border-line">
-          <h2 className="text-xl font-bold text-heading">Active Campaigns</h2>
-          <div className="flex items-center gap-2">
-            {liveMode && (
-              <button onClick={() => void reload()} disabled={busy} className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-body hover:text-heading disabled:opacity-50" title="Refresh">
-                <RefreshCw size={14} className={busy ? 'animate-spin' : ''} /> Refresh
+              {connectOutcome.ok
+                ? <CheckCircle size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                : <AlertCircle size={18} className="text-pink-400 flex-shrink-0 mt-0.5" />}
+              <p className={`text-sm flex-1 ${connectOutcome.ok ? 'text-emerald-200' : 'text-pink-200'}`}>
+                {connectOutcome.message}
+              </p>
+              <button onClick={() => setConnectOutcome(null)} className="text-xs text-muted hover:text-heading px-2 py-0.5">
+                Dismiss
               </button>
-            )}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg">
-              <Search size={14} className="text-faint flex-shrink-0" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search campaigns"
-                className="bg-transparent text-sm text-heading placeholder-faint focus:outline-none w-36"
+            </div>
+          )}
+
+          {workspaceError && (
+            <div className="flex items-start gap-3 p-4 rounded-xl border border-pink-400/30 bg-pink-400/10">
+              <AlertCircle size={18} className="text-pink-400 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-semibold text-heading">We couldn't finish setting up your brand workspace.</p>
+                <p className="text-muted mt-0.5">{workspaceError}</p>
+              </div>
+            </div>
+          )}
+
+          {/* ── DASHBOARD ── */}
+          {page === 'dashboard' && (
+            <>
+              <PageHead
+                title={`Welcome back, ${liveMode && brand ? brand.name : 'Bold Buns'}`}
+                sub={isEmpty
+                  ? 'Create your first campaign to start working with creators.'
+                  : "Here's how your campaigns are performing right now."}
+                action={createButton}
               />
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg">
-              <Filter size={14} className="text-faint flex-shrink-0" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-                className="bg-transparent text-sm text-heading focus:outline-none cursor-pointer"
-              >
-                <option value="all">All</option>
-                <option value="live">Live</option>
-                <option value="draft">Draft</option>
-                <option value="pending_fund">Pending</option>
-                <option value="ended">Ended</option>
-              </select>
-            </div>
-          </div>
-        </div>
 
-        {busy && (
-          <div className="divide-y divide-line">
-            {[0, 1, 2].map((i) => <CampaignRowSkeleton key={i} />)}
-          </div>
-        )}
+              {liveMode && brandId && onboarding && !onboarding.complete && (
+                <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
+              )}
 
-        {!busy && loadError && (
-          <div className="p-10 text-center">
-            <AlertCircle size={28} className="mx-auto text-pink-400 mb-3" />
-            <p className="text-sm text-heading font-semibold">Couldn't load your campaigns.</p>
-            <p className="text-xs text-muted mt-1">{loadError}</p>
-            <button onClick={() => void reload()} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-surface-2 border border-line rounded-lg text-sm text-body hover:text-heading">
-              <RefreshCw size={14} /> Try again
-            </button>
-          </div>
-        )}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {kpis.map((s, i) => (
+                  <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <s.icon size={20} className={s.color} />
+                      <span className="text-xs text-faint">All time</span>
+                    </div>
+                    <p className="text-xs text-muted mb-1">{s.label}</p>
+                    <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-faint mt-1">{s.sub}</p>
+                  </div>
+                ))}
+              </div>
 
-        {isEmpty && (
-          <div className="p-12 text-center">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-kyro flex items-center justify-center mb-4">
-              <FileVideo size={24} className="text-white" />
-            </div>
-            <p className="text-lg font-bold text-heading">No campaigns yet</p>
-            <p className="text-sm text-muted mt-1.5 max-w-sm mx-auto">
-              A campaign is where you set the commission and what you want creators to make.
-            </p>
-            <button
-              onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
-              title={gatesBlocked ? 'You can draft a campaign now. Connect Meta and Shopify to open it to creators.' : undefined}
-              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus size={18} /> Create your first campaign
-            </button>
-          </div>
-        )}
+              {liveMode && noData && !busy && (
+                <p className="text-sm text-muted leading-relaxed">
+                  These fill in as orders come through. An order counts once Shopify tells KYRO it
+                  was placed after someone saw one of your creators' videos.
+                </p>
+              )}
 
-        {!busy && !loadError && cards.length > 0 && (
-          <div className="divide-y divide-line">
-            {cards.map((c) => {
-              return (
-                <div key={c.id} className="p-5 hover:bg-surface-2 transition cursor-pointer">
-                  <div className="flex flex-col lg:flex-row gap-5">
-                    {c.cover
-                      ? <img src={c.cover} alt={c.name} className="w-full lg:w-48 h-32 rounded-xl object-cover flex-shrink-0" />
-                      : <div className="w-full lg:w-48 h-32 rounded-xl flex-shrink-0 bg-surface-2 border border-line flex items-center justify-center"><FileVideo size={22} className="text-faint" /></div>}
-                    <div className="flex-1 min-w-0 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-3">
-                          {c.seedBrandId
-                            ? <BrandLogo brandId={c.seedBrandId} size={36} />
-                            : <BrandAvatar name={c.brandName} logoUrl={c.logoUrl} size={36} />}
-                          <div>
-                            <div className="flex items-center gap-3 mb-1.5">
-                              <h3 className="text-lg font-bold text-heading">{c.name}</h3>
-                              <StatusPill status={c.status} />
-                            </div>
-                            <p className="text-sm text-muted">{c.brandName} · {plural(c.creators, 'creator')} · {plural(c.submissions, 'submission')}</p>
+              {/* Creator leaderboard */}
+              <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+                <div className="flex items-center justify-between p-5 border-b border-line">
+                  <div className="flex items-center gap-2">
+                    <Trophy size={18} className="text-amber-400" />
+                    <h2 className="text-xl font-bold text-heading">Creator Leaderboard</h2>
+                    <span className="text-xs text-faint ml-2">Last 7 days</span>
+                  </div>
+                  {!liveMode && SEED_LEADERBOARD.length > 3 && (
+                    <button type="button" onClick={() => setShowAllLeaders((v) => !v)} className="text-xs text-muted hover:text-heading">
+                      {showAllLeaders ? 'Show less' : 'View all'}
+                    </button>
+                  )}
+                </div>
+                {liveMode ? (
+                  <div className="p-10 text-center">
+                    <Trophy size={28} className="mx-auto text-faint mb-3" />
+                    <p className="text-sm text-muted">No performance data yet.</p>
+                    <p className="text-xs text-faint mt-1">Creators rank here once their videos are running as ads.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-line">
+                    {(showAllLeaders ? SEED_LEADERBOARD : SEED_LEADERBOARD.slice(0, 3)).map((l, i) => {
+                      const c = SEED_CREATORS[l.creatorId];
+                      const brandRef = BRANDS[l.brandId];
+                      return (
+                        <button key={l.creatorId} onClick={() => onViewCreator(l.creatorId)} className="w-full p-4 flex items-center gap-4 hover:bg-surface-2 transition text-left">
+                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-kyro text-white font-bold text-sm">{i + 1}</div>
+                          <img src={c.avatar} alt={c.name} className="w-10 h-10 rounded-full object-cover" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-heading truncate">{c.name}</p>
+                            <p className="text-xs text-muted">{c.handle} · for {brandRef.name}</p>
                           </div>
-                        </div>
-
-                      </div>
-                      {c.status === 'live' && (
-                        <>
-                          <div className="grid grid-cols-3 gap-3">
-                            <div><p className="text-xs text-faint">Commission</p><p className="text-sm font-bold text-heading">{fmt(c.spentDollars)}</p></div>
-                            <div><p className="text-xs text-faint">Attributed orders</p><p className="text-sm font-bold text-emerald-400">{c.orders.toLocaleString()}</p></div>
-                            <div><p className="text-xs text-faint">Creators</p><p className="text-sm font-bold text-purple-400">{c.creators}</p></div>
+                          <div className="grid grid-cols-3 gap-6 text-right">
+                            <div><p className="text-xs text-faint">Orders</p><p className="text-sm font-bold text-emerald-400">{l.orders}</p></div>
+                            <div className="hidden sm:block"><p className="text-xs text-faint">Ads</p><p className="text-sm font-bold text-heading">{l.ads}</p></div>
+                            <div className="hidden sm:block"><p className="text-xs text-faint">Views</p><p className="text-sm font-bold text-heading">{fmtK(l.views)}</p></div>
                           </div>
-                        </>
-                      )}
-                      {liveMode && c.brandId && (
-                        <CampaignCoverControl
-                          campaignId={c.id}
-                          brandId={c.brandId}
-                          campaignName={c.name}
-                          coverUrl={c.cover}
-                          onChanged={() => void reload()}
-                        />
-                      )}
+                          <ChevronRight size={16} className="text-faint" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
-                      {(c.status === 'pending_fund' || c.status === 'draft') && (
-                        <ActivateCampaignRow
-                          campaignId={c.id}
-                          status={c.status}
-                          live={liveMode}
-                          blocked={gatesBlocked}
-                          onActivated={() => void reload()}
-                        />
-                      )}
+          {/* ── CAMPAIGNS ── */}
+          {page === 'campaigns' && (
+            <>
+              <PageHead title="Campaigns" sub="What you're asking creators to make, and what it pays." action={createButton} />
+
+              <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-5 border-b border-line">
+                  <h2 className="text-lg font-bold text-heading">All campaigns</h2>
+                  <div className="flex items-center gap-2">
+                    {liveMode && (
+                      <button onClick={() => void reload()} disabled={busy} className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-sm text-body hover:text-heading disabled:opacity-50" title="Refresh">
+                        <RefreshCw size={14} className={busy ? 'animate-spin' : ''} /> Refresh
+                      </button>
+                    )}
+                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg">
+                      <Search size={14} className="text-faint flex-shrink-0" />
+                      <input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Search campaigns"
+                        className="bg-transparent text-sm text-heading placeholder-faint focus:outline-none w-36"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-2 border border-line rounded-lg">
+                      <Filter size={14} className="text-faint flex-shrink-0" />
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                        className="bg-transparent text-sm text-heading focus:outline-none cursor-pointer"
+                      >
+                        <option value="all">All</option>
+                        <option value="live">Live</option>
+                        <option value="draft">Draft</option>
+                        <option value="pending_fund">Pending</option>
+                        <option value="ended">Ended</option>
+                      </select>
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
+
+                {busy && (
+                  <div className="divide-y divide-line">
+                    {[0, 1, 2].map((i) => <CampaignRowSkeleton key={i} />)}
+                  </div>
+                )}
+
+                {!busy && loadError && (
+                  <div className="p-10 text-center">
+                    <AlertCircle size={28} className="mx-auto text-pink-400 mb-3" />
+                    <p className="text-sm text-heading font-semibold">Couldn't load your campaigns.</p>
+                    <p className="text-xs text-muted mt-1">{loadError}</p>
+                    <button onClick={() => void reload()} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-surface-2 border border-line rounded-lg text-sm text-body hover:text-heading">
+                      <RefreshCw size={14} /> Try again
+                    </button>
+                  </div>
+                )}
+
+                {isEmpty && (
+                  <div className="p-12 text-center">
+                    <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-kyro flex items-center justify-center mb-4">
+                      <FileVideo size={24} className="text-white" />
+                    </div>
+                    <p className="text-lg font-bold text-heading">No campaigns yet</p>
+                    <p className="text-sm text-muted mt-1.5 max-w-sm mx-auto">
+                      A campaign is where you set the commission and what you want creators to make.
+                    </p>
+                    <button
+                      onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
+                      title={gatesBlocked ? 'You can draft a campaign now. Connect Meta and Shopify to open it to creators.' : undefined}
+                      className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-600/40 transition"
+                    >
+                      <Plus size={18} /> Create your first campaign
+                    </button>
+                  </div>
+                )}
+
+                {!busy && !loadError && cards.length > 0 && (
+                  <div className="divide-y divide-line">
+                    {cards.map((c) => (
+                      <div key={c.id} className="p-5 hover:bg-surface-2 transition">
+                        <div className="flex flex-col lg:flex-row gap-5">
+                          {c.cover
+                            ? <img src={c.cover} alt={c.name} className="w-full lg:w-48 h-32 rounded-xl object-cover flex-shrink-0" />
+                            : <div className="w-full lg:w-48 h-32 rounded-xl flex-shrink-0 bg-surface-2 border border-line flex items-center justify-center"><FileVideo size={22} className="text-faint" /></div>}
+                          <div className="flex-1 min-w-0 space-y-3">
+                            <div className="flex items-start gap-3">
+                              {c.seedBrandId
+                                ? <BrandLogo brandId={c.seedBrandId} size={36} />
+                                : <BrandAvatar name={c.brandName} logoUrl={c.logoUrl} size={36} />}
+                              <div>
+                                <div className="flex items-center gap-3 mb-1.5">
+                                  <h3 className="text-lg font-bold text-heading">{c.name}</h3>
+                                  <StatusPill status={c.status} />
+                                </div>
+                                <p className="text-sm text-muted">{c.brandName} · {plural(c.creators, 'creator')} · {plural(c.submissions, 'submission')}</p>
+                              </div>
+                            </div>
+                            {c.status === 'live' && (
+                              <div className="grid grid-cols-3 gap-3">
+                                <div><p className="text-xs text-faint">Commission</p><p className="text-sm font-bold text-heading">{fmt(c.spentDollars)}</p></div>
+                                <div><p className="text-xs text-faint">Attributed orders</p><p className="text-sm font-bold text-emerald-400">{c.orders.toLocaleString()}</p></div>
+                                <div><p className="text-xs text-faint">Creators</p><p className="text-sm font-bold text-purple-400">{c.creators}</p></div>
+                              </div>
+                            )}
+                            {liveMode && c.brandId && (
+                              <CampaignCoverControl
+                                campaignId={c.id}
+                                brandId={c.brandId}
+                                campaignName={c.name}
+                                coverUrl={c.cover}
+                                onChanged={() => void reload()}
+                              />
+                            )}
+                            {(c.status === 'pending_fund' || c.status === 'draft') && (
+                              <ActivateCampaignRow
+                                campaignId={c.id}
+                                status={c.status}
+                                live={liveMode}
+                                blocked={gatesBlocked}
+                                onActivated={() => void reload()}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ── SUBMISSIONS ── */}
+          {page === 'submissions' && (
+            <>
+              <PageHead title="Submissions" sub="Videos creators have sent you. Say what you're running and what you're not." />
+              {liveMode && brandId
+                ? <CreatorVideosPanel brandId={brandId} />
+                : <NeedsBrand what="submissions" />}
+            </>
+          )}
+
+          {/* ── CREATORS ── */}
+          {page === 'creators' && (
+            <>
+              <PageHead title="Creators" sub="Who has applied, and who is already making videos for you." />
+              {liveMode && brandId ? (
+                <>
+                  <ApplicationsPanel brandId={brandId} />
+                  <CampaignRoster brandId={brandId} campaigns={allCards} />
+                </>
+              ) : (
+                <NeedsBrand what="creators" />
+              )}
+            </>
+          )}
+
+          {/* ── CHAT ── */}
+          {page === 'chat' && (
+            <>
+              <PageHead title="Chat" sub="Your campaign rooms, and the private threads creators start about their videos." />
+              {liveMode ? <ChatPanel /> : <NeedsBrand what="messages" />}
+            </>
+          )}
+
+          {/* ── FINANCE ── */}
+          {page === 'finance' && (
+            <>
+              <PageHead title="Finance" sub="What you owe creators, and where KYRO bills it from." />
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="p-5 rounded-2xl border border-blue-400/20 bg-blue-400/10">
+                  <Wallet size={20} className="text-blue-400" />
+                  <p className="text-xs text-muted mt-3 mb-1">Creator commission</p>
+                  <p className="text-2xl font-bold text-blue-400">{fmt(totalCommission)}</p>
+                  <p className="text-xs text-faint mt-1">On attributed orders</p>
+                </div>
+                <div className="p-5 rounded-2xl border border-purple-400/20 bg-purple-400/10">
+                  <TrendingUp size={20} className="text-purple-400" />
+                  <p className="text-xs text-muted mt-3 mb-1">KYRO fee</p>
+                  <p className="text-2xl font-bold text-purple-400">{fmt(totalCommission * 0.01)}</p>
+                  <p className="text-xs text-faint mt-1">1% of commission</p>
+                </div>
+              </div>
+              <BrandBillingPanel />
+            </>
+          )}
+
+          {/* ── SETTINGS ── */}
+          {page === 'settings' && (
+            <>
+              <PageHead title="Settings" sub="Connections, and everything KYRO needs before a campaign can run." />
+              {liveMode && brandId && onboarding ? (
+                <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
+              ) : (
+                <NeedsBrand what="settings" />
+              )}
+              <p className="text-sm text-muted">
+                Your name, email, password, appearance and notifications live in Account settings,
+                reachable from the icon in the top bar.
+              </p>
+            </>
+          )}
+        </div>
       </div>
+
+      <BrandMobileNav page={page} onGo={setPage} unread={unread} />
 
       {showCreate && (
         <CreateCampaignModal
@@ -1989,6 +2241,23 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
           onCreated={() => void reload()}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Shown where a page needs a real brand workspace and there isn't one — the
+ * public demo, or a session still provisioning. Says which, rather than
+ * rendering an empty panel that reads as broken.
+ */
+function NeedsBrand({ what }: { what: string }) {
+  return (
+    <div className="bg-surface border border-line rounded-2xl p-10 text-center">
+      <Briefcase size={28} className="mx-auto text-faint mb-3" />
+      <p className="text-sm text-muted">Sign in with a brand account to see your {what}.</p>
+      <p className="text-xs text-faint mt-1">
+        The demo switcher shows the layout, but there is no workspace behind it.
+      </p>
     </div>
   );
 }
@@ -2228,6 +2497,10 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
     </div>
   );
 }
+
+/* ─────────────────────────────────────────────────────────────
+   CREATOR DASHBOARD — with earning notifications + AI tags
+   ───────────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────
    CREATOR DASHBOARD — with earning notifications + AI tags
