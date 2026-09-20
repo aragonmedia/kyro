@@ -25,7 +25,7 @@ import {
   saveMyProfile,
   signOut as supabaseSignOut,
 } from './supabase';
-import { ensureMyBrand, ensureMyCreator } from './db';
+import { ensureMyBrand, ensureMyCreator, listMyBrands } from './db';
 import type { Brand, Creator, Role } from './types';
 
 /** "Kevin Aragon" -> "Kevin". Keeps greetings short without losing the name. */
@@ -65,6 +65,10 @@ export interface SessionValue {
   /** Role from the `profiles` row. Null means signed in but not onboarded. */
   role: Role | null;
   brand: Brand | null;
+  /** Every brand this account owns. One entry for most people. */
+  brands: Brand[];
+  /** Switch which brand the portal is showing. Remembered per browser. */
+  setActiveBrand: (brandId: string) => Promise<void>;
   creator: Creator | null;
   /** True while the brand/creator row is being fetched or created. */
   workspaceLoading: boolean;
@@ -86,6 +90,8 @@ const EMPTY: SessionValue = {
   displayName: 'there',
   role: null,
   brand: null,
+  brands: [],
+  setActiveBrand: async () => {},
   creator: null,
   workspaceLoading: false,
   workspaceError: null,
@@ -124,6 +130,31 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
  */
 const inFlight = new Map<string, Promise<{ brand: Brand | null; creator: Creator | null; error: string | null }>>();
 
+/**
+ * Which brand the portal is showing, remembered per browser.
+ *
+ * An account can own several brands; without this, switching would last until
+ * the next reload and then silently snap back to the oldest one.
+ */
+const ACTIVE_BRAND_KEY = 'kyro.activeBrandId';
+
+function readActiveBrand(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_BRAND_KEY);
+  } catch {
+    return null; // private mode, blocked storage — fall back to the default brand
+  }
+}
+
+function writeActiveBrand(id: string | null) {
+  try {
+    if (id) localStorage.setItem(ACTIVE_BRAND_KEY, id);
+    else localStorage.removeItem(ACTIVE_BRAND_KEY);
+  } catch {
+    /* Remembering the choice is a convenience, never load-bearing. */
+  }
+}
+
 async function provisionWorkspace(
   userId: string,
   role: Role,
@@ -135,7 +166,7 @@ async function provisionWorkspace(
 
   const run = (async () => {
     if (role === 'brand') {
-      const res = await ensureMyBrand({ email });
+      const res = await ensureMyBrand({ email, preferredId: readActiveBrand() });
       return { brand: res.data, creator: null, error: res.error };
     }
     if (role === 'creator') {
@@ -163,6 +194,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [fullName, setFullName] = useState<string | null>(null);
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [brand, setBrand] = useState<Brand | null>(null);
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [creator, setCreator] = useState<Creator | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
@@ -232,6 +264,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (alive.current) {
           setBrand(ws.brand);
           setCreator(ws.creator);
+          if (ws.brand) void listMyBrands().then((r) => { if (alive.current) setBrands(r.data); });
           setWorkspaceError(ws.error);
           setWorkspaceLoading(false);
         }
@@ -303,6 +336,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (alive.current) {
         setBrand(ws.brand);
         setCreator(ws.creator);
+        if (ws.brand) void listMyBrands().then((r) => { if (alive.current) setBrands(r.data); });
         setWorkspaceError(ws.error);
         setWorkspaceLoading(false);
       }
@@ -322,6 +356,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setWorkspaceError(null);
   }, []);
 
+  /**
+   * Switch brands.
+   *
+   * Sets the state immediately from the list already in memory so the portal
+   * changes on the click, then re-reads the workspace so anything derived
+   * from the brand comes back for the new one.
+   */
+  const setActiveBrand = useCallback(async (brandId: string) => {
+    writeActiveBrand(brandId);
+    const next = brands.find((b) => b.id === brandId);
+    if (next) setBrand(next);
+    await load();
+  }, [brands, load]);
+
   // Derived once here so every screen greets the user the same way.
   const displayName =
     firstWord(fullName) ||
@@ -339,6 +387,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     displayName,
     role,
     brand,
+    brands,
+    setActiveBrand,
     creator,
     workspaceLoading,
     workspaceError,

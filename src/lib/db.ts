@@ -317,24 +317,99 @@ function suffix(): string {
    ───────────────────────────────────────────────────────────── */
 
 /** The brand owned by the signed-in user, or null if they don't have one yet. */
-export async function getMyBrand(): Promise<Result<Brand | null>> {
+export async function getMyBrand(preferredId?: string | null): Promise<Result<Brand | null>> {
   const sb = client();
   if (!sb) return ok(null);
   try {
     const { data: auth } = await sb.auth.getUser();
     const uid = auth.user?.id;
     if (!uid) return ok(null);
+
+    // Every brand the user owns, oldest first. Fetching the list rather than
+    // one row is what lets the switcher honour a chosen brand without a
+    // second round trip, and a preferred id that no longer exists (deleted,
+    // or belonged to another login) falls back instead of erroring.
     const { data, error } = await sb
       .from('brands')
       .select('*')
       .eq('owner_user_id', uid)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
+      .order('created_at', { ascending: true });
+
     if (error) return fail(null, describeError(error, 'Could not load your brand.'));
-    return ok(data ? toBrand(data as BrandRow) : null);
+
+    const rows = (data ?? []) as BrandRow[];
+    if (rows.length === 0) return ok(null);
+
+    const chosen = preferredId ? rows.find((r) => r.id === preferredId) : undefined;
+    return ok(toBrand(chosen ?? rows[0]));
   } catch (e) {
     return fail(null, describeError(e, 'Could not load your brand.'));
+  }
+}
+
+/** Every brand the signed-in user owns, for the switcher. */
+export async function listMyBrands(): Promise<Result<Brand[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data: auth } = await sb.auth.getUser();
+    const uid = auth.user?.id;
+    if (!uid) return ok([]);
+    const { data, error } = await sb
+      .from('brands')
+      .select('*')
+      .eq('owner_user_id', uid)
+      .order('created_at', { ascending: true });
+    if (error) return fail([], describeError(error, 'Could not load your brands.'));
+    return ok((data ?? []).map((r) => toBrand(r as BrandRow)));
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your brands.'));
+  }
+}
+
+/**
+ * Start a second (or third) brand.
+ *
+ * Created deliberately incomplete: `setup_complete` stays false so the wizard
+ * runs for it, which is where the name, logo and connections actually get
+ * filled in.
+ */
+export async function createAnotherBrand(name: string): Promise<Result<Brand | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+
+  const clean = name.trim();
+  if (!clean) return fail(null, 'Give the brand a name.');
+
+  try {
+    const { data: auth } = await sb.auth.getUser();
+    const uid = auth.user?.id;
+    if (!uid) return fail(null, 'No active session.');
+
+    const base = slugify(clean);
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const handle = attempt === 0 ? base : `${base}-${suffix()}`;
+      const { data, error } = await sb
+        .from('brands')
+        .insert({
+          owner_user_id: uid,
+          name: clean,
+          handle,
+          approval_status: 'pending',
+          setup_complete: false,
+        })
+        .select()
+        .single();
+
+      if (!error) return ok(toBrand(data as BrandRow));
+      // Unique violation on handle: try again with a suffix.
+      if ((error as { code?: string }).code !== '23505') {
+        return fail(null, describeError(error, 'Could not create that brand.'));
+      }
+    }
+    return fail(null, 'Could not find a free handle for that name. Try a different one.');
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not create that brand.'));
   }
 }
 
@@ -346,8 +421,9 @@ export async function getMyBrand(): Promise<Result<Brand | null>> {
 export async function ensureMyBrand(opts?: {
   name?: string;
   email?: string | null;
+  preferredId?: string | null;
 }): Promise<Result<Brand | null>> {
-  const existing = await getMyBrand();
+  const existing = await getMyBrand(opts?.preferredId);
   if (existing.error || existing.data) return existing;
 
   const sb = client();
@@ -2330,7 +2406,8 @@ const emptyBrandPerformance = (windowDays: number): BrandPerformance => ({
  */
 export async function getBrandPerformance(
   brandId: string,
-  windowDays = 30
+  windowDays = 30,
+  campaignId?: string | null
 ): Promise<Result<BrandPerformance>> {
   const sb = client();
   if (!sb) return ok(emptyBrandPerformance(windowDays));
@@ -2340,12 +2417,18 @@ export async function getBrandPerformance(
   since.setUTCDate(since.getUTCDate() - (windowDays - 1));
 
   try {
-    const { data, error } = await sb
+    let q = sb
       .from('earnings')
       .select('commission_cents, commissionable_cents, creator_id, submission_id, created_at')
       .eq('brand_id', brandId)
       .neq('state', 'reversed')
       .gte('created_at', since.toISOString());
+
+    // Narrowing to one campaign answers "is this one working", which is a
+    // different question from "is the account working".
+    if (campaignId) q = q.eq('campaign_id', campaignId);
+
+    const { data, error } = await q;
 
     if (error) {
       return fail(emptyBrandPerformance(windowDays), describeError(error, 'Could not load performance.'));
@@ -2393,5 +2476,194 @@ export async function getBrandPerformance(
     });
   } catch (e) {
     return fail(emptyBrandPerformance(windowDays), describeError(e, 'Could not load performance.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Campaign invites
+
+   The off-platform path onto a campaign. A brand who already knows the
+   creator sends a link; opening it creates an accepted application rather
+   than joining the review queue, because the brand has already made that
+   decision by sending the link at all.
+   ───────────────────────────────────────────────────────────── */
+
+export interface CampaignInvite {
+  campaignId: string;
+  campaignName: string;
+  brandName: string;
+  brandLogoUrl: string | null;
+  coverUrl: string | null;
+  brief: string | null;
+  contentStyle: string | null;
+  deliverableSpec: string | null;
+  commissionBps: number | null;
+  clearingDays: number | null;
+  status: string;
+}
+
+/** Mint or fetch a campaign's invite token. Brand side. */
+export async function getCampaignInviteToken(
+  campaignId: string,
+  rotate = false
+): Promise<Result<string | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb.rpc('campaign_invite_token', {
+      p_campaign_id: campaignId,
+      p_rotate: rotate,
+    });
+    if (error) return fail(null, describeError(error, 'Could not create an invite link.'));
+    return ok((data as string) ?? null);
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not create an invite link.'));
+  }
+}
+
+/** What the landing page shows. Works signed out. */
+export async function getCampaignByInvite(token: string): Promise<Result<CampaignInvite | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb.rpc('campaign_by_invite', { p_token: token });
+    if (error) return fail(null, describeError(error, 'Could not load that invite.'));
+
+    const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
+    if (!row) return ok(null);
+
+    return ok({
+      campaignId: row.campaign_id as string,
+      campaignName: (row.campaign_name as string) ?? 'Campaign',
+      brandName: (row.brand_name as string) ?? '',
+      brandLogoUrl: (row.brand_logo_url as string | null) ?? null,
+      coverUrl: (row.cover_url as string | null) ?? null,
+      brief: (row.brief as string | null) ?? null,
+      contentStyle: (row.content_style as string | null) ?? null,
+      deliverableSpec: (row.deliverable_spec as string | null) ?? null,
+      commissionBps: (row.commission_bps as number | null) ?? null,
+      clearingDays: (row.clearing_days as number | null) ?? null,
+      status: (row.status as string) ?? 'draft',
+    });
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not load that invite.'));
+  }
+}
+
+/** Take the invite. Creator side, requires a signed-in creator account. */
+export async function acceptCampaignInvite(token: string): Promise<Result<string | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb.rpc('accept_campaign_invite', { p_token: token });
+    if (error) return fail(null, describeError(error, 'Could not join that campaign.'));
+    return ok((data as string) ?? null);
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not join that campaign.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Creator leaderboard
+   ───────────────────────────────────────────────────────────── */
+
+export interface LeaderboardCreator {
+  creatorId: string;
+  handle: string;
+  /** Videos this creator has sent this brand, all time. */
+  submissions: number;
+  /** Of those, how many the brand is running. */
+  inUse: number;
+  orders: number;
+  revenueCents: Cents;
+  commissionCents: Cents;
+}
+
+/**
+ * A brand's creators, ranked by what they actually drove.
+ *
+ * Submissions come from `submissions` and money from `earnings`, joined in
+ * memory. A creator who has sent videos but driven no orders still appears,
+ * at the bottom — they are doing the work and the brand should see them,
+ * which a query driven off earnings alone would hide.
+ */
+export async function listBrandLeaderboard(
+  brandId: string,
+  windowDays = 30
+): Promise<Result<LeaderboardCreator[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+
+  const since = new Date();
+  since.setUTCHours(0, 0, 0, 0);
+  since.setUTCDate(since.getUTCDate() - (windowDays - 1));
+
+  try {
+    const [subRes, earnRes] = await Promise.all([
+      sb
+        .from('submissions')
+        .select('id, creator_id, status, creators(handle)')
+        .eq('brand_id', brandId),
+      sb
+        .from('earnings')
+        .select('creator_id, commission_cents, commissionable_cents')
+        .eq('brand_id', brandId)
+        .neq('state', 'reversed')
+        .gte('created_at', since.toISOString()),
+    ]);
+
+    if (subRes.error) return fail([], describeError(subRes.error, 'Could not load your creators.'));
+    if (earnRes.error) return fail([], describeError(earnRes.error, 'Could not load your creators.'));
+
+    const rows = new Map<string, LeaderboardCreator>();
+    const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+
+    for (const r of (subRes.data ?? []) as Array<{
+      id: string;
+      creator_id: string;
+      status: string;
+      creators: { handle: string } | Array<{ handle: string }> | null;
+    }>) {
+      const entry = rows.get(r.creator_id) ?? {
+        creatorId: r.creator_id,
+        handle: one(r.creators)?.handle || 'Creator',
+        submissions: 0,
+        inUse: 0,
+        orders: 0,
+        revenueCents: 0,
+        commissionCents: 0,
+      };
+      entry.submissions += 1;
+      if (usageStateFor(r.status) === 'in_use') entry.inUse += 1;
+      rows.set(r.creator_id, entry);
+    }
+
+    for (const r of (earnRes.data ?? []) as Array<{
+      creator_id: string;
+      commission_cents: number;
+      commissionable_cents: number;
+    }>) {
+      const entry = rows.get(r.creator_id) ?? {
+        creatorId: r.creator_id,
+        handle: 'Creator',
+        submissions: 0,
+        inUse: 0,
+        orders: 0,
+        revenueCents: 0,
+        commissionCents: 0,
+      };
+      entry.orders += 1;
+      entry.commissionCents += r.commission_cents;
+      entry.revenueCents += r.commissionable_cents;
+      rows.set(r.creator_id, entry);
+    }
+
+    return ok(
+      [...rows.values()].sort(
+        (a, b) => b.revenueCents - a.revenueCents || b.submissions - a.submissions
+      )
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your creators.'));
   }
 }

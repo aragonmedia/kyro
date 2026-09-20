@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { LifeBuoy, Mail, X } from 'lucide-react';
+import { MessageCircle, Mail, X } from 'lucide-react';
 
 const SUPPORT_EMAIL = 'kevin@itskyro.com';
 
@@ -40,11 +40,22 @@ export function SupportWidget({ context }: { context?: string }) {
   );
 
   return (
-    // On a phone the brand nav pill owns the bottom of the screen, so this
-    // sits above it rather than on top of it.
-    <div ref={panel} className="fixed bottom-24 lg:bottom-4 right-4 z-40 flex flex-col items-end gap-2">
+    // Anchored in the header rather than floating: on a phone the brand nav
+    // pill owns the bottom of the screen, and a second floating control there
+    // is one too many.
+    <div ref={panel} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Message the KYRO team"
+        title="Message the KYRO team"
+        className="p-2 text-muted hover:text-heading transition"
+      >
+        <MessageCircle size={18} />
+      </button>
+
       {open && (
-        <div className="w-72 rounded-2xl border border-line bg-surface shadow-xl shadow-black/30 overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 z-50 w-72 rounded-2xl border border-line bg-surface shadow-xl shadow-black/30 overflow-hidden">
           <div className="p-4 border-b border-line flex items-start justify-between gap-3">
             <div>
               <p className="font-semibold text-heading text-sm">Need a hand?</p>
@@ -73,15 +84,6 @@ export function SupportWidget({ context }: { context?: string }) {
           </p>
         </div>
       )}
-
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Contact KYRO support"
-        className="w-12 h-12 rounded-full bg-gradient-kyro text-white shadow-lg shadow-purple-600/30 flex items-center justify-center hover:scale-105 transition"
-      >
-        {open ? <X size={18} /> : <LifeBuoy size={18} />}
-      </button>
     </div>
   );
 }

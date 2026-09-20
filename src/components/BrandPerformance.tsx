@@ -51,8 +51,16 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-export function BrandPerformanceCard({ brandId }: { brandId: string }) {
+export function BrandPerformanceCard({
+  brandId,
+  campaigns,
+}: {
+  brandId: string;
+  /** For the campaign filter. Empty means the filter is hidden. */
+  campaigns: Array<{ id: string; name: string }>;
+}) {
   const [windowDays, setWindowDays] = useState<number>(30);
+  const [campaignId, setCampaignId] = useState<string>('');
   const [data, setData] = useState<BrandPerformance | null>(null);
   const [loading, setLoading] = useState(true);
   const [hover, setHover] = useState<number | null>(null);
@@ -61,7 +69,7 @@ export function BrandPerformanceCard({ brandId }: { brandId: string }) {
     let alive = true;
     setLoading(true);
     void (async () => {
-      const res = await getBrandPerformance(brandId, windowDays);
+      const res = await getBrandPerformance(brandId, windowDays, campaignId || null);
       if (!alive) return;
       setData(res.data);
       setLoading(false);
@@ -69,7 +77,7 @@ export function BrandPerformanceCard({ brandId }: { brandId: string }) {
     return () => {
       alive = false;
     };
-  }, [brandId, windowDays]);
+  }, [brandId, windowDays, campaignId]);
 
   const series = data?.series ?? [];
   const max = useMemo(() => Math.max(1, ...series.map((p) => p.cents)), [series]);
@@ -84,7 +92,15 @@ export function BrandPerformanceCard({ brandId }: { brandId: string }) {
     <div className="bg-surface border border-line rounded-2xl p-5 md:p-6 space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-muted">Revenue driven</p>
+          <p className="text-sm font-semibold text-muted">
+            Revenue driven
+            {campaignId && (
+              <span className="text-faint font-normal">
+                {' · '}
+                {campaigns.find((c) => c.id === campaignId)?.name ?? 'campaign'}
+              </span>
+            )}
+          </p>
           {/* Hero figure uses the font's proportional figures. tabular-nums
               gives every digit the width of a zero, which reads loose at
               display sizes; it belongs in columns, not here. */}
@@ -93,6 +109,20 @@ export function BrandPerformanceCard({ brandId }: { brandId: string }) {
           </p>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+        {campaigns.length > 1 && (
+          <select
+            value={campaignId}
+            onChange={(e) => setCampaignId(e.target.value)}
+            aria-label="Filter by campaign"
+            className="px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-xs font-semibold text-body focus:outline-none focus:border-purple-500 max-w-[12rem]"
+          >
+            <option value="">All campaigns</option>
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        )}
         <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg">
           {WINDOWS.map((w) => (
             <button
@@ -106,6 +136,7 @@ export function BrandPerformanceCard({ brandId }: { brandId: string }) {
               {w.label}
             </button>
           ))}
+        </div>
         </div>
       </div>
 

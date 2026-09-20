@@ -48,14 +48,17 @@ import {
   setCampaignCover,
   openCampaignThread,
   openSubmissionThread,
+  completeBrandSetup,
+  createAnotherBrand,
+  listBrandLeaderboard,
   normalizeMetaAdAccount,
   normalizeShopifyDomain,
   parseMoneyToCents,
   parsePercentToFraction,
   signCampaignAgreement,
 } from './lib/db';
-import type { BrandApplication, RosterCreator, BrandConnection, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
-import { uploadSubmissionVideo, uploadCampaignCover } from './lib/storage';
+import type { LeaderboardCreator, BrandApplication, RosterCreator, BrandConnection, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
+import { uploadSubmissionVideo, uploadCampaignCover, uploadBrandLogo } from './lib/storage';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { saveBankAccount, saveBrandBankAccount, startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
@@ -70,6 +73,7 @@ import { BrandMark, CampaignDetailModal } from './components/CampaignDetail';
 import { BrandPerformanceCard } from './components/BrandPerformance';
 import { BrandSetupWizard } from './components/BrandSetup';
 import { SupportWidget } from './components/SupportWidget';
+import { CreatorInviteCard, InviteLanding } from './components/Invite';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -1144,6 +1148,7 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, showDemoSwitch = true
                 </div>
               )}
               <NotificationsBell />
+              <SupportWidget context={`${roleLabels[role]} portal`} />
               <button onClick={onSettings} className="p-2 text-muted hover:text-heading transition" title="Account">
                 <Users size={18} />
               </button>
@@ -1156,7 +1161,6 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, showDemoSwitch = true
         </div>
       </header>
       <main className="px-4 sm:px-6 lg:px-8 py-8">{children}</main>
-      <SupportWidget context={`${roleLabels[role]} portal`} />
     </div>
   );
 }
@@ -1711,6 +1715,159 @@ const BRAND_NAV: Array<{ id: BrandPage; label: string; icon: typeof Users; prima
   { id: 'finance', label: 'Finance', icon: DollarSign },
 ];
 
+/**
+ * Brand switcher.
+ *
+ * One account can run several brands — an agency managing clients, or a
+ * company with separate labels. Each gets its own portal: own campaigns, own
+ * creators, own Shopify store, own money.
+ *
+ * A new brand is created deliberately incomplete, so the setup wizard runs
+ * for it and collects the profile and connections rather than dropping it
+ * into an empty dashboard.
+ */
+function BrandSwitcher({ brandName, logoUrl }: { brandName: string; logoUrl: string | null }) {
+  const session = useSession();
+  const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) { setOpen(false); setCreating(false); }
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); setCreating(false); }
+    };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+
+  const create = async () => {
+    setError(null);
+    if (!newName.trim()) { setError('Give the brand a name.'); return; }
+    setBusy(true);
+    const res = await createAnotherBrand(newName);
+    if (res.error || !res.data) {
+      setBusy(false);
+      setError(res.error ?? 'Could not create that brand.');
+      return;
+    }
+    // Switching to it puts the wizard in front, since it is not set up yet.
+    await session.setActiveBrand(res.data.id);
+    setBusy(false);
+    setOpen(false);
+    setCreating(false);
+    setNewName('');
+  };
+
+  const brands = session.brands.length > 0 ? session.brands : [];
+
+  return (
+    <div ref={box} className="relative mb-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2.5 p-3 rounded-xl border border-line bg-surface hover:border-purple-500/40 transition text-left"
+      >
+        <BrandAvatar name={brandName} logoUrl={logoUrl} size={32} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-heading truncate">{brandName}</p>
+          <p className="text-[11px] text-faint">Brand · Owner</p>
+        </div>
+        <ChevronRight
+          size={14}
+          className={`text-faint flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute z-40 left-0 right-0 mt-1 rounded-xl border border-line bg-surface shadow-xl shadow-black/30 overflow-hidden">
+          {!creating && (
+            <>
+              <div className="max-h-64 overflow-y-auto">
+                {brands.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => { void session.setActiveBrand(b.id); setOpen(false); }}
+                    className="w-full flex items-center gap-2.5 p-3 hover:bg-surface-2 transition text-left"
+                  >
+                    <BrandAvatar name={b.name} logoUrl={b.logoUrl} size={26} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-heading truncate">{b.name}</p>
+                      {!b.setupComplete && (
+                        <p className="text-[11px] text-amber-300">Setup unfinished</p>
+                      )}
+                    </div>
+                    {session.brand?.id === b.id && (
+                      <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => { setCreating(true); setError(null); }}
+                className="w-full flex items-center gap-2.5 p-3 border-t border-line text-sm font-semibold text-muted hover:text-heading hover:bg-surface-2 transition"
+              >
+                <Plus size={14} /> Add another brand
+              </button>
+            </>
+          )}
+
+          {creating && (
+            <div className="p-3 space-y-2">
+              <p className="text-xs font-semibold text-muted">New brand</p>
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void create(); }}
+                placeholder="Brand name"
+                className="w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-sm text-heading placeholder-faint focus:outline-none focus:border-purple-500"
+              />
+              <p className="text-xs text-faint leading-relaxed">
+                You'll be taken through setup for it — logo, profile, then its own Shopify and Meta
+                connections. Your current brand stays exactly as it is.
+              </p>
+              {error && <p className="text-xs text-pink-300">{error}</p>}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void create()}
+                  disabled={busy}
+                  className="px-3 py-1.5 rounded-lg bg-gradient-kyro text-white text-xs font-semibold disabled:opacity-50 inline-flex items-center gap-1.5"
+                >
+                  {busy && <RefreshCw size={12} className="animate-spin" />}
+                  Create
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCreating(false); setError(null); }}
+                  disabled={busy}
+                  className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BrandSidebar({
   page,
   onGo,
@@ -1749,13 +1906,7 @@ function BrandSidebar({
 
   return (
     <aside className="hidden lg:flex flex-col gap-1 w-56 flex-shrink-0">
-      <div className="flex items-center gap-2.5 p-3 mb-2 rounded-xl border border-line bg-surface">
-        <BrandAvatar name={brandName} logoUrl={logoUrl} size={32} />
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-heading truncate">{brandName}</p>
-          <p className="text-[11px] text-faint">Brand · Owner</p>
-        </div>
-      </div>
+      <BrandSwitcher brandName={brandName} logoUrl={logoUrl} />
 
       {BRAND_NAV.map((n) => item(n.id, n.label, n.icon))}
 
@@ -1870,7 +2021,7 @@ function PageHead({ title, sub, action }: { title: string; sub?: string; action?
 /* ─────────────────────────────────────────────────────────────
    BRAND DASHBOARD
    ───────────────────────────────────────────────────────────── */
-function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => void }) {
+function BrandDashboard() {
   const session = useSession();
   const { brand, configured, workspaceLoading, workspaceError } = session;
 
@@ -1882,7 +2033,6 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
   const [page, setPage] = useState<BrandPage>('dashboard');
   const [showCreate, setShowCreate] = useState(false);
   const [query, setQuery] = useState('');
-  const [showAllLeaders, setShowAllLeaders] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'draft' | 'ended' | 'pending_fund'>('all');
   // Result of a Shopify install, read off the query string the callback
   // redirected back with. Read once on mount and stripped from the URL there,
@@ -1988,6 +2138,15 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
     );
   }
 
+  // Only campaigns creators can actually work on. Inviting someone to a
+  // draft would land them on a campaign with nothing to upload against.
+  const inviteCampaigns = allCards
+    .filter((c) => c.status === 'live')
+    .map((c) => ({ id: c.id, name: c.name, brandId: c.brandId ?? '', brandName: c.brandName,
+                   status: c.status, coverUrl: c.cover, deliverableSpec: null, brief: null,
+                   commissionBps: null, clearingDays: null, contentStyle: null,
+                   brandLogoUrl: c.logoUrl }));
+
   const createButton = (
     <button
       onClick={() => { setShowCreate(true); mockApi.logEvent('brand.create_campaign.open'); }}
@@ -2058,7 +2217,12 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                 <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
               )}
 
-              {liveMode && brandId && <BrandPerformanceCard brandId={brandId} />}
+              {liveMode && brandId && (
+                <BrandPerformanceCard
+                  brandId={brandId}
+                  campaigns={allCards.map((c) => ({ id: c.id, name: c.name }))}
+                />
+              )}
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {kpis.map((s, i) => (
@@ -2074,51 +2238,14 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
                 ))}
               </div>
 
-              {/* Creator leaderboard */}
-              <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-                <div className="flex items-center justify-between p-5 border-b border-line">
-                  <div className="flex items-center gap-2">
-                    <Trophy size={18} className="text-amber-400" />
-                    <h2 className="text-xl font-bold text-heading">Creator Leaderboard</h2>
-                    <span className="text-xs text-faint ml-2">Last 7 days</span>
-                  </div>
-                  {!liveMode && SEED_LEADERBOARD.length > 3 && (
-                    <button type="button" onClick={() => setShowAllLeaders((v) => !v)} className="text-xs text-muted hover:text-heading">
-                      {showAllLeaders ? 'Show less' : 'View all'}
-                    </button>
-                  )}
+              {liveMode && brandId ? (
+                <BrandLeaderboard brandId={brandId} />
+              ) : (
+                <div className="bg-surface border border-line rounded-2xl p-10 text-center">
+                  <Trophy size={28} className="mx-auto text-faint mb-3" />
+                  <p className="text-sm text-muted">Sign in with a brand account to see your creators.</p>
                 </div>
-                {liveMode ? (
-                  <div className="p-10 text-center">
-                    <Trophy size={28} className="mx-auto text-faint mb-3" />
-                    <p className="text-sm text-muted">No performance data yet.</p>
-                    <p className="text-xs text-faint mt-1">Creators rank here once their videos are running as ads.</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-line">
-                    {(showAllLeaders ? SEED_LEADERBOARD : SEED_LEADERBOARD.slice(0, 3)).map((l, i) => {
-                      const c = SEED_CREATORS[l.creatorId];
-                      const brandRef = BRANDS[l.brandId];
-                      return (
-                        <button key={l.creatorId} onClick={() => onViewCreator(l.creatorId)} className="w-full p-4 flex items-center gap-4 hover:bg-surface-2 transition text-left">
-                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-kyro text-white font-bold text-sm">{i + 1}</div>
-                          <img src={c.avatar} alt={c.name} className="w-10 h-10 rounded-full object-cover" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-heading truncate">{c.name}</p>
-                            <p className="text-xs text-muted">{c.handle} · for {brandRef.name}</p>
-                          </div>
-                          <div className="grid grid-cols-3 gap-6 text-right">
-                            <div><p className="text-xs text-faint">Orders</p><p className="text-sm font-bold text-emerald-400">{l.orders}</p></div>
-                            <div className="hidden sm:block"><p className="text-xs text-faint">Ads</p><p className="text-sm font-bold text-heading">{l.ads}</p></div>
-                            <div className="hidden sm:block"><p className="text-xs text-faint">Views</p><p className="text-sm font-bold text-heading">{fmtK(l.views)}</p></div>
-                          </div>
-                          <ChevronRight size={16} className="text-faint" />
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              )}
             </>
           )}
 
@@ -2270,6 +2397,7 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
               <PageHead title="Creators" sub="Who has applied, and who is already making videos for you." />
               {liveMode && brandId ? (
                 <>
+                  <CreatorInviteCard campaigns={inviteCampaigns} />
                   <ApplicationsPanel brandId={brandId} />
                   <CampaignRoster brandId={brandId} campaigns={allCards} />
                 </>
@@ -2291,19 +2419,11 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
           {page === 'finance' && (
             <>
               <PageHead title="Finance" sub="What you owe creators, and where KYRO bills it from." />
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="p-5 rounded-2xl border border-blue-400/20 bg-blue-400/10">
-                  <Wallet size={20} className="text-blue-400" />
-                  <p className="text-xs text-muted mt-3 mb-1">Creator commission</p>
-                  <p className="text-2xl font-bold text-blue-400">{fmt(totalCommission)}</p>
-                  <p className="text-xs text-faint mt-1">On attributed orders</p>
-                </div>
-                <div className="p-5 rounded-2xl border border-purple-400/20 bg-purple-400/10">
-                  <TrendingUp size={20} className="text-purple-400" />
-                  <p className="text-xs text-muted mt-3 mb-1">KYRO fee</p>
-                  <p className="text-2xl font-bold text-purple-400">{fmt(totalCommission * 0.01)}</p>
-                  <p className="text-xs text-faint mt-1">1% of commission</p>
-                </div>
+              <div className="p-5 rounded-2xl border border-blue-400/20 bg-blue-400/10">
+                <Wallet size={20} className="text-blue-400" />
+                <p className="text-xs text-muted mt-3 mb-1">Creator commission</p>
+                <p className="text-2xl font-bold text-blue-400">{fmt(totalCommission)}</p>
+                <p className="text-xs text-faint mt-1">On attributed orders</p>
               </div>
               <BrandBillingPanel />
             </>
@@ -2312,15 +2432,15 @@ function BrandDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => v
           {/* ── SETTINGS ── */}
           {page === 'settings' && (
             <>
-              <PageHead title="Settings" sub="Connections, and everything KYRO needs before a campaign can run." />
-              {liveMode && brandId && onboarding ? (
-                <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
+              <PageHead title="Settings" sub="Your brand profile, as creators see it." />
+              {liveMode && brandId ? (
+                <BrandProfilePanel brandId={brandId} onSaved={() => void session.refresh()} />
               ) : (
                 <NeedsBrand what="settings" />
               )}
               <p className="text-sm text-muted">
-                Your name, email, password, appearance and notifications live in Account settings,
-                reachable from the icon in the top bar.
+                Your own name, email, password, appearance and notifications live in Account
+                settings, reachable from the icon in the top bar.
               </p>
             </>
           )}
@@ -5459,7 +5579,16 @@ type View =
   | 'creator-profile'
   | 'brand-profile'
   | 'affiliate-orders'
+  | 'invite'
   | 'settings';
+
+/** The token from /join/<token>, or null. Module level so the router and the
+ *  page read it the same way. */
+function inviteTokenFromPath(): string | null {
+  if (typeof window === 'undefined') return null;
+  const m = window.location.pathname.match(/^\/join\/([A-Za-z0-9_-]{10,64})\/?$/);
+  return m ? m[1] : null;
+}
 
 function readRoute(): { view: View; admin: boolean } {
   if (typeof window !== 'undefined') {
@@ -5473,6 +5602,7 @@ function readRoute(): { view: View; admin: boolean } {
     // Supabase sends password-reset links back here with a token in the hash.
     if (path === '/reset-password') return { view: 'reset-password', admin: false };
     if (path === '/orders') return { view: 'affiliate-orders', admin: false };
+    if (inviteTokenFromPath()) return { view: 'invite', admin: false };
   }
   return { view: 'landing', admin: false };
 }
@@ -5530,6 +5660,7 @@ function App() {
     setRestored(true);
     if (!session.userId) return;
     if (view !== 'landing' && view !== 'signin' && view !== 'signup') return;
+    if (inviteTokenFromPath()) return;
     if (session.role) {
       setRole(session.role as Role);
       setView('app');
@@ -5642,6 +5773,20 @@ function App() {
   // a returning user sees the marketing page flash before their dashboard.
   if (!session.ready) return <BootScreen />;
 
+  if (view === 'invite') {
+    const token = inviteTokenFromPath();
+    if (token) {
+      return (
+        <InviteLanding
+          token={token}
+          signedInCreator={Boolean(session.creator)}
+          onSignUp={() => { setView('signup'); nav('/signup'); }}
+          onJoined={() => { setRole('creator'); setView('app'); nav('/'); }}
+        />
+      );
+    }
+  }
+
   if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} onAbout={() => setView('about')} onLegal={goLegal} />;
   if (view === 'privacy') return <LegalPage doc="privacy" onBack={goLanding} onOther={() => goLegal('terms')} />;
   if (view === 'terms') return <LegalPage doc="terms" onBack={goLanding} onOther={() => goLegal('privacy')} />;
@@ -5696,7 +5841,7 @@ function App() {
 
   return (
     <AppShell role={role} onSwitch={setRole} onSignOut={() => void doSignOut()} onSettings={() => setView('settings')} showDemoSwitch={showDemoSwitch}>
-      {role === 'brand' && <BrandDashboard onViewCreator={(id) => { setProfileCreatorId(id); setView('creator-profile'); }} />}
+      {role === 'brand' && <BrandDashboard />}
       {role === 'creator' && (
         <CreatorDashboard onViewOrders={() => { setView('affiliate-orders'); nav('/orders'); }} />
       )}
@@ -5706,3 +5851,277 @@ function App() {
 }
 
 export default App;
+
+/**
+ * Brand profile, editable.
+ *
+ * The same fields the setup wizard collected, so a brand can change what
+ * creators see without going back through onboarding. Writes through the same
+ * function, which already marks setup complete — harmless here, since it
+ * already is.
+ */
+function BrandProfilePanel({ brandId, onSaved }: { brandId: string; onSaved: () => void }) {
+  const { brand } = useSession();
+  const [name, setName] = useState(brand?.name ?? '');
+  const [website, setWebsite] = useState(brand?.websiteUrl ?? '');
+  const [description, setDescription] = useState(brand?.description ?? '');
+  const [currency, setCurrency] = useState(brand?.currency ?? 'USD');
+  const [businessType, setBusinessType] = useState(brand?.businessType ?? '');
+  const [logo, setLogo] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const logoInput = useRef<HTMLInputElement | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!logo) { setLogoPreview(null); return; }
+    const url = URL.createObjectURL(logo);
+    setLogoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [logo]);
+
+  const save = async () => {
+    setError(null);
+    setSaved(false);
+    setSaving(true);
+
+    let logoUrl: string | null = null;
+    if (logo) {
+      const up = await uploadBrandLogo(brandId, logo);
+      if (up.error || !up.url) {
+        setSaving(false);
+        setError(up.error ?? 'The logo did not upload.');
+        return;
+      }
+      logoUrl = up.url;
+    }
+
+    const res = await completeBrandSetup(brandId, {
+      name, websiteUrl: website, businessType, description, currency, logoUrl,
+    });
+    setSaving(false);
+    if (res.error) { setError(res.error); return; }
+    setLogo(null);
+    setSaved(true);
+    onSaved();
+  };
+
+  const field =
+    'w-full px-4 py-2.5 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500';
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="p-5 border-b border-line">
+        <h2 className="text-lg font-bold text-heading">Brand profile</h2>
+        <p className="text-sm text-muted mt-0.5">What creators see when they browse and apply.</p>
+      </div>
+
+      <div className="p-5 space-y-4">
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => logoInput.current?.click()}
+            className="w-16 h-16 rounded-xl border border-line bg-surface-2 overflow-hidden flex items-center justify-center text-muted hover:text-heading flex-shrink-0"
+          >
+            {logoPreview || brand?.logoUrl ? (
+              <img src={logoPreview ?? brand?.logoUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <ImagePlus size={18} />
+            )}
+          </button>
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={() => logoInput.current?.click()}
+              className="px-3 py-1.5 rounded-lg border border-line bg-surface-2 text-xs font-semibold text-muted hover:text-heading"
+            >
+              {brand?.logoUrl ? 'Change logo' : 'Add logo'}
+            </button>
+            <p className="text-xs text-faint">Square, JPG PNG or WebP, up to 5 MB.</p>
+          </div>
+          <input
+            ref={logoInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => { setLogo(e.target.files?.[0] ?? null); e.target.value = ''; }}
+          />
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label htmlFor="bp-name" className="text-xs font-semibold text-muted">Brand name</label>
+            <input id="bp-name" value={name} onChange={(e) => setName(e.target.value)} className={field} />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="bp-site" className="text-xs font-semibold text-muted">Website</label>
+            <input
+              id="bp-site"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="https://yourbrand.com"
+              autoCapitalize="none"
+              autoCorrect="off"
+              className={field}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="bp-desc" className="text-xs font-semibold text-muted">Description</label>
+          <textarea
+            id="bp-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value.slice(0, 200))}
+            rows={3}
+            placeholder="What you sell, and who for."
+            className={`${field} resize-none`}
+          />
+          <p className="text-xs text-faint">{description.length}/200</p>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label htmlFor="bp-type" className="text-xs font-semibold text-muted">Business type</label>
+            <select id="bp-type" value={businessType} onChange={(e) => setBusinessType(e.target.value)} className={field}>
+              <option value="">Not set</option>
+              <option value="ecommerce">E-Commerce</option>
+              <option value="mobile_app">Mobile App</option>
+              <option value="saas">SaaS</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="bp-cur" className="text-xs font-semibold text-muted">Store currency</label>
+            <select id="bp-cur" value={currency} onChange={(e) => setCurrency(e.target.value)} className={field}>
+              {['USD', 'CAD', 'GBP', 'EUR', 'AUD'].map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <p className="text-xs text-faint">Payouts settle in USD.</p>
+          </div>
+        </div>
+
+        {error && <p className="text-sm text-pink-300">{error}</p>}
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving}
+            className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold text-sm disabled:opacity-50 inline-flex items-center gap-2"
+          >
+            {saving && <RefreshCw size={14} className="animate-spin" />}
+            Save changes
+          </button>
+          {saved && <span className="text-sm text-emerald-400 inline-flex items-center gap-1.5"><CheckCircle size={14} /> Saved</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A brand's creators, ranked.
+ *
+ * Ranked by revenue driven, not by video count — posting a lot is not the
+ * same as selling. But the video counts are shown alongside, because a
+ * creator sending work that is not converting is a conversation the brand
+ * should have rather than a row that quietly disappears.
+ */
+function BrandLeaderboard({ brandId }: { brandId: string }) {
+  const [rows, setRows] = useState<LeaderboardCreator[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  const load = useCallback(async () => {
+    const res = await listBrandLeaderboard(brandId, 30);
+    setRows(res.data);
+    setError(res.error);
+  }, [brandId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const shown = showAll ? (rows ?? []) : (rows ?? []).slice(0, 5);
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between p-5 border-b border-line">
+        <div className="flex items-center gap-2">
+          <Trophy size={18} className="text-amber-400" />
+          <h2 className="text-xl font-bold text-heading">Your creators</h2>
+          <span className="text-xs text-faint ml-2">Last 30 days</span>
+        </div>
+        {rows !== null && rows.length > 5 && (
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="text-xs text-muted hover:text-heading"
+          >
+            {showAll ? 'Show less' : `View all ${rows.length}`}
+          </button>
+        )}
+      </div>
+
+      {error && <p className="p-5 text-sm text-pink-300">{error}</p>}
+      {rows === null && <p className="p-10 text-center text-sm text-muted">Loading…</p>}
+
+      {rows !== null && rows.length === 0 && (
+        <div className="p-10 text-center">
+          <Trophy size={28} className="mx-auto text-faint mb-3" />
+          <p className="text-sm text-muted">No creators yet.</p>
+          <p className="text-xs text-faint mt-1">
+            They appear here as soon as they send you a video, ranked once orders start landing.
+          </p>
+        </div>
+      )}
+
+      {shown.length > 0 && (
+        <div className="divide-y divide-line">
+          {shown.map((c, i) => (
+            <div key={c.creatorId} className="p-4 flex items-center gap-4">
+              <div
+                className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm flex-shrink-0 ${
+                  c.revenueCents > 0
+                    ? 'bg-gradient-kyro text-white'
+                    : 'bg-surface-2 border border-line text-faint'
+                }`}
+              >
+                {i + 1}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-heading truncate">@{stripAt(c.handle)}</p>
+                <p className="text-xs text-muted">
+                  {plural(c.submissions, 'video')}
+                  {c.inUse > 0 && <span className="text-emerald-400"> · {c.inUse} in use</span>}
+                  {c.submissions > 0 && c.inUse === 0 && (
+                    <span className="text-faint"> · none running yet</span>
+                  )}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6 text-right">
+                <div>
+                  <p className="text-xs text-faint">Orders</p>
+                  <p className="text-sm font-bold text-emerald-400 tabular-nums">{c.orders}</p>
+                </div>
+                <div className="hidden sm:block">
+                  <p className="text-xs text-faint">Revenue</p>
+                  <p className="text-sm font-bold text-heading tabular-nums">
+                    {fmt(centsToDollars(c.revenueCents))}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-faint">You owe</p>
+                  <p className="text-sm font-bold text-blue-400 tabular-nums">
+                    {fmt(centsToDollars(c.commissionCents))}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
