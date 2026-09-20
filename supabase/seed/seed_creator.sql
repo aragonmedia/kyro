@@ -32,15 +32,18 @@ declare
   v_order      uuid;
   v_attr       uuid;
 
-  -- name, handle, tagline, category, commission rate (bps)
+  -- name, handle, tagline, category, commission rate (bps), cover image
+  --
+  -- Covers are served from /public, so they are plain root-relative paths
+  -- rather than Storage URLs. Lebanta has no product shot yet and gets an
+  -- empty string, which falls through to the generated tile by design.
   brand_spec text[][] := array[
-    array['Bold Buns',   'demo-bold-buns',   'Bakery-fresh, shipped cold',        'Food',     '1500'],
-    array['Jaje Health', 'demo-jaje-health', 'Daily greens without the chalk',    'Wellness', '1200'],
-    array['Fuel',        'demo-fuel',        'Clean energy, no crash',            'Beverage', '1000'],
-    array['Lebanta',     'demo-lebanta',     'Skincare for people who forget to', 'Beauty',   '1800']
+    array['Bold Buns',   'demo-bold-buns',   'Daily wellness and performance support', 'Wellness', '1500', '/campaign-covers/bold-buns.jpg'],
+    array['Jaje Health', 'demo-jaje-health', 'Gut support that actually tastes good',  'Wellness', '1200', '/campaign-covers/jaje-health.jpg'],
+    array['Fuel',        'demo-fuel',        'Beauty from the inside out',             'Beauty',   '1000', '/campaign-covers/fuel.jpg'],
+    array['Lebanta',     'demo-lebanta',     'Skincare for people who forget to',      'Beauty',   '1800', '']
   ];
 
-  spec         text[];
   i            int;
   j            int;
   n_orders     int;
@@ -79,7 +82,6 @@ begin
    where id = v_creator_id;
 
   for i in 1..array_length(brand_spec, 1) loop
-    spec     := brand_spec[i:i][1:5];
     rate_bps := (brand_spec[i][5])::int;
 
     insert into public.brands (owner_user_id, name, handle, tagline, category, approval_status)
@@ -87,7 +89,7 @@ begin
     returning id into v_brand_id;
 
     insert into public.campaigns (
-      brand_id, name, brief, status, deliverable_spec,
+      brand_id, name, brief, status, deliverable_spec, cover_url,
       commission_type, commission_percent_spend, commission_rate_bps,
       platform_fee_bps, clearing_days, activated_at, created_at
     )
@@ -97,6 +99,7 @@ begin
       'Ongoing performance campaign. Post what works, we run what converts.',
       'live',
       '9:16 video, 15-30s, hook in the first 2 seconds, show the product in use.',
+      nullif(brand_spec[i][6], ''),
       'percent_spend', rate_bps / 10000.0, rate_bps,
       100, 30,
       now() - ((60 + i * 5) || ' days')::interval,

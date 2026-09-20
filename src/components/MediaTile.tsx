@@ -79,15 +79,26 @@ export function CoverImage({
  * A submitted video.
  *
  * KYRO stores the file but does not extract a frame, so there is no thumbnail
- * to show. Rather than leave a gap, the tile reads as video: generated
- * backdrop, play affordance, and the campaign name it belongs to.
+ * of the video itself. The campaign's product image is the next best thing and
+ * the one a creator recognises at a glance, so it sits behind the play
+ * affordance when the campaign has one. Failing that, the generated tile keeps
+ * the card from reading as broken.
  */
-export function VideoTile({ name, label }: { name: string; label?: string }) {
+export function VideoTile({
+  name,
+  label,
+  src,
+}: {
+  name: string;
+  label?: string;
+  src?: string | null;
+}) {
   return (
     <div className="relative w-full h-full">
-      <GeneratedTile name={name} />
+      <CoverImage src={src} name={name} />
+      <div className="absolute inset-0 bg-black/20" aria-hidden />
       <div className="absolute inset-0 flex items-center justify-center">
-        <div className="w-12 h-12 rounded-full bg-black/35 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/25">
+        <div className="w-12 h-12 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/30">
           <Play size={18} className="text-white ml-0.5" fill="currentColor" />
         </div>
       </div>

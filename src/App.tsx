@@ -5,9 +5,9 @@ import {
   Sparkles, Bell, LogOut, Filter, Search, Award, Target,
   ArrowUpRight, RefreshCw, MessageSquare, Globe, Mail, Trophy, Hash,
   Instagram, Youtube, ShieldCheck, Cpu, Layers, Heart,
-  ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3, PieChart, Calendar, ArrowDownRight
+  ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3, PieChart, Calendar, ArrowDownRight, ImagePlus
 } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { mockApi } from './lib/api';
 import { useTheme } from './lib/theme';
 import {
@@ -44,6 +44,7 @@ import {
   setSubmissionUsage,
   updateCampaignStatus,
   applyToCampaign,
+  setCampaignCover,
   normalizeMetaAdAccount,
   normalizeShopifyDomain,
   parseMoneyToCents,
@@ -51,7 +52,7 @@ import {
   signCampaignAgreement,
 } from './lib/db';
 import type { BrandApplication, RosterCreator, BrandConnection, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
-import { uploadSubmissionVideo } from './lib/storage';
+import { uploadSubmissionVideo, uploadCampaignCover } from './lib/storage';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { saveBankAccount, saveBrandBankAccount, startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
@@ -2035,9 +2036,21 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
   const [perConversion, setPerConversion] = useState('');
   const [deliverable, setDeliverable] = useState('');
   const [brief, setBrief] = useState('');
+  const [cover, setCover] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const coverInput = useRef<HTMLInputElement | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Object URLs are a resource, not a string. Revoking on change and unmount
+  // keeps a brand who tries five images from leaking five blobs.
+  useEffect(() => {
+    if (!cover) { setCoverPreview(null); return; }
+    const url = URL.createObjectURL(cover);
+    setCoverPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [cover]);
 
   const wantsPercent = commissionType === 'percent_spend' || commissionType === 'hybrid';
   const wantsPerConversion = commissionType === 'per_conversion' || commissionType === 'hybrid';
@@ -2085,12 +2098,36 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
       commissionPerConversionCents: perConversionCents,
     });
 
-    setSaving(false);
     if (res.error) {
+      setSaving(false);
       setSubmitError(res.error);
       return;
     }
-    mockApi.logEvent('campaign.created', { id: res.data?.id, name: res.data?.name });
+
+    // The cover needs a campaign id, so it can only be attached after the row
+    // exists. If this half fails the campaign is still real — say so plainly
+    // and let them add the image from the campaign row, rather than implying
+    // nothing was created.
+    const created = res.data;
+    if (cover && created) {
+      const up = await uploadCampaignCover(brandId, cover);
+      if (up.error || !up.url) {
+        setSaving(false);
+        setSubmitError(`Campaign created, but the product image didn't upload (${up.error ?? 'unknown error'}). Add it from the campaign row.`);
+        onCreated();
+        return;
+      }
+      const saved = await setCampaignCover(created.id, up.url);
+      if (saved.error) {
+        setSaving(false);
+        setSubmitError(`Campaign created, but the product image didn't save (${saved.error}). Add it from the campaign row.`);
+        onCreated();
+        return;
+      }
+    }
+
+    setSaving(false);
+    mockApi.logEvent('campaign.created', { id: created?.id, name: created?.name });
     onCreated();
     onClose();
   };
@@ -2115,6 +2152,51 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
             <label className={label}>Campaign Name</label>
             <input value={name} onChange={(e) => setName(e.target.value)} className={`${field} ${borderFor('name')}`} placeholder="Summer Drop 2026" />
             {errors.name && <p className="text-xs text-pink-300 mt-1.5">{errors.name}</p>}
+          </div>
+
+          {/* The product image is the first thing a creator sees when deciding
+              whether to make a video, so it belongs in the create form rather
+              than being something to remember afterwards. */}
+          <div>
+            <label className={label}>Product Image</label>
+            <div className="flex items-center gap-3">
+              <div className="w-20 h-20 rounded-xl overflow-hidden border border-line flex-shrink-0 bg-surface-2">
+                <CoverImage src={coverPreview} name={name || 'Campaign'} />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <input
+                  ref={coverInput}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => { setCover(e.target.files?.[0] ?? null); e.target.value = ''; }}
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => coverInput.current?.click()}
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line bg-surface-2 text-xs font-semibold text-muted hover:text-heading disabled:opacity-50"
+                  >
+                    <ImagePlus size={12} /> {cover ? 'Change image' : 'Add image'}
+                  </button>
+                  {cover && (
+                    <button
+                      type="button"
+                      onClick={() => setCover(null)}
+                      disabled={saving}
+                      className="text-xs text-faint hover:text-body disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-faint">
+                  JPG, PNG or WebP up to 5 MB. Creators see this when they browse, apply, and look
+                  back at what they submitted.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -2327,7 +2409,7 @@ function MySubmissionCard({ sub, onOpen }: { sub: MySubmission; onOpen: () => vo
       className="w-full text-left bg-surface border border-line rounded-2xl overflow-hidden hover:border-purple-500/40 transition"
     >
       <div className="relative aspect-video">
-        <VideoTile name={sub.campaignName} label={sub.brandName} />
+        <VideoTile name={sub.campaignName} label={sub.brandName} src={sub.coverUrl} />
       </div>
       <div className="p-5 space-y-3">
         <div className="flex items-start justify-between gap-3">

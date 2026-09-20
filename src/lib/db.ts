@@ -1122,6 +1122,8 @@ export interface MySubmission {
   videoUrl: string | null;
   trackingToken: string | null;
   submittedAt: string;
+  /** The campaign's product image, shown on the card and in the detail view. */
+  coverUrl: string | null;
 }
 
 export async function listMySubmissions(creatorId: string): Promise<Result<MySubmission[]>> {
@@ -1130,7 +1132,9 @@ export async function listMySubmissions(creatorId: string): Promise<Result<MySub
   try {
     const { data, error } = await sb
       .from('submissions')
-      .select('id, campaign_id, status, brand_note, decided_at, video_url, tracking_token, submitted_at, campaigns(name, brands(name))')
+      .select(
+        'id, campaign_id, status, brand_note, decided_at, video_url, tracking_token, submitted_at, campaigns(name, cover_url, brands(name))'
+      )
       .eq('creator_id', creatorId)
       .order('submitted_at', { ascending: false });
 
@@ -1145,7 +1149,10 @@ export async function listMySubmissions(creatorId: string): Promise<Result<MySub
       video_url: string | null;
       tracking_token: string | null;
       submitted_at: string;
-      campaigns: { name: string; brands: { name: string } | { name: string }[] | null } | Array<{ name: string; brands: { name: string } | { name: string }[] | null }> | null;
+      campaigns:
+        | { name: string; cover_url: string | null; brands: { name: string } | { name: string }[] | null }
+        | Array<{ name: string; cover_url: string | null; brands: { name: string } | { name: string }[] | null }>
+        | null;
     }>;
 
     return ok(
@@ -1164,6 +1171,7 @@ export async function listMySubmissions(creatorId: string): Promise<Result<MySub
           videoUrl: r.video_url,
           trackingToken: r.tracking_token ?? null,
           submittedAt: r.submitted_at,
+          coverUrl: campaign?.cover_url ?? null,
         };
       })
     );
