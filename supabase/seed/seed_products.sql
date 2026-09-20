@@ -51,6 +51,11 @@ update public.brands
    set tagline = 'Haircare that shows up on camera', category = 'Beauty'
  where handle = 'demo-lebanta';
 
+update public.campaigns c
+   set cover_url = '/campaign-covers/lebanta.jpg'
+  from public.brands b
+ where b.id = c.brand_id and b.handle = 'demo-lebanta';
+
 -- ── Products ─────────────────────────────────────────────────
 
 delete from public.campaign_products p
@@ -69,7 +74,7 @@ select c.id, b.id, x.name, x.description, x.image_url, x.price_cents, x.position
     ('demo-jaje-health', '10EX Gummies — 2 Month',  'Two pouches. The pack size that matches the 60-day routine the brief talks about.',                                            '/campaign-covers/jaje-health.jpg', 5999, 1),
     ('demo-fuel', 'Beauty+ 24-in-One',              '60 capsules. Biotin, keratin, hyaluronic acid, MSM, saw palmetto, collagen support and vitamin complex in one daily capsule.',  '/campaign-covers/fuel.jpg',        3999, 0),
     ('demo-fuel', 'Beauty+ Buy 1 Get 1',            'The running offer: second bottle at 50% off, two in the cart.',                                                                '/campaign-covers/fuel.jpg',        5999, 1),
-    ('demo-lebanta', 'Repair + Shine Treatment',    'Leave-in treatment. The hero product for the haircare showcase brief.',                                                        null,                               2800, 0)
+    ('demo-lebanta', 'Wonder Growth Oil — 2 Pack',  'Batana, coconut, castor, pumpkin seed and rosemary oils. 4 fl oz (120 ml) each, for all hair types, with applicator combs included.', '/campaign-covers/lebanta.jpg',     2999, 0)
   ) as x(handle, name, description, image_url, price_cents, position)
     on x.handle = b.handle
  where b.handle like 'demo-%';

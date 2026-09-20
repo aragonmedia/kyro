@@ -5,9 +5,6 @@
 -- Vercel rather than Supabase Storage URLs. Push the repo first, otherwise
 -- the paths resolve to nothing until the deploy lands.
 --
--- Lebanta is intentionally left alone: no product shot yet, so it falls back
--- to the generated tile.
---
 -- Safe to run more than once.
 -- ═══════════════════════════════════════════════════════════════
 
@@ -16,10 +13,11 @@ update public.campaigns c
                      when 'demo-bold-buns'   then '/campaign-covers/bold-buns.jpg'
                      when 'demo-jaje-health' then '/campaign-covers/jaje-health.jpg'
                      when 'demo-fuel'        then '/campaign-covers/fuel.jpg'
+                     when 'demo-lebanta'     then '/campaign-covers/lebanta.jpg'
                    end
   from public.brands b
  where b.id = c.brand_id
-   and b.handle in ('demo-bold-buns', 'demo-jaje-health', 'demo-fuel');
+   and b.handle in ('demo-bold-buns', 'demo-jaje-health', 'demo-fuel', 'demo-lebanta');
 
 -- ── What landed ──────────────────────────────────────────────
 select b.name as brand, c.name as campaign, c.cover_url
