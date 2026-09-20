@@ -1017,6 +1017,12 @@ export interface OpenCampaign {
   status: string;
   coverUrl: string | null;
   deliverableSpec: string | null;
+  /** What the brand wrote about the campaign. Shown before a creator applies. */
+  brief: string | null;
+  /** Commission the creator earns on an attributed order, in basis points. */
+  commissionBps: number | null;
+  /** Days an earning sits in `clearing` before it can be withdrawn. */
+  clearingDays: number | null;
 }
 
 /**
@@ -1040,7 +1046,9 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
   try {
     const { data, error } = await sb
       .from('campaigns')
-      .select('id, name, brand_id, status, cover_url, deliverable_spec, brands(name, logo_url)')
+      .select(
+        'id, name, brand_id, status, cover_url, deliverable_spec, brief, commission_rate_bps, clearing_days, brands(name, logo_url)'
+      )
       .in('status', ['live', 'pending_fund', 'draft'])
       .order('created_at', { ascending: false });
 
@@ -1053,22 +1061,35 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
       status: string;
       cover_url: string | null;
       deliverable_spec: string | null;
+      brief: string | null;
+      commission_rate_bps: number | null;
+      clearing_days: number | null;
       brands: { name: string; logo_url: string | null } | { name: string; logo_url: string | null }[] | null;
     }>;
 
     return ok(
-      rows.map((r) => {
-        const brand = Array.isArray(r.brands) ? r.brands[0] : r.brands;
-        return {
-          id: r.id,
-          name: r.name,
-          brandId: r.brand_id,
-          brandName: brand?.name ?? 'Unknown brand',
-          status: r.status,
-          coverUrl: r.cover_url,
-          deliverableSpec: r.deliverable_spec,
-        };
-      })
+      rows
+        .map((r) => {
+          const brand = Array.isArray(r.brands) ? r.brands[0] : r.brands;
+          return {
+            id: r.id,
+            name: r.name,
+            brandId: r.brand_id,
+            brandName: (brand?.name ?? '').trim(),
+            status: r.status,
+            coverUrl: r.cover_url,
+            deliverableSpec: r.deliverable_spec,
+            brief: r.brief,
+            commissionBps: r.commission_rate_bps,
+            clearingDays: r.clearing_days,
+          };
+        })
+        // A campaign whose brand we cannot name is not something a creator can
+        // make a decision about. It happens when the brand row is outside what
+        // RLS lets this creator read, or when a campaign was created before its
+        // brand existed. Either way, showing it as "Unknown brand" asks the
+        // creator to gamble, so it does not go in the list at all.
+        .filter((c) => c.brandName.length > 0)
     );
   } catch (e) {
     return fail([], describeError(e, 'Could not load campaigns.'));
@@ -1584,6 +1605,16 @@ export interface CreatorEarnings {
   clearingCents: Cents;
   availableCents: Cents;
   paidCents: Cents;
+  /**
+   * The same four buckets, but counting only earnings created inside the
+   * selected window. The lifetime figures above are what a payout is made
+   * against; these are what answers "how did the last 30 days go", which is
+   * the question the 7/30/90 selector is actually asking.
+   */
+  windowPendingCents: Cents;
+  windowClearingCents: Cents;
+  windowAvailableCents: Cents;
+  windowPaidCents: Cents;
   /** Soonest available_at still in the future, or null. */
   nextClearsAt: string | null;
 }
@@ -1596,6 +1627,10 @@ const emptyEarnings = (windowDays: number): CreatorEarnings => ({
   clearingCents: 0,
   availableCents: 0,
   paidCents: 0,
+  windowPendingCents: 0,
+  windowClearingCents: 0,
+  windowAvailableCents: 0,
+  windowPaidCents: 0,
   nextClearsAt: null,
 });
 
@@ -1646,11 +1681,15 @@ export async function getCreatorEarnings(
     let windowCents = 0;
     let nextClearsAt: string | null = null;
     const now = Date.now();
+    const inWindow = { pending: 0, clearing: 0, available: 0, paid: 0 };
 
     for (const r of rows) {
       const day = r.created_at.slice(0, 10);
       byDay.set(day, (byDay.get(day) ?? 0) + r.commission_cents);
       windowCents += r.commission_cents;
+      if (r.state in inWindow) {
+        inWindow[r.state as keyof typeof inWindow] += r.commission_cents;
+      }
       if (r.available_at && Date.parse(r.available_at) > now) {
         if (!nextClearsAt || Date.parse(r.available_at) < Date.parse(nextClearsAt)) {
           nextClearsAt = r.available_at;
@@ -1676,6 +1715,10 @@ export async function getCreatorEarnings(
       clearingCents: bal.clearing_cents ?? 0,
       availableCents: bal.available_cents ?? 0,
       paidCents: bal.paid_cents ?? 0,
+      windowPendingCents: inWindow.pending,
+      windowClearingCents: inWindow.clearing,
+      windowAvailableCents: inWindow.available,
+      windowPaidCents: inWindow.paid,
       nextClearsAt,
     });
   } catch (e) {
@@ -1706,7 +1749,7 @@ export interface CreatorOrderRow {
  */
 export async function listCreatorOrders(
   creatorId: string,
-  limit = 100
+  limit = 500
 ): Promise<Result<CreatorOrderRow[]>> {
   const sb = client();
   if (!sb) return ok([]);

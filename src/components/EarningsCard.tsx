@@ -171,19 +171,41 @@ export function EarningsCard({ creatorId }: { creatorId: string }) {
         </p>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-line">
-        <BalanceStat label="Pending" cents={data?.pendingCents ?? 0} hint="Order not fulfilled yet" />
-        <BalanceStat label="Clearing" cents={data?.clearingCents ?? 0} hint="In the 30-day window" />
-        <BalanceStat
-          label="Available"
-          cents={data?.availableCents ?? 0}
-          hint={
-            data?.nextClearsAt
-              ? `Next clears ${dayLabel(data.nextClearsAt.slice(0, 10))}`
-              : 'Ready to withdraw'
-          }
-        />
-        <BalanceStat label="Paid out" cents={data?.paidCents ?? 0} hint="Lifetime" />
+      {/* These four follow the 7/30/90 selector rather than showing lifetime
+          balances, because a figure sitting under a window selector that
+          ignores it is simply wrong. The label says which window, so the
+          numbers are never ambiguous, and the lifetime available balance still
+          drives Withdraw over on the Payouts tab where it belongs. */}
+      <div className="pt-4 border-t border-line space-y-3">
+        <p className="text-xs font-semibold text-faint">
+          Last {windowDays} days · where this money is
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <BalanceStat
+            label="Pending"
+            cents={data?.windowPendingCents ?? 0}
+            hint="Order not fulfilled yet"
+          />
+          <BalanceStat
+            label="Clearing"
+            cents={data?.windowClearingCents ?? 0}
+            hint="In the 30-day window"
+          />
+          <BalanceStat
+            label="Available"
+            cents={data?.windowAvailableCents ?? 0}
+            hint={
+              data?.nextClearsAt
+                ? `Next clears ${dayLabel(data.nextClearsAt.slice(0, 10))}`
+                : 'Ready to withdraw'
+            }
+          />
+          <BalanceStat
+            label="Paid out"
+            cents={data?.windowPaidCents ?? 0}
+            hint={`Earned in these ${windowDays} days`}
+          />
+        </div>
       </div>
     </div>
   );

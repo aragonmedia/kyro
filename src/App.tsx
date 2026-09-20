@@ -56,7 +56,7 @@ import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { saveBankAccount, saveBrandBankAccount, startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
 import { EarningsCard } from './components/EarningsCard';
-import { CreatorOrders } from './components/CreatorOrders';
+import { AffiliateOrdersCard, AffiliateOrdersPage } from './components/AffiliateOrders';
 import { CoverImage, VideoTile } from './components/MediaTile';
 import { CampaignCoverControl } from './components/CampaignCover';
 import { SubmissionDetailModal } from './components/SubmissionDetail';
@@ -2177,7 +2177,7 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
 /* ─────────────────────────────────────────────────────────────
    CREATOR DASHBOARD — with earning notifications + AI tags
    ───────────────────────────────────────────────────────────── */
-function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void }) {
+function CreatorDashboard({ onViewBrand, onViewOrders }: { onViewBrand: (id: BrandId) => void; onViewOrders: () => void }) {
   const session = useSession();
   const creatorId = session.creator?.id ?? null;
   const [showSubmit, setShowSubmit] = useState(false);
@@ -2286,7 +2286,7 @@ function CreatorDashboard({ onViewBrand }: { onViewBrand: (id: BrandId) => void 
       {tab === 'payouts' && creatorId && (
         <div className="space-y-6">
           <PayoutsPanel creatorId={creatorId} />
-          <CreatorOrders creatorId={creatorId} />
+          <AffiliateOrdersCard creatorId={creatorId} onOpen={onViewOrders} />
           <PayoutAccountCard />
         </div>
       )}
@@ -2444,7 +2444,7 @@ function ActivateCampaignRow({
 function BrowseCampaigns({ creatorId }: { creatorId: string }) {
   const [campaigns, setCampaigns] = useState<OpenCampaign[] | null>(null);
   const [apps, setApps] = useState<MyApplication[]>([]);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [applying, setApplying] = useState<OpenCampaign | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -2457,15 +2457,6 @@ function BrowseCampaigns({ creatorId }: { creatorId: string }) {
   useEffect(() => { void load(); }, [load]);
 
   const statusFor = (campaignId: string) => apps.find((a) => a.campaignId === campaignId)?.status ?? null;
-
-  const apply = async (campaignId: string) => {
-    setError(null);
-    setBusy(campaignId);
-    const res = await applyToCampaign(campaignId, creatorId);
-    setBusy(null);
-    if (res.error) { setError(res.error); return; }
-    await load();
-  };
 
   if (campaigns !== null && campaigns.length === 0) return null;
 
@@ -2506,17 +2497,180 @@ function BrowseCampaigns({ creatorId }: { creatorId: string }) {
               ) : (
                 <button
                   type="button"
-                  onClick={() => void apply(c.id)}
-                  disabled={busy === c.id}
-                  className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2 whitespace-nowrap"
+                  onClick={() => setApplying(c)}
+                  className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold inline-flex items-center gap-2 whitespace-nowrap"
                 >
-                  {busy === c.id && <RefreshCw size={14} className="animate-spin" />}
                   {status === 'rejected' ? 'Apply again' : 'Apply'}
                 </button>
               )}
             </div>
           );
         })}
+      </div>
+
+      {applying && (
+        <ApplyModal
+          campaign={applying}
+          creatorId={creatorId}
+          reapply={statusFor(applying.id) === 'rejected'}
+          onClose={() => setApplying(null)}
+          onApplied={() => void load()}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CREATOR — APPLY TO A CAMPAIGN
+   Applying used to be a single click with no confirmation and nothing shown
+   about what was being agreed to. This is the form: the terms on one side,
+   an optional note to the brand on the other, and an explicit send.
+   ───────────────────────────────────────────────────────────── */
+function ApplyModal({
+  campaign,
+  creatorId,
+  reapply,
+  onClose,
+  onApplied,
+}: {
+  campaign: OpenCampaign;
+  creatorId: string;
+  reapply: boolean;
+  onClose: () => void;
+  onApplied: () => void;
+}) {
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [onClose, busy]);
+
+  const send = async () => {
+    setError(null);
+    setBusy(true);
+    const res = await applyToCampaign(campaign.id, creatorId, message);
+    setBusy(false);
+    if (res.error) { setError(res.error); return; }
+    onApplied();
+    onClose();
+  };
+
+  const rate =
+    campaign.commissionBps != null
+      ? `${(campaign.commissionBps / 100).toFixed(campaign.commissionBps % 100 === 0 ? 0 : 1)}% of each order`
+      : 'Set by the brand';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-app/80 backdrop-blur-sm"
+      onClick={() => { if (!busy) onClose(); }}
+    >
+      <div
+        className="bg-surface border border-line rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="relative aspect-[21/9]">
+          <CoverImage src={campaign.coverUrl} name={campaign.brandName} />
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white/90 hover:text-white disabled:opacity-40"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          <div>
+            <p className="text-xs font-semibold text-purple-300 uppercase tracking-wide">
+              {reapply ? 'Apply again' : 'Apply to join'}
+            </p>
+            <h2 className="text-xl font-bold text-heading mt-1">{campaign.name}</h2>
+            <p className="text-sm text-muted">{campaign.brandName}</p>
+          </div>
+
+          {campaign.brief && (
+            <p className="text-sm text-body leading-relaxed">{campaign.brief}</p>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-4 rounded-xl border border-line bg-surface-2">
+              <p className="text-xs text-faint">You earn</p>
+              <p className="text-base font-bold text-emerald-400 mt-0.5">{rate}</p>
+            </div>
+            <div className="p-4 rounded-xl border border-line bg-surface-2">
+              <p className="text-xs text-faint">Money clears after</p>
+              <p className="text-base font-bold text-heading mt-0.5">
+                {campaign.clearingDays ?? 30} days
+              </p>
+            </div>
+          </div>
+
+          {campaign.deliverableSpec && (
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-muted">What they're asking for</p>
+              <p className="text-sm text-body leading-relaxed">{campaign.deliverableSpec}</p>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label htmlFor="apply-note" className="text-xs font-semibold text-muted">
+              Note to the brand <span className="text-faint font-normal">(optional)</span>
+            </label>
+            <textarea
+              id="apply-note"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              disabled={busy}
+              rows={3}
+              maxLength={600}
+              placeholder="What you'd make for them, or work you've done that's close to this."
+              className="w-full px-4 py-2.5 bg-surface-2 border border-line rounded-lg text-sm text-heading placeholder:text-faint focus:outline-none focus:border-purple-500 resize-none"
+            />
+            <p className="text-xs text-faint">{message.length}/600</p>
+          </div>
+
+          <div className="p-3 rounded-lg border border-line bg-surface-2">
+            <p className="text-xs text-muted leading-relaxed">
+              The brand reviews applications. Once you're on, you can upload videos whenever you
+              like — no per-video approval. KYRO takes a 1% fee on what you earn.
+            </p>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 p-3 rounded-lg border border-pink-400/30 bg-pink-400/10">
+              <AlertCircle size={14} className="text-pink-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-pink-200">{error}</p>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void send()}
+              disabled={busy}
+              className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold disabled:opacity-50 inline-flex items-center gap-2"
+            >
+              {busy && <RefreshCw size={14} className="animate-spin" />}
+              Send application
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="px-4 py-2.5 rounded-lg border border-line text-muted hover:text-heading disabled:opacity-40"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -3235,13 +3389,30 @@ function PayoutAccountCard() {
             {creator.taxLegalName && (
               <p className="text-xs text-faint">On file for {creator.taxLegalName}{creator.taxCountry ? ` · ${creator.taxCountry}` : ''}</p>
             )}
-            <button
-              type="button"
-              onClick={() => setTaxEditing(true)}
-              className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold"
-            >
-              {creator.taxLegalName ? 'Update tax info' : 'Submit tax info'}
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setTaxEditing(true)}
+                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold"
+              >
+                {creator.taxLegalName ? 'Update tax info' : 'Submit tax info'}
+              </button>
+              {/* A 1099-NEC only exists once KYRO has issued one, which happens
+                  after the calendar year closes and only past $600. Disabled
+                  with the reason on it, rather than a button that 404s. */}
+              <button
+                type="button"
+                disabled
+                title={
+                  taxDone
+                    ? 'Your 1099-NEC is issued after the calendar year closes, once you have earned $600 or more.'
+                    : 'Submit your tax info first.'
+                }
+                className="px-4 py-2 rounded-lg border border-line bg-surface-2 text-sm font-semibold text-faint cursor-not-allowed"
+              >
+                View tax form
+              </button>
+            </div>
           </>
         )}
 
@@ -4563,6 +4734,7 @@ type View =
   | 'about'
   | 'creator-profile'
   | 'brand-profile'
+  | 'affiliate-orders'
   | 'settings';
 
 function readRoute(): { view: View; admin: boolean } {
@@ -4576,6 +4748,7 @@ function readRoute(): { view: View; admin: boolean } {
     if (path === '/terms' || path === '/terms-of-service') return { view: 'terms', admin: false };
     // Supabase sends password-reset links back here with a token in the hash.
     if (path === '/reset-password') return { view: 'reset-password', admin: false };
+    if (path === '/orders') return { view: 'affiliate-orders', admin: false };
   }
   return { view: 'landing', admin: false };
 }
@@ -4640,6 +4813,19 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.ready, session.userId, session.role, restored]);
+
+  /**
+   * /orders belongs to a creator. Anyone else who lands on it — a signed-out
+   * visitor with the link, a brand account, a refresh that outran the session
+   * restore — gets moved on once we actually know who they are, rather than
+   * being left on a page with nothing to show.
+   */
+  useEffect(() => {
+    if (view !== 'affiliate-orders') return;
+    if (!session.ready || session.workspaceLoading || session.creator) return;
+    setView(session.userId ? 'app' : 'landing');
+    nav('/');
+  }, [view, session.ready, session.workspaceLoading, session.creator, session.userId]);
 
   const goSignIn = (admin: boolean) => { setAdminEntry(admin); setView('signin'); nav(admin ? '/admin' : '/signin'); };
   const goSignUp = () => { setAdminEntry(false); setView('signup'); nav('/signup'); };
@@ -4762,6 +4948,21 @@ function App() {
   if (view === 'creator-profile') return <CreatorPublicProfile creatorId={profileCreatorId} onBack={() => setView('app')} />;
   if (view === 'brand-profile') return <BrandPublicProfile brandId={profileBrandId} onBack={() => setView('app')} />;
   if (view === 'settings') return <AccountSettings onBack={() => setView('app')} role={role} />;
+  if (view === 'affiliate-orders') {
+    if (session.creator) {
+      return (
+        <AffiliateOrdersPage
+          creatorId={session.creator.id}
+          onBack={() => { setView('app'); nav('/'); }}
+        />
+      );
+    }
+    // Reached by refreshing or by a direct link, before the session has come
+    // back. The effect above sends anyone without a creator workspace
+    // somewhere that makes sense; until then this is a loading state, not an
+    // empty page.
+    return <BootScreen />;
+  }
 
   // The "Demo as" switcher is for exploring the demo. A real signed-in brand or
   // creator shouldn't be able to flip into someone else's portal; admins keep it.
@@ -4770,7 +4971,12 @@ function App() {
   return (
     <AppShell role={role} onSwitch={setRole} onSignOut={() => void doSignOut()} onSettings={() => setView('settings')} showDemoSwitch={showDemoSwitch}>
       {role === 'brand' && <BrandDashboard onViewCreator={(id) => { setProfileCreatorId(id); setView('creator-profile'); }} />}
-      {role === 'creator' && <CreatorDashboard onViewBrand={(id) => { setProfileBrandId(id); setView('brand-profile'); }} />}
+      {role === 'creator' && (
+        <CreatorDashboard
+          onViewBrand={(id) => { setProfileBrandId(id); setView('brand-profile'); }}
+          onViewOrders={() => { setView('affiliate-orders'); nav('/orders'); }}
+        />
+      )}
       {role === 'admin' && <AdminDashboard onViewCreator={(id) => { setProfileCreatorId(id); setView('creator-profile'); }} />}
     </AppShell>
   );
