@@ -1236,48 +1236,6 @@ function NotificationsBell() {
    and signs the Campaign Agreement before a campaign may launch.
    ───────────────────────────────────────────────────────────── */
 
-function GateStep({
-  index,
-  title,
-  blurb,
-  done,
-  doneLabel,
-  optional,
-  icon: Icon,
-  children,
-}: {
-  index: number;
-  title: string;
-  blurb: string;
-  done: boolean;
-  doneLabel?: string;
-  optional?: boolean;
-  icon: typeof Target;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className={`p-5 rounded-2xl border transition ${done ? 'border-emerald-400/30 bg-emerald-400/5' : 'border-line bg-surface'}`}>
-      <div className="flex items-start gap-4">
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${done ? 'bg-emerald-400/15 text-emerald-400' : 'bg-surface-2 text-muted'}`}>
-          {done ? <CheckCircle size={18} /> : <Icon size={17} />}
-        </div>
-        <div className="flex-1 min-w-0 space-y-3">
-          <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-xs font-mono text-faint">{String(index).padStart(2, '0')}</span>
-              <h3 className="font-semibold text-heading">{title}</h3>
-              {optional && <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-surface-2 border border-line text-faint">Not yet available</span>}
-              {done && doneLabel && <span className="text-xs text-emerald-400 font-medium">{doneLabel}</span>}
-            </div>
-            <p className="text-sm text-muted mt-1">{blurb}</p>
-          </div>
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** Text input + connect button used by the Meta and Shopify steps. */
 function ConnectField({
   placeholder,
@@ -1375,6 +1333,17 @@ function ReconnectShopify({ brandId, shop, errored }: { brandId: string; shop: s
   );
 }
 
+/**
+ * Finish setting up.
+ *
+ * Four things have to be true before a campaign can open to creators. Showing
+ * all four at once presents them as a wall and invites a brand to bounce off
+ * it; this shows the one they can act on now, with the rest as a quiet strip
+ * underneath so the shape of the work is still visible.
+ *
+ * The strip is clickable. A brand who wants to read ahead, or go back and
+ * change something already done, should not have to undo anything first.
+ */
 function OnboardingGates({
   brandId,
   status,
@@ -1387,8 +1356,8 @@ function OnboardingGates({
   const [agreed, setAgreed] = useState(false);
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
-
-  const doneCount = [status.meta, status.shopify, status.agreementSignedAt].filter(Boolean).length;
+  /** Null means "follow the first unfinished step"; a number means the brand chose. */
+  const [chosen, setChosen] = useState<number | null>(null);
 
   const sign = async () => {
     setSignError(null);
@@ -1399,50 +1368,43 @@ function OnboardingGates({
     else onChanged();
   };
 
-  return (
-    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-      <div className="p-5 border-b border-line flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-heading">Finish setting up</h2>
-          <p className="text-sm text-muted mt-0.5">Connect your accounts and sign the agreement before launching a campaign.</p>
-        </div>
-        <span className="text-sm font-mono text-muted whitespace-nowrap">{doneCount} of 3 done</span>
-      </div>
-
-      <div className="p-5 space-y-3">
-        <GateStep
-          index={1}
-          icon={Target}
-          title="Connect your Meta ad account"
-          blurb="Approved creator videos run as partnership ads here, and nowhere else. The licence you grant is scoped to this account."
-          done={Boolean(status.meta)}
-          doneLabel={status.meta ? status.meta.externalId : undefined}
-        >
-          {!status.meta && (
-            <ConnectField
-              placeholder="act_1234567890"
-              hint="Find this in Meta Ads Manager, top left, next to your account name."
-              cta="Connect"
-              onConnect={async (v) => {
-                const id = normalizeMetaAdAccount(v);
-                if (!id) return 'That does not look like an ad account ID. It should be act_ followed by digits.';
-                const res = await connectProvider(brandId, 'meta', id);
-                if (res.error) return res.error;
-                onChanged();
-                return null;
-              }}
-            />
-          )}
-        </GateStep>
-
-        <GateStep
-          index={2}
-          icon={Globe}
-          title="Connect your Shopify store"
-          blurb="Your store is the source of truth for orders, and therefore for what you owe. Meta's numbers are used for optimisation only."
-          done={Boolean(status.shopify)}
-          doneLabel={status.shopify ? status.shopify.externalId : undefined}
-        >
+  const steps = [
+    {
+      key: 'meta',
+      icon: Target,
+      title: 'Connect your Meta ad account',
+      short: 'Meta ad account',
+      blurb: 'Creator videos run as partnership ads here, and nowhere else. The licence you grant is scoped to this account.',
+      done: Boolean(status.meta),
+      doneLabel: status.meta ? status.meta.externalId : undefined,
+      optional: false,
+      body: !status.meta ? (
+        <ConnectField
+          placeholder="act_1234567890"
+          hint="Find this in Meta Ads Manager, top left, next to your account name."
+          cta="Connect"
+          onConnect={async (v) => {
+            const id = normalizeMetaAdAccount(v);
+            if (!id) return 'That does not look like an ad account ID. It should be act_ followed by digits.';
+            const res = await connectProvider(brandId, 'meta', id);
+            if (res.error) return res.error;
+            onChanged();
+            return null;
+          }}
+        />
+      ) : null,
+    },
+    {
+      key: 'shopify',
+      icon: Globe,
+      title: 'Connect your Shopify store',
+      short: 'Shopify store',
+      blurb: 'Your store is the source of truth for orders, and therefore for what you owe. Meta’s numbers are used for optimisation only.',
+      done: Boolean(status.shopify),
+      doneLabel: status.shopify ? status.shopify.externalId : undefined,
+      optional: false,
+      body: (
+        <>
           {!status.shopify && (
             <ConnectField
               placeholder="your-store.myshopify.com"
@@ -1468,64 +1430,179 @@ function OnboardingGates({
               errored={status.shopify.status === 'error'}
             />
           )}
-        </GateStep>
-
-        <GateStep
-          index={3}
-          icon={Wallet}
-          title="Add payment methods"
-          blurb="Commission on attributed orders is billed to your bank account by ACH. There is no ad budget to fund and no deposit to hold."
-          done={status.paymentReady}
-          optional={!status.paymentReady}
-        >
-          {!status.paymentReady && (
-            <p className="text-xs text-faint">
-              Card and bank setup arrives with payment processing. Until then you can create campaigns for testing, but nothing can be billed.
-            </p>
-          )}
-        </GateStep>
-
-        <GateStep
-          index={4}
-          icon={ShieldCheck}
-          title="Sign the Campaign Agreement"
-          blurb="Covers commission, billing, and the licence you receive to each approved video."
-          done={Boolean(status.agreementSignedAt)}
-          doneLabel={status.agreementSignedAt ? `Signed ${new Date(status.agreementSignedAt).toLocaleDateString()}` : undefined}
-        >
-          {!status.agreementSignedAt && (
-            <div className="space-y-3">
-              {signError && (
-                <div className="flex items-start gap-2 p-2.5 rounded-lg border border-pink-400/30 bg-pink-400/10">
-                  <AlertCircle size={14} className="text-pink-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-pink-200">{signError}</p>
-                </div>
-              )}
-              <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={agreed}
-                  onChange={(e) => setAgreed(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-line accent-purple-500 flex-shrink-0"
-                />
-                <span className="text-xs text-muted leading-relaxed">
-                  I have read and agree to the{' '}
-                  <a href="/terms" target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">Terms of Service</a>
-                  {' '}and{' '}
-                  <a href="/privacy" target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">Privacy Policy</a>.
-                </span>
-              </label>
-              <button
-                onClick={() => void sign()}
-                disabled={!agreed || signing}
-                className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {signing && <RefreshCw size={14} className="animate-spin" />}
-                Sign agreement
-              </button>
+        </>
+      ),
+    },
+    {
+      key: 'payment',
+      icon: Wallet,
+      title: 'Add a payment method',
+      short: 'Payment method',
+      blurb: 'Commission on attributed orders is billed to your bank account by ACH. There is no ad budget to fund and no deposit to hold.',
+      done: status.paymentReady,
+      doneLabel: undefined,
+      optional: true,
+      body: !status.paymentReady ? (
+        <p className="text-xs text-faint leading-relaxed">
+          Add your bank details under Finance. You can create campaigns before this, but nothing
+          can be billed until it is done.
+        </p>
+      ) : null,
+    },
+    {
+      key: 'agreement',
+      icon: ShieldCheck,
+      title: 'Sign the Campaign Agreement',
+      short: 'Campaign Agreement',
+      blurb: 'Covers commission, billing, and the licence you receive to each video you run.',
+      done: Boolean(status.agreementSignedAt),
+      doneLabel: status.agreementSignedAt
+        ? `Signed ${new Date(status.agreementSignedAt).toLocaleDateString()}`
+        : undefined,
+      optional: false,
+      body: !status.agreementSignedAt ? (
+        <div className="space-y-3">
+          {signError && (
+            <div className="flex items-start gap-2 p-2.5 rounded-lg border border-pink-400/30 bg-pink-400/10">
+              <AlertCircle size={14} className="text-pink-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-pink-200">{signError}</p>
             </div>
           )}
-        </GateStep>
+          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded border-line accent-purple-500 flex-shrink-0"
+            />
+            <span className="text-xs text-muted leading-relaxed">
+              I have read and agree to the{' '}
+              <a href="/terms" target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">Terms of Service</a>
+              {' '}and{' '}
+              <a href="/privacy" target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">Privacy Policy</a>.
+            </span>
+          </label>
+          <button
+            onClick={() => void sign()}
+            disabled={!agreed || signing}
+            className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {signing && <RefreshCw size={14} className="animate-spin" />}
+            Sign agreement
+          </button>
+        </div>
+      ) : null,
+    },
+  ];
+
+  // Required steps are what the counter and the progress bar describe. The
+  // optional one is real work but it does not gate a launch, so counting it
+  // would make a brand who is ready to go look unfinished.
+  const required = steps.filter((s) => !s.optional);
+  const doneCount = required.filter((s) => s.done).length;
+
+  // Land on the first thing they can actually do. Optional steps are skipped
+  // when choosing automatically, but are still reachable from the strip.
+  const firstOpen = steps.findIndex((s) => !s.done && !s.optional);
+  const current = chosen ?? (firstOpen === -1 ? steps.findIndex((s) => !s.done) : firstOpen);
+  const step = steps[current] ?? steps[steps.length - 1];
+  const Icon = step.icon;
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+      <div className="p-5 border-b border-line space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-heading">Finish setting up</h2>
+            <p className="text-sm text-muted mt-0.5">
+              {doneCount === required.length
+                ? 'All set. You can open campaigns to creators.'
+                : 'One thing at a time. Campaigns can open to creators once these are done.'}
+            </p>
+          </div>
+          <span className="text-sm font-mono text-muted whitespace-nowrap">
+            {doneCount} of {required.length} done
+          </span>
+        </div>
+        <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden">
+          <div
+            className="h-full bg-gradient-kyro transition-all duration-300"
+            style={{ width: `${(doneCount / required.length) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* The one step in focus. */}
+      <div className="p-5 space-y-4">
+        <div className="flex items-start gap-3">
+          <div
+            className={`w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0 ${
+              step.done
+                ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
+                : 'border-line bg-surface-2 text-body'
+            }`}
+          >
+            {step.done ? <CheckCircle size={16} /> : <Icon size={16} />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-semibold text-heading">{step.title}</h3>
+              {step.optional && !step.done && (
+                <span className="px-2 py-0.5 rounded-full border border-line bg-surface-2 text-[10px] font-semibold text-faint">
+                  OPTIONAL
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-muted mt-1 leading-relaxed">{step.blurb}</p>
+            {step.done && step.doneLabel && (
+              <p className="text-xs text-emerald-300 mt-1 font-mono truncate">{step.doneLabel}</p>
+            )}
+          </div>
+        </div>
+
+        {step.body && <div className="pl-12">{step.body}</div>}
+
+        {step.done && (
+          <div className="pl-12">
+            <p className="text-sm text-muted">
+              Done.{' '}
+              {firstOpen !== -1 && (
+                <button
+                  type="button"
+                  onClick={() => setChosen(null)}
+                  className="text-purple-400 hover:text-purple-300 font-semibold"
+                >
+                  Go to what's left →
+                </button>
+              )}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Everything else, quiet, and reachable. */}
+      <div className="border-t border-line divide-y divide-line">
+        {steps.map((s, i) =>
+          i === current ? null : (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => setChosen(i)}
+              className="w-full px-5 py-3 flex items-center gap-3 text-left hover:bg-surface-2 transition"
+            >
+              {s.done ? (
+                <CheckCircle size={15} className="text-emerald-400 flex-shrink-0" />
+              ) : (
+                <span className="w-[15px] h-[15px] rounded-full border border-line flex-shrink-0" />
+              )}
+              <span className={`text-sm flex-1 truncate ${s.done ? 'text-faint line-through' : 'text-body'}`}>
+                {s.short}
+              </span>
+              {s.optional && !s.done && <span className="text-[10px] text-faint">optional</span>}
+              <ChevronRight size={14} className="text-faint flex-shrink-0" />
+            </button>
+          )
+        )}
       </div>
     </div>
   );
