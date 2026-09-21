@@ -1851,7 +1851,7 @@ function BrandSwitcher({ brandName, logoUrl }: { brandName: string; logoUrl: str
           {!creating && (
             <>
               <div className="max-h-64 overflow-y-auto">
-                {brands.map((b) => (
+                {brands.filter((b) => b.setupComplete || session.brand?.id === b.id).map((b) => (
                   <button
                     key={b.id}
                     type="button"
@@ -1862,7 +1862,7 @@ function BrandSwitcher({ brandName, logoUrl }: { brandName: string; logoUrl: str
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-heading truncate">{b.name}</p>
                       {!b.setupComplete && (
-                        <p className="text-[11px] text-amber-300">Setup unfinished</p>
+                        <p className="text-[11px] text-amber-300">Setting up now</p>
                       )}
                     </div>
                     {session.brand?.id === b.id && (
@@ -3730,6 +3730,8 @@ function CampaignRoster({
   const [stats, setStats] = useState<Map<string, LeaderboardCreator>>(new Map());
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Empty means every campaign. Drives both the list and the CSV. */
+  const [campaignFilter, setCampaignFilter] = useState('');
 
   const load = useCallback(async () => {
     const [res, lb] = await Promise.all([listRosterForBrand(brandId), listBrandLeaderboard(brandId, 30)]);
@@ -3740,7 +3742,7 @@ function CampaignRoster({
 
   const exportCsv = () => {
     const rows: unknown[][] = [];
-    for (const c of campaigns) {
+    for (const c of shownCampaigns) {
       for (const r of roster?.[c.id] ?? []) {
         const st = stats.get(r.creatorId);
         rows.push([
@@ -3763,12 +3765,19 @@ function CampaignRoster({
        'Videos', 'In use', 'Orders (30d)', 'Revenue (30d)', 'Commission owed (30d)'],
       rows
     );
-    downloadCsv(`kyro-creators-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    const label = campaignFilter
+      ? (campaigns.find((c) => c.id === campaignFilter)?.name ?? 'campaign').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      : 'all';
+    downloadCsv(`kyro-creators-${label}-${new Date().toISOString().slice(0, 10)}.csv`, csv);
   };
 
   useEffect(() => { void load(); }, [load]);
 
   const total = Object.values(roster ?? {}).reduce((sum, list) => sum + list.length, 0);
+  // Campaigns with at least one creator, so the picker never offers an empty one.
+  const withCreators = campaigns.filter((c) => (roster?.[c.id] ?? []).length > 0);
+  const shownCampaigns = campaignFilter ? withCreators.filter((c) => c.id === campaignFilter) : withCreators;
+  const shownTotal = shownCampaigns.reduce((sum, c) => sum + (roster?.[c.id] ?? []).length, 0);
 
   return (
     <div className="bg-surface border border-line rounded-2xl overflow-hidden">
@@ -3778,8 +3787,19 @@ function CampaignRoster({
           <p className="text-sm text-muted mt-0.5">Everyone you've accepted, and what they've posted.</p>
         </div>
         {total > 0 && (
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-mono text-muted whitespace-nowrap">{plural(total, 'creator')}</span>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {withCreators.length > 0 && (
+              <select
+                value={campaignFilter}
+                onChange={(e) => setCampaignFilter(e.target.value)}
+                aria-label="Filter creators by campaign"
+                className="px-3 py-1.5 bg-surface-2 border border-line rounded-lg text-xs font-semibold text-body focus:outline-none focus:border-purple-500 max-w-[220px]"
+              >
+                <option value="">All campaigns</option>
+                {withCreators.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+            <span className="text-sm font-mono text-muted whitespace-nowrap">{plural(shownTotal, 'creator')}</span>
             <button
               type="button"
               onClick={exportCsv}
@@ -3806,8 +3826,7 @@ function CampaignRoster({
 
       {roster !== null && total > 0 && (
         <div className="divide-y divide-line">
-          {campaigns
-            .filter((c) => (roster[c.id] ?? []).length > 0)
+          {shownCampaigns
             .map((c) => (
               <div key={c.id} className="p-5 space-y-3">
                 <div className="flex items-center justify-between gap-3">
