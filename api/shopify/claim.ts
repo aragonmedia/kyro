@@ -27,9 +27,9 @@ import { subscribeWebhooks } from '../_lib/shopify-admin.js';
 import { requireStoreToken } from '../_lib/shopify-token.js';
 
 /**
- * A brand created after the install began found KYRO on the App Store, so it
- * can only be billed through Shopify (requirement 1.2.1). The margin covers
- * clock differences between Vercel and Postgres.
+ * A brand created after the install began found KYRO on the App Store and
+ * gets the 30-day fee trial (migration 0022). The margin covers clock
+ * differences between Vercel and Postgres.
  */
 const ORIGIN_MARGIN_MS = 5 * 60 * 1000;
 
@@ -131,7 +131,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (connError) console.error('[kyro] claim: could not update brand_connections', connError);
 
     // 2. Billing origin. A brand that did not exist before the install
-    //    discovered KYRO on Shopify, so KYRO takes no off-platform fee from it.
+    //    discovered KYRO on Shopify and starts on the 30-day fee trial.
     const brandCreated = Date.parse(brand.created_at as string);
     const installStarted = Date.parse(pending.created_at as string);
     if (Number.isFinite(brandCreated) && Number.isFinite(installStarted) && brandCreated >= installStarted - ORIGIN_MARGIN_MS) {

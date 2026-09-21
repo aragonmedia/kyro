@@ -91,9 +91,9 @@ Email and phone for critical issues. Requirement 4.5.6. Use `kevin@itskyro.com`.
 
 **Search terms** (5): `creator marketing`, `affiliate`, `influencer`, `UGC`, `commission`
 
-**Pricing:** Free.
+**Pricing:** Free trial, then usage based. (Decision pending: see "Known risks", 1.2.1.)
 Pricing details text:
-> Free to install and use. You pay your creators the commission you set on each campaign, only on orders their content drove.
+> Free for your first 30 days. After that, 1% of sales attributed to creator content, never stacked. You also pay your creators the commission you set on each campaign, only on orders their content drove.
 
 **Languages:** English only.
 **Online Store required?** No. KYRO reads orders, so any sales channel works.

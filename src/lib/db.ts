@@ -119,6 +119,7 @@ export interface BrandRow {
   currency: string | null;
   setup_complete: boolean | null;
   billing_origin?: string | null;
+  fee_waived_until?: string | null;
   created_at: string;
 }
 
@@ -201,6 +202,7 @@ export function toBrand(row: BrandRow): Brand {
     // absence as "done" keeps an existing account out of the wizard.
     setupComplete: row.setup_complete ?? true,
     billingOrigin: row.billing_origin === 'shopify_app_store' ? 'shopify_app_store' : 'direct',
+    feeWaivedUntil: row.fee_waived_until ?? null,
     createdAt: row.created_at,
   };
 }

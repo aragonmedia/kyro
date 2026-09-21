@@ -49,6 +49,8 @@ export interface Brand {
   setupComplete: boolean;
   /** 'shopify_app_store' brands are billed only through Shopify, so no KYRO fee today. */
   billingOrigin: 'direct' | 'shopify_app_store';
+  /** Orders landing before this carry no KYRO fee (App Store 30-day trial). */
+  feeWaivedUntil: string | null;
   createdAt: string;
 }
 
