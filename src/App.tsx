@@ -3608,7 +3608,80 @@ function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (ca
 
   if (campaigns !== null && campaigns.length === 0) return null;
 
+  // Where each application stands, pending first. Accepted ones live under
+  // Active campaigns, so this is the "still waiting" and "not this time" list.
+  const byId = new Map((campaigns ?? []).map((c) => [c.id, c]));
+  const open = apps
+    .filter((a) => (a.status === 'pending' || a.status === 'rejected') && byId.has(a.campaignId))
+    .sort((x, y) => (x.status === y.status ? 0 : x.status === 'pending' ? -1 : 1));
+
   return (
+    <div className="space-y-6">
+      {open.length > 0 && (
+        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
+          <div className="p-5 border-b border-line">
+            <h2 className="text-xl font-bold text-heading">Your applications</h2>
+            <p className="text-sm text-muted mt-0.5">
+              Waiting on the brand, or declined with what they said so you can try again.
+            </p>
+          </div>
+          <div className="divide-y divide-line">
+            {open.map((a) => {
+              const c = byId.get(a.campaignId) as OpenCampaign;
+              const declined = a.status === 'rejected';
+              return (
+                <div key={a.id} className="p-5 flex flex-col sm:flex-row sm:items-start gap-4">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-line">
+                      <CoverImage src={c.coverUrl} name={c.brandName || c.name} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-heading truncate">{c.name}</p>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${
+                          declined
+                            ? 'border-amber-400/30 bg-amber-400/15 text-amber-300'
+                            : 'border-purple-400/40 bg-purple-500/20 text-purple-200'
+                        }`}>
+                          {declined ? 'Declined' : 'Waiting on brand'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted mt-0.5">
+                        {c.brandName} · applied {new Date(a.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </p>
+                      {declined && a.decisionNote && (
+                        <div className="mt-2 p-3 rounded-lg border border-amber-400/20 bg-amber-400/5">
+                          <p className="text-[11px] font-semibold text-amber-300 mb-0.5">Why {c.brandName || 'the brand'} passed</p>
+                          <p className="text-sm text-body leading-relaxed">{a.decisionNote}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setDetail(c)}
+                      className="px-3 py-2 rounded-lg border border-line bg-surface-2 text-sm font-semibold text-muted hover:text-heading whitespace-nowrap"
+                    >
+                      View campaign
+                    </button>
+                    {declined && (
+                      <button
+                        type="button"
+                        onClick={() => setApplying(c)}
+                        className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold whitespace-nowrap"
+                      >
+                        Apply again
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
     <div className="bg-surface border border-line rounded-2xl overflow-hidden">
       <div className="p-5 border-b border-line">
         <h2 className="text-xl font-bold text-heading">Open campaigns</h2>
@@ -3704,6 +3777,7 @@ function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (ca
           onApplied={() => void load()}
         />
       )}
+    </div>
     </div>
   );
 }
