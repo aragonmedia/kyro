@@ -311,11 +311,13 @@ export function CreatorProfileSheet({
   creatorId,
   stats,
   onClose,
+  onPay,
 }: {
   creatorId: string;
   /** What this brand has seen from them, passed in rather than refetched. */
   stats: { submissions: number; inUse: number; orders: number; revenueCents: number; commissionCents: number };
   onClose: () => void;
+  onPay: () => void;
 }) {
   const [data, setData] = useState<CreatorSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -390,6 +392,16 @@ export function CreatorProfileSheet({
             <p className="text-xs text-faint leading-relaxed">
               Revenue driven: {money(stats.revenueCents)}. Figures cover the last 30 days.
             </p>
+
+            {stats.commissionCents > 0 && (
+              <button
+                type="button"
+                onClick={onPay}
+                className="w-full px-4 py-2.5 rounded-lg bg-gradient-kyro text-white text-sm font-semibold"
+              >
+                Pay here
+              </button>
+            )}
           </div>
         </div>
       )}

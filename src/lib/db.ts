@@ -659,7 +659,7 @@ export async function listCampaignsWithStats(
 
     const ids = rows.map((r) => r.id);
 
-    const [submissionsRes, applicationsRes] = await Promise.all([
+    const [submissionsRes, applicationsRes, earningsRes] = await Promise.all([
       sb
         .from('submissions')
         .select('campaign_id, creator_id, orders, impressions, spend_cents')
@@ -669,6 +669,15 @@ export async function listCampaignsWithStats(
         .select('campaign_id, creator_id')
         .in('campaign_id', ids)
         .eq('status', 'accepted'),
+      // Orders and commission come from `earnings`, not from the counters on
+      // `submissions`. Those counters are only as current as whatever last
+      // wrote them, and nothing does — which is how the dashboard could show
+      // zero orders while eighteen earning rows existed.
+      sb
+        .from('earnings')
+        .select('campaign_id, commission_cents')
+        .in('campaign_id', ids)
+        .neq('state', 'reversed'),
     ]);
 
     // Stats are additive detail. If they fail (or RLS hides them) we still show
@@ -692,11 +701,18 @@ export async function listCampaignsWithStats(
     for (const s of submissions) {
       const stats = byCampaign.get(s.campaign_id) ?? { ...EMPTY_STATS };
       stats.submissions += 1;
-      stats.orders += s.orders ?? 0;
+      // Impressions still come from here: they are Meta's number, and no
+      // earning row carries them.
       stats.impressions += s.impressions ?? 0;
-      stats.spentCents += s.spend_cents ?? 0;
       byCampaign.set(s.campaign_id, stats);
       touchCreator(s.campaign_id, s.creator_id);
+    }
+
+    for (const e of (earningsRes.data ?? []) as Array<{ campaign_id: string; commission_cents: number }>) {
+      const stats = byCampaign.get(e.campaign_id) ?? { ...EMPTY_STATS };
+      stats.orders += 1;
+      stats.spentCents += e.commission_cents;
+      byCampaign.set(e.campaign_id, stats);
     }
 
     for (const a of applications) touchCreator(a.campaign_id, a.creator_id);
@@ -705,8 +721,6 @@ export async function listCampaignsWithStats(
       rows.map((row) => {
         const stats = byCampaign.get(row.id) ?? { ...EMPTY_STATS };
         stats.creators = creatorsByCampaign.get(row.id)?.size ?? 0;
-        // Prefer the campaign's own spend column when it has been reconciled.
-        if ((row.spent_cents ?? 0) > 0) stats.spentCents = row.spent_cents;
         return { ...toCampaign(row), coverUrl: row.cover_url, stats };
       })
     );
@@ -2798,5 +2812,237 @@ export async function getCreatorSummary(creatorId: string): Promise<Result<Creat
     });
   } catch (e) {
     return fail(null, describeError(e, 'Could not load that creator.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Paying creators
+
+   Every figure here is summed from `earnings` rows. Nothing multiplies a
+   total by a fee rate: `platform_fee_cents` is written per earning when the
+   order lands, so a change to the fee rule later cannot retroactively rewrite
+   what a brand was charged.
+   ───────────────────────────────────────────────────────────── */
+
+export interface BrandBalance {
+  /** Cleared and payable now. */
+  dueCommissionCents: Cents;
+  dueFeeCents: Cents;
+  dueOrders: number;
+  dueCreators: number;
+  /** Fulfilled but still inside the clearing window. */
+  clearingCommissionCents: Cents;
+  clearingOrders: number;
+  /** Ordered but not fulfilled yet. */
+  pendingCommissionCents: Cents;
+  pendingOrders: number;
+  /** Everything already paid out, all time. */
+  paidCommissionCents: Cents;
+  paidFeeCents: Cents;
+  /** Soonest clearing earning, so the page can say when more is due. */
+  nextDueAt: string | null;
+}
+
+const emptyBalance = (): BrandBalance => ({
+  dueCommissionCents: 0, dueFeeCents: 0, dueOrders: 0, dueCreators: 0,
+  clearingCommissionCents: 0, clearingOrders: 0,
+  pendingCommissionCents: 0, pendingOrders: 0,
+  paidCommissionCents: 0, paidFeeCents: 0,
+  nextDueAt: null,
+});
+
+export async function getBrandBalance(brandId: string): Promise<Result<BrandBalance>> {
+  const sb = client();
+  if (!sb) return ok(emptyBalance());
+  try {
+    const { data, error } = await sb
+      .from('earnings')
+      .select('commission_cents, platform_fee_cents, state, available_at, creator_id')
+      .eq('brand_id', brandId)
+      .neq('state', 'reversed');
+
+    if (error) return fail(emptyBalance(), describeError(error, 'Could not load your balance.'));
+
+    const out = emptyBalance();
+    const dueCreators = new Set<string>();
+    const now = Date.now();
+
+    for (const r of (data ?? []) as Array<{
+      commission_cents: number;
+      platform_fee_cents: number;
+      state: string;
+      available_at: string | null;
+      creator_id: string | null;
+    }>) {
+      if (r.state === 'available') {
+        out.dueCommissionCents += r.commission_cents;
+        out.dueFeeCents += r.platform_fee_cents;
+        out.dueOrders += 1;
+        if (r.creator_id) dueCreators.add(r.creator_id);
+      } else if (r.state === 'clearing') {
+        out.clearingCommissionCents += r.commission_cents;
+        out.clearingOrders += 1;
+        if (r.available_at && Date.parse(r.available_at) > now) {
+          if (!out.nextDueAt || Date.parse(r.available_at) < Date.parse(out.nextDueAt)) {
+            out.nextDueAt = r.available_at;
+          }
+        }
+      } else if (r.state === 'pending') {
+        out.pendingCommissionCents += r.commission_cents;
+        out.pendingOrders += 1;
+      } else if (r.state === 'paid') {
+        out.paidCommissionCents += r.commission_cents;
+        out.paidFeeCents += r.platform_fee_cents;
+      }
+    }
+
+    out.dueCreators = dueCreators.size;
+    return ok(out);
+  } catch (e) {
+    return fail(emptyBalance(), describeError(e, 'Could not load your balance.'));
+  }
+}
+
+export interface CommissionOrderRow {
+  earningId: string;
+  orderNumber: string | null;
+  campaignId: string;
+  campaignName: string;
+  creatorHandle: string;
+  placedAt: string;
+  orderValueCents: Cents;
+  commissionCents: Cents;
+  feeCents: Cents;
+  state: string;
+  availableAt: string | null;
+}
+
+/** Every commission line, for the table a brand pays from. */
+export async function listBrandCommissionOrders(
+  brandId: string,
+  limit = 400
+): Promise<Result<CommissionOrderRow[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('earnings')
+      .select(
+        'id, campaign_id, commissionable_cents, commission_cents, platform_fee_cents, state, available_at, created_at, orders(external_number, placed_at), campaigns(name), creators(handle)'
+      )
+      .eq('brand_id', brandId)
+      .neq('state', 'reversed')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) return fail([], describeError(error, 'Could not load your commission.'));
+
+    const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+
+    return ok(
+      (data ?? []).map((r) => {
+        const row = r as {
+          id: string;
+          campaign_id: string;
+          commissionable_cents: number;
+          commission_cents: number;
+          platform_fee_cents: number;
+          state: string;
+          available_at: string | null;
+          created_at: string;
+          orders: { external_number: string | null; placed_at: string } | Array<{ external_number: string | null; placed_at: string }> | null;
+          campaigns: { name: string } | Array<{ name: string }> | null;
+          creators: { handle: string } | Array<{ handle: string }> | null;
+        };
+        const order = one(row.orders);
+        return {
+          earningId: row.id,
+          orderNumber: order?.external_number ?? null,
+          campaignId: row.campaign_id,
+          campaignName: one(row.campaigns)?.name ?? 'Campaign',
+          creatorHandle: one(row.creators)?.handle ?? 'Creator',
+          placedAt: order?.placed_at ?? row.created_at,
+          orderValueCents: row.commissionable_cents,
+          commissionCents: row.commission_cents,
+          feeCents: row.platform_fee_cents,
+          state: row.state,
+          availableAt: row.available_at,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your commission.'));
+  }
+}
+
+export interface PaymentRun {
+  id: string;
+  status: string;
+  commissionCents: Cents;
+  platformFeeCents: Cents;
+  totalCents: Cents;
+  orderCount: number;
+  creatorCount: number;
+  method: string | null;
+  authorizedAt: string;
+  settledAt: string | null;
+}
+
+export async function listPaymentRuns(brandId: string): Promise<Result<PaymentRun[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('payment_runs')
+      .select('id, status, commission_cents, platform_fee_cents, total_cents, order_count, creator_count, method, authorized_at, settled_at')
+      .eq('brand_id', brandId)
+      .order('created_at', { ascending: false });
+
+    if (error) return fail([], describeError(error, 'Could not load your payments.'));
+
+    return ok(
+      (data ?? []).map((r) => {
+        const row = r as Record<string, unknown>;
+        return {
+          id: row.id as string,
+          status: row.status as string,
+          commissionCents: Number(row.commission_cents ?? 0),
+          platformFeeCents: Number(row.platform_fee_cents ?? 0),
+          totalCents: Number(row.total_cents ?? 0),
+          orderCount: Number(row.order_count ?? 0),
+          creatorCount: Number(row.creator_count ?? 0),
+          method: (row.method as string | null) ?? null,
+          authorizedAt: row.authorized_at as string,
+          settledAt: (row.settled_at as string | null) ?? null,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your payments.'));
+  }
+}
+
+/**
+ * Authorise everything currently due.
+ *
+ * The amount is computed server side, inside the same transaction that marks
+ * the earnings paid — a client cannot name its own total, and two clicks
+ * cannot pay the same order twice.
+ */
+export async function authorizePaymentRun(
+  brandId: string,
+  method: string
+): Promise<Result<string | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb.rpc('authorize_payment_run', {
+      p_brand_id: brandId,
+      p_method: method,
+    });
+    if (error) return fail(null, describeError(error, 'Could not authorise that payment.'));
+    return ok((data as string) ?? null);
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not authorise that payment.'));
   }
 }

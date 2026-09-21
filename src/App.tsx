@@ -75,6 +75,7 @@ import { BrandSetupWizard } from './components/BrandSetup';
 import { SupportWidget } from './components/SupportWidget';
 import { CreatorInviteCard, InviteLanding } from './components/Invite';
 import { BrandDrilldown, CreatorProfileSheet, type DrilldownKind } from './components/BrandDrilldown';
+import { BrandFinance } from './components/Finance';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -2061,6 +2062,8 @@ function BrandDashboard() {
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   const [drill, setDrill] = useState<DrilldownKind | null>(null);
   const [openCreator, setOpenCreator] = useState<LeaderboardCreator | null>(null);
+  /** Label for the bank account on file, so Finance can gate the pay button. */
+  const [brandBank, setBrandBank] = useState<string | null>(null);
   const unread = useUnreadTotal();
 
   // Onboarding gates + deposit usage. Loaded alongside campaigns rather than
@@ -2109,8 +2112,6 @@ function BrandDashboard() {
     return !q || c.name.toLowerCase().includes(q);
   });
 
-  // Commission owed, not budget. KYRO has no pools to fund.
-  const totalCommission = allCards.reduce((s, c) => s + c.spentDollars, 0);
   const totalOrders = allCards.reduce((s, c) => s + c.orders, 0);
   const totalImpr = allCards.reduce((s, c) => s + c.impressions, 0);
   const totalSubs = allCards.reduce((s, c) => s + c.submissions, 0);
@@ -2269,7 +2270,11 @@ function BrandDashboard() {
               </div>
 
               {liveMode && brandId ? (
-                <BrandLeaderboard brandId={brandId} onOpenCreator={setOpenCreator} />
+                <BrandLeaderboard
+                  brandId={brandId}
+                  onOpenCreator={setOpenCreator}
+                  onPay={() => setPage('finance')}
+                />
               ) : (
                 <div className="bg-surface border border-line rounded-2xl p-10 text-center">
                   <Trophy size={28} className="mx-auto text-faint mb-3" />
@@ -2448,14 +2453,21 @@ function BrandDashboard() {
           {/* ── FINANCE ── */}
           {page === 'finance' && (
             <>
-              <PageHead title="Finance" sub="What you owe creators, and where KYRO bills it from." />
-              <div className="p-5 rounded-2xl border border-blue-400/20 bg-blue-400/10">
-                <Wallet size={20} className="text-blue-400" />
-                <p className="text-xs text-muted mt-3 mb-1">Creator commission</p>
-                <p className="text-2xl font-bold text-blue-400">{fmt(totalCommission)}</p>
-                <p className="text-xs text-faint mt-1">On attributed orders</p>
-              </div>
-              <BrandBillingPanel />
+              <PageHead title="Finance" sub="What you owe creators, and how it gets paid." />
+              {liveMode && brandId ? (
+                <BrandFinance
+                  brandId={brandId}
+                  campaigns={allCards.map((c) => ({ id: c.id, name: c.name }))}
+                  hasCampaign={allCards.some((c) => c.status === 'live')}
+                  hasCreators={allCards.some((c) => c.creators > 0)}
+                  hasVideos={totalSubs > 0}
+                  paymentMethodLabel={brandBank}
+                  onGo={setPage}
+                  billingSlot={<BrandBillingPanel onSaved={(label) => setBrandBank(label)} />}
+                />
+              ) : (
+                <NeedsBrand what="finance" />
+              )}
             </>
           )}
 
@@ -2504,6 +2516,7 @@ function BrandDashboard() {
             commissionCents: openCreator.commissionCents,
           }}
           onClose={() => setOpenCreator(null)}
+          onPay={() => { setOpenCreator(null); setPage('finance'); }}
         />
       )}
 
@@ -5416,7 +5429,7 @@ function ConnectedAccountsPanel() {
  * to our API would drag this codebase into PCI scope and gain nothing,
  * because there is no processor to charge it with yet.
  */
-function BrandBillingPanel() {
+function BrandBillingPanel({ onSaved }: { onSaved?: (label: string | null) => void }) {
   const [editing, setEditing] = useState(false);
   const [holder, setHolder] = useState('');
   const [bank, setBank] = useState('');
@@ -5440,6 +5453,9 @@ function BrandBillingPanel() {
     if (res.error) { setError(res.error); return; }
     setRouting(''); setAccount(''); setConfirm('');
     setSaved(res.accountLast4);
+    // Finance gates its pay button on there being an account, so it needs to
+    // hear about one added from inside its own page.
+    onSaved?.(res.accountLast4 ? `${bank || 'Bank'} ····${res.accountLast4}` : null);
     setEditing(false);
   };
 
@@ -6089,9 +6105,11 @@ function BrandProfilePanel({ brandId, onSaved }: { brandId: string; onSaved: () 
 function BrandLeaderboard({
   brandId,
   onOpenCreator,
+  onPay,
 }: {
   brandId: string;
   onOpenCreator: (c: LeaderboardCreator) => void;
+  onPay: () => void;
 }) {
   const [rows, setRows] = useState<LeaderboardCreator[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -6106,6 +6124,7 @@ function BrandLeaderboard({
   useEffect(() => { void load(); }, [load]);
 
   const shown = showAll ? (rows ?? []) : (rows ?? []).slice(0, 5);
+  const owed = (rows ?? []).reduce((s, c) => s + c.commissionCents, 0);
 
   return (
     <div className="bg-surface border border-line rounded-2xl overflow-hidden">
@@ -6115,15 +6134,26 @@ function BrandLeaderboard({
           <h2 className="text-xl font-bold text-heading">Your creators</h2>
           <span className="text-xs text-faint ml-2">Last 30 days</span>
         </div>
-        {rows !== null && rows.length > 5 && (
-          <button
-            type="button"
-            onClick={() => setShowAll((v) => !v)}
-            className="text-xs text-muted hover:text-heading"
-          >
-            {showAll ? 'Show less' : `View all ${rows.length}`}
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {owed > 0 && (
+            <button
+              type="button"
+              onClick={onPay}
+              className="px-3 py-1.5 rounded-lg bg-gradient-kyro text-white text-xs font-semibold whitespace-nowrap"
+            >
+              Pay {fmt(centsToDollars(owed))}
+            </button>
+          )}
+          {rows !== null && rows.length > 5 && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="text-xs text-muted hover:text-heading whitespace-nowrap"
+            >
+              {showAll ? 'Show less' : `View all ${rows.length}`}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <p className="p-5 text-sm text-pink-300">{error}</p>}
