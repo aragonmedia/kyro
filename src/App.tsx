@@ -37,7 +37,6 @@ import {
   listRosterForBrand,
   listMyApplications,
   listMySubmissions,
-  listSubmissionsForBrand,
   saveTaxDetails,
   saveCreatorSocials,
   setApplicationStatus,
@@ -79,6 +78,7 @@ import { BrandFinance } from './components/Finance';
 import { ShopifyConnectButton } from './components/ShopifyConnect';
 import { CampaignSummarySheet } from './components/CampaignSummary';
 import { TeamPanel } from './components/Team';
+import { ContentLibrary } from './components/ContentLibrary';
 import { toCsv, downloadCsv } from './lib/csv';
 import { PaymentMethodSheet, type PayMethod } from './components/PaymentMethod';
 import { Markdown } from './lib/markdown';
@@ -2519,7 +2519,13 @@ function BrandDashboard({
             <>
               <PageHead title="Submissions" sub="Videos creators have sent you. Say what you're running and what you're not." />
               {liveMode && brandId
-                ? <CreatorVideosPanel brandId={brandId} />
+                ? (
+                  <ContentLibrary
+                    brandId={brandId}
+                    campaigns={allCards.map((c) => ({ id: c.id, name: c.name }))}
+                    renderReview={(sub, onDecided) => <SubmissionReviewCard sub={sub} onDecided={onDecided} />}
+                  />
+                )
                 : <NeedsBrand what="submissions" />}
             </>
           )}
@@ -4089,68 +4095,6 @@ function SubmissionReviewCard({ sub, onDecided }: { sub: CampaignSubmission; onD
             </button>
           </>
         )}
-      </div>
-    </div>
-  );
-}
-
-function CreatorVideosPanel({ brandId }: { brandId: string }) {
-  const [rows, setRows] = useState<CampaignSubmission[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [onlyPending, setOnlyPending] = useState(false);
-
-  const load = useCallback(async () => {
-    const res = await listSubmissionsForBrand(brandId);
-    setRows(res.data);
-    setError(res.error);
-  }, [brandId]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const all = rows ?? [];
-  const pending = all.filter((r) => r.usage === 'awaiting');
-  const shown = onlyPending ? pending : all;
-
-  return (
-    <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-      <div className="p-5 border-b border-line flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-heading">Creator videos</h2>
-          <p className="text-sm text-muted mt-0.5">
-            Creators post without waiting on you. Say what you're running, and why when you're not.
-          </p>
-        </div>
-        {pending.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setOnlyPending((v) => !v)}
-            className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading whitespace-nowrap"
-          >
-            {onlyPending ? 'Show all' : `${pending.length} awaiting you`}
-          </button>
-        )}
-      </div>
-
-      {error && <p className="p-5 text-sm text-pink-300">{error}</p>}
-
-      {rows === null && <p className="p-10 text-center text-sm text-muted">Loading…</p>}
-
-      {rows !== null && shown.length === 0 && (
-        <div className="p-10 text-center">
-          <FileVideo size={28} className="mx-auto text-faint mb-3" />
-          <p className="text-sm text-muted">
-            {onlyPending ? 'Nothing waiting on you.' : 'No videos yet.'}
-          </p>
-          {!onlyPending && (
-            <p className="text-xs text-faint mt-1">Creators on your live campaigns can upload at any time.</p>
-          )}
-        </div>
-      )}
-
-      <div className="divide-y divide-line">
-        {shown.map((sub) => (
-          <SubmissionReviewCard key={sub.id} sub={sub} onDecided={() => void load()} />
-        ))}
       </div>
     </div>
   );
