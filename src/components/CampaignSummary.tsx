@@ -8,10 +8,10 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ArrowRight, Receipt, X } from 'lucide-react';
-import { listBrandOrders, type BrandOrderRow } from '../lib/db';
+import { ArrowRight, FileVideo, Receipt, X } from 'lucide-react';
+import { listBrandOrders, listCampaignVideos, type BrandOrderRow, type CampaignVideo } from '../lib/db';
 import { BrandPerformanceCard } from './BrandPerformance';
-import { CoverImage } from './MediaTile';
+import { CoverImage, VideoTile } from './MediaTile';
 
 const money = (cents: number) =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -21,6 +21,14 @@ const day = (iso: string) =>
 
 /** How many orders to show before pointing at Finance. */
 const PREVIEW = 4;
+/** Videos shown before the library needs expanding. */
+const VIDEO_PREVIEW = 6;
+
+const USAGE_TONE: Record<string, { label: string; cls: string }> = {
+  in_use: { label: 'In use', cls: 'border-emerald-400/30 bg-emerald-400/15 text-emerald-300' },
+  not_used: { label: 'Not used', cls: 'border-amber-400/30 bg-amber-400/15 text-amber-300' },
+  awaiting: { label: 'Needs a decision', cls: 'border-white/20 bg-black/40 text-white/85' },
+};
 
 export function CampaignSummarySheet({
   brandId,
@@ -43,15 +51,24 @@ export function CampaignSummarySheet({
   onOpenFinance: () => void;
 }) {
   const [orders, setOrders] = useState<BrandOrderRow[] | null>(null);
+  const [videos, setVideos] = useState<CampaignVideo[] | null>(null);
+  const [allVideos, setAllVideos] = useState(false);
 
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const res = await listBrandOrders(brandId, campaign.id, PREVIEW);
-      if (alive) setOrders(res.data);
+      const [o, v] = await Promise.all([
+        listBrandOrders(brandId, campaign.id, PREVIEW),
+        listCampaignVideos(campaign.id),
+      ]);
+      if (!alive) return;
+      setOrders(o.data);
+      setVideos(v.data);
     })();
     return () => { alive = false; };
   }, [brandId, campaign.id]);
+
+  const shownVideos = allVideos ? (videos ?? []) : (videos ?? []).slice(0, VIDEO_PREVIEW);
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -100,6 +117,61 @@ export function CampaignSummarySheet({
                 <p className="text-lg font-bold text-heading tabular-nums mt-0.5">{s.value}</p>
               </div>
             ))}
+          </div>
+
+          {/* ── Content library ── */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-semibold text-heading">Content library</p>
+              {videos !== null && videos.length > 0 && (
+                <span className="text-xs text-faint">{videos.length} {videos.length === 1 ? 'video' : 'videos'}</span>
+              )}
+            </div>
+
+            {videos === null && <p className="text-sm text-muted py-4">Loading…</p>}
+
+            {videos !== null && videos.length === 0 && (
+              <div className="p-8 rounded-2xl border border-line bg-surface-2 text-center">
+                <FileVideo size={22} className="mx-auto text-faint mb-2" />
+                <p className="text-sm text-muted">No videos on this campaign yet.</p>
+                <p className="text-xs text-faint mt-1">Creators upload whenever they like, no approval first.</p>
+              </div>
+            )}
+
+            {videos !== null && videos.length > 0 && (
+              <>
+                {/* Portrait, because the footage is. */}
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3">
+                  {shownVideos.map((v) => {
+                    const tone = USAGE_TONE[v.usage] ?? USAGE_TONE.awaiting;
+                    return (
+                      <div key={v.id} className="space-y-1.5">
+                        <div className="relative aspect-[9/16] rounded-xl overflow-hidden border border-line">
+                          <VideoTile
+                            name={v.creatorHandle}
+                            src={v.thumbnailUrl ?? campaign.cover}
+                            showPlay={!v.thumbnailUrl}
+                          />
+                          <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold border backdrop-blur-sm ${tone.cls}`}>
+                            {tone.label}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted truncate">@{v.creatorHandle.replace(/^@+/, '')}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                {videos.length > VIDEO_PREVIEW && (
+                  <button
+                    type="button"
+                    onClick={() => setAllVideos((x) => !x)}
+                    className="text-xs font-semibold text-purple-400 hover:text-purple-300"
+                  >
+                    {allVideos ? 'Show fewer' : `Show all ${videos.length}`}
+                  </button>
+                )}
+              </>
+            )}
           </div>
 
           <BrandPerformanceCard

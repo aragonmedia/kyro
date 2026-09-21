@@ -51,16 +51,17 @@ import {
   completeBrandSetup,
   createAnotherBrand,
   listBrandLeaderboard,
+  getBrandBalance,
   normalizeMetaAdAccount,
   parseMoneyToCents,
   parsePercentToFraction,
   signCampaignAgreement,
 } from './lib/db';
-import type { LeaderboardCreator, BrandApplication, RosterCreator, BrandConnection, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
+import type { BrandBalance, LeaderboardCreator, BrandApplication, RosterCreator, BrandConnection, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
 import { uploadSubmissionVideo, uploadCampaignCover, uploadBrandLogo } from './lib/storage';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
-import { saveBankAccount, saveBrandBankAccount, startShopifyInstall, takeConnectionOutcome, type ConnectOutcome } from './lib/platform';
+import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, isShopifyLaunch, acceptShopifyLaunch, takePendingShop, peekPendingShop, type ConnectOutcome } from './lib/platform';
 import { EarningsCard } from './components/EarningsCard';
 import { AffiliateOrdersCard, AffiliateOrdersPage } from './components/AffiliateOrders';
 import { CoverImage, VideoTile } from './components/MediaTile';
@@ -2058,7 +2059,19 @@ function PageHead({ title, sub, action }: { title: string; sub?: string; action?
 /* ─────────────────────────────────────────────────────────────
    BRAND DASHBOARD
    ───────────────────────────────────────────────────────────── */
-function BrandDashboard() {
+function BrandDashboard({
+  pendingShop,
+  launchError,
+  onShopConsumed,
+  requestedPage,
+  onRequestedPageShown,
+}: {
+  pendingShop: string | null;
+  launchError: string | null;
+  onShopConsumed: () => void;
+  requestedPage: BrandPage | null;
+  onRequestedPageShown: () => void;
+}) {
   const session = useSession();
   const { brand, configured, workspaceLoading, workspaceError } = session;
 
@@ -2067,7 +2080,16 @@ function BrandDashboard() {
   const liveMode = configured && Boolean(brand);
   const brandId = brand?.id ?? null;
 
-  const [page, setPage] = useState<BrandPage>('dashboard');
+  const [page, setPage] = useState<BrandPage>(requestedPage ?? 'dashboard');
+
+  // Another screen asked for a specific page — honour it once, then let the
+  // brand navigate freely.
+  useEffect(() => {
+    if (!requestedPage) return;
+    setPage(requestedPage);
+    onRequestedPageShown();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedPage]);
   const [showCreate, setShowCreate] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'draft' | 'ended' | 'pending_fund'>('all');
@@ -2075,6 +2097,31 @@ function BrandDashboard() {
   // redirected back with. Read once on mount and stripped from the URL there,
   // so a refresh does not replay a stale banner.
   const [connectOutcome, setConnectOutcome] = useState<ConnectOutcome | null>(() => takeConnectionOutcome());
+  const [finishing, setFinishing] = useState<string | null>(null);
+
+  /**
+   * A store Shopify handed us, waiting for a signed-in brand.
+   *
+   * Goes through startShopifyInstall — the same path the Connect button uses,
+   * which checks the signed-in user owns this brand. Taken once, so a failure
+   * cannot bounce the brand between KYRO and Shopify in a loop.
+   */
+  useEffect(() => {
+    if (!liveMode || !brandId || !pendingShop) return;
+    const shop = takePendingShop() ?? pendingShop;
+    onShopConsumed();
+    setFinishing(shop);
+    void (async () => {
+      const res = await startShopifyInstall(brandId, shop);
+      if (res.error || !res.url) {
+        setFinishing(null);
+        setConnectOutcome({ provider: 'shopify', ok: false, shop, message: res.error ?? `Could not finish connecting ${shop}.` });
+        return;
+      }
+      window.location.href = res.url;
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveMode, brandId, pendingShop]);
   const [rows, setRows] = useState<CampaignWithStats[]>([]);
   const [loading, setLoading] = useState(liveMode);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -2218,6 +2265,22 @@ function BrandDashboard() {
         />
 
         <div className="flex-1 min-w-0 space-y-6 pb-24 lg:pb-0">
+          {launchError && (
+            <div className="flex items-start gap-3 p-4 rounded-xl border border-pink-400/30 bg-pink-400/10">
+              <AlertCircle size={18} className="text-pink-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-pink-200 flex-1">{launchError}</p>
+            </div>
+          )}
+
+          {finishing && (
+            <div className="flex items-center gap-3 p-4 rounded-xl border border-purple-400/30 bg-purple-400/10">
+              <RefreshCw size={16} className="animate-spin text-purple-300 flex-shrink-0" />
+              <p className="text-sm text-purple-100">
+                Finishing the Shopify connection for <span className="font-semibold">{finishing.replace('.myshopify.com', '')}</span>…
+              </p>
+            </div>
+          )}
+
           {/* Shown on every page: a failed or successful Shopify install is
               account-level news, not campaign-page news. */}
           {connectOutcome && (
@@ -5581,115 +5644,17 @@ function ConnectedAccountsPanel() {
   );
 }
 
-/**
- * Brand billing.
- *
- * ACH is a real form. The card deposit is not, and cannot be built here: a
- * card number must be tokenised inside the payment processor's own hosted
- * field so it never touches KYRO's server. Building a card input that posts
- * to our API would drag this codebase into PCI scope and gain nothing,
- * because there is no processor to charge it with yet.
- */
-function BrandBillingPanel({ onSaved }: { onSaved?: (label: string | null) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [holder, setHolder] = useState('');
-  const [bank, setBank] = useState('');
-  const [routing, setRouting] = useState('');
-  const [account, setAccount] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [saved, setSaved] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const field = "w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500";
-
-  const save = async () => {
-    setError(null);
-    if (account !== confirm) { setError('The two account numbers do not match.'); return; }
-    setSaving(true);
-    const res = await saveBrandBankAccount({
-      accountHolder: holder, bankName: bank, routingNumber: routing, accountNumber: account,
-    });
-    setSaving(false);
-    if (res.error) { setError(res.error); return; }
-    setRouting(''); setAccount(''); setConfirm('');
-    setSaved(res.accountLast4);
-    // Finance gates its pay button on there being an account, so it needs to
-    // hear about one added from inside its own page.
-    onSaved?.(res.accountLast4 ? `${bank || 'Bank'} ····${res.accountLast4}` : null);
-    setEditing(false);
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* ACH */}
-      <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-heading">Bank account for commission</p>
-            <p className="text-xs text-faint">Creator commission on attributed orders, plus KYRO's 1%, billed by ACH. There is no ad budget to fund and no deposit to hold.</p>
-          </div>
-          {!editing && (
-            <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-purple-400 hover:text-purple-300 whitespace-nowrap">
-              {saved ? 'Change' : 'Add account'}
-            </button>
-          )}
-        </div>
-
-        {!editing && saved && (
-          <p className="text-sm text-heading tabular-nums">•••• •••• •••• {saved}{bank ? ` · ${bank}` : ''}</p>
-        )}
-
-        {editing && (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Name on the account</label>
-              <input value={holder} onChange={(e) => setHolder(e.target.value)} placeholder="Legal business name" className={field} autoComplete="off" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Bank name</label>
-              <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Chase" className={field} autoComplete="off" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Routing number (9 digits)</label>
-              <input value={routing} onChange={(e) => setRouting(e.target.value.replace(/\D/g, '').slice(0, 9))} inputMode="numeric" autoComplete="off" className={`${field} tabular-nums`} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Account number</label>
-              <input type="password" value={account} onChange={(e) => setAccount(e.target.value.replace(/\D/g, '').slice(0, 17))} inputMode="numeric" autoComplete="off" className={`${field} tabular-nums`} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Confirm account number</label>
-              <input value={confirm} onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 17))} inputMode="numeric" autoComplete="off" className={`${field} tabular-nums`} />
-            </div>
-            {error && <p className="text-xs text-pink-300">{error}</p>}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={saving || !holder || !routing || !account || !confirm}
-                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
-              >
-                {saving && <RefreshCw size={14} className="animate-spin" />}
-                Save account
-              </button>
-              <button type="button" onClick={() => { setEditing(false); setError(null); setRouting(''); setAccount(''); setConfirm(''); }} className="px-4 py-2 rounded-lg border border-line text-sm text-muted hover:text-heading">
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        <p className="text-xs text-faint leading-relaxed">
-          Your account number is encrypted before storage and is never sent back to your browser. Only the last four are shown.
-        </p>
-      </div>
-
-    </div>
-  );
-}
-
-function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
+function AccountSettings({
+  onBack,
+  role,
+  onOpenBrandPage,
+}: {
+  onBack: () => void;
+  role: Role;
+  /** Jump straight to a page in the brand portal. */
+  onOpenBrandPage: (page: 'finance' | 'settings') => void;
+}) {
+  const session = useSession();
   const [open, setOpen] = useState<string | null>(null);
   const toggle = (key: string) => setOpen((cur) => (cur === key ? null : key));
 
@@ -5740,8 +5705,22 @@ function AccountSettings({ onBack, role }: { onBack: () => void; role: Role }) {
             open={open === 'payment'}
             onToggle={() => toggle('payment')}
           >
-            {role === 'creator' ? <CreatorPaymentSummary /> : <BrandBillingPanel />}
+            {role === 'creator'
+              ? <CreatorPaymentSummary />
+              : <BrandPaymentSummary onOpenFinance={() => onOpenBrandPage('finance')} />}
           </SettingsRow>
+
+          {role === 'brand' && session.brand && (
+            <SettingsRow
+              label="Team"
+              sub="Teammates and what they can do"
+              icon={Users}
+              open={open === 'team'}
+              onToggle={() => toggle('team')}
+            >
+              <TeamPanel brandId={session.brand.id} ownerEmail={session.email} />
+            </SettingsRow>
+          )}
 
           <SettingsRow label="Notifications" sub="Email on activity" icon={Bell} open={open === 'notifications'} onToggle={() => toggle('notifications')}>
             <NotificationsPanel />
@@ -5880,6 +5859,28 @@ function App() {
   }, []);
 
   const nav = (path: string) => { try { window.history.pushState({}, '', path); } catch { /* noop */ } };
+
+  /**
+   * Shopify sent someone here after they approved KYRO on Shopify's side.
+   * Verify the signature, remember the store, and send a signed-out visitor
+   * to sign in — the brand dashboard picks the store up from there.
+   */
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  // State, not a one-off read: verification is async, so the dashboard can
+  // mount before the store is known. Holding it here means it still arrives.
+  const [pendingShop, setPendingShop] = useState<string | null>(() => peekPendingShop());
+  /** Asked-for brand page, so other screens can open the portal on one. */
+  const [brandPage, setBrandPage] = useState<BrandPage | null>(null);
+  useEffect(() => {
+    if (!isShopifyLaunch()) return;
+    void (async () => {
+      const res = await acceptShopifyLaunch();
+      if (res.error) { setLaunchError(res.error); return; }
+      setPendingShop(res.shop);
+      if (!session.userId) { setView('signin'); nav('/signin'); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Session restore. Supabase keeps the session in localStorage, so a signed-in
@@ -6053,7 +6054,15 @@ function App() {
   if (view === 'about') return <AboutPage onBack={goLanding} onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} />;
   if (view === 'creator-profile') return <CreatorPublicProfile creatorId={profileCreatorId} onBack={() => setView('app')} />;
   if (view === 'brand-profile') return <BrandPublicProfile brandId={profileBrandId} onBack={() => setView('app')} />;
-  if (view === 'settings') return <AccountSettings onBack={() => setView('app')} role={role} />;
+  if (view === 'settings') {
+    return (
+      <AccountSettings
+        onBack={() => setView('app')}
+        role={role}
+        onOpenBrandPage={(p) => { setBrandPage(p); setView('app'); }}
+      />
+    );
+  }
   if (view === 'affiliate-orders') {
     if (session.creator) {
       return (
@@ -6076,7 +6085,15 @@ function App() {
 
   return (
     <AppShell role={role} onSwitch={setRole} onSignOut={() => void doSignOut()} onSettings={() => setView('settings')} showDemoSwitch={showDemoSwitch}>
-      {role === 'brand' && <BrandDashboard />}
+      {role === 'brand' && (
+        <BrandDashboard
+          pendingShop={pendingShop}
+          launchError={launchError}
+          onShopConsumed={() => { setPendingShop(null); setLaunchError(null); }}
+          requestedPage={brandPage}
+          onRequestedPageShown={() => setBrandPage(null)}
+        />
+      )}
       {role === 'creator' && (
         <CreatorDashboard onViewOrders={() => { setView('affiliate-orders'); nav('/orders'); }} />
       )}
@@ -6382,6 +6399,88 @@ function BrandLeaderboard({
             </button>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Brand payment, in Account settings.
+ *
+ * A short version of Finance rather than a second place to enter bank
+ * details. Two forms for the same thing is how a brand ends up with a
+ * payment method connected in one place and not the other.
+ */
+function BrandPaymentSummary({ onOpenFinance }: { onOpenFinance: () => void }) {
+  const { brand } = useSession();
+  const [balance, setBalance] = useState<BrandBalance | null>(null);
+  const [connecting, setConnecting] = useState<PayMethod | null>(null);
+
+  useEffect(() => {
+    if (!brand?.id) return;
+    let alive = true;
+    void (async () => {
+      const res = await getBrandBalance(brand.id);
+      if (alive) setBalance(res.data);
+    })();
+    return () => { alive = false; };
+  }, [brand?.id]);
+
+  const due = (balance?.dueCommissionCents ?? 0) + (balance?.dueFeeCents ?? 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="p-4 rounded-xl border border-line bg-surface-2">
+          <p className="text-xs text-faint">Due now</p>
+          <p className="text-lg font-bold text-emerald-400 tabular-nums mt-0.5">
+            {balance ? fmt(centsToDollars(due)) : '—'}
+          </p>
+          <p className="text-[11px] text-faint">Commission plus KYRO's 1%</p>
+        </div>
+        <div className="p-4 rounded-xl border border-line bg-surface-2">
+          <p className="text-xs text-faint">Paid to date</p>
+          <p className="text-lg font-bold text-heading tabular-nums mt-0.5">
+            {balance ? fmt(centsToDollars(balance.paidCommissionCents)) : '—'}
+          </p>
+          <p className="text-[11px] text-faint">Released to creators</p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-muted">Pay with</p>
+        <div className="grid sm:grid-cols-2 gap-2">
+          {([
+            { id: 'ach' as PayMethod, icon: Banknote, title: 'Bank account', sub: 'Recommended' },
+            { id: 'card' as PayMethod, icon: CreditCard, title: 'Card', sub: 'Faster for creators' },
+          ]).map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setConnecting(m.id)}
+              className="flex items-center gap-3 p-3 rounded-xl border border-line bg-surface-2 hover:border-purple-500/40 text-left transition"
+            >
+              <m.icon size={16} className="text-body flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-heading">{m.title}</p>
+                <p className="text-xs text-faint">{m.sub}</p>
+              </div>
+              <span className="text-xs font-semibold text-purple-300">Connect</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onOpenFinance}
+        className="w-full px-4 py-2.5 rounded-lg border border-line bg-surface-2 text-sm font-semibold text-body hover:text-heading inline-flex items-center justify-center gap-2"
+      >
+        Open Finance <ArrowRight size={14} />
+      </button>
+
+      {connecting && brand?.id && (
+        <PaymentMethodSheet method={connecting} brandId={brand.id} onClose={() => setConnecting(null)} />
       )}
     </div>
   );

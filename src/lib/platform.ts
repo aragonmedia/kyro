@@ -280,3 +280,86 @@ export async function startStripeSetup(
   }
   return { url: body.url, error: null };
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Shopify-initiated installs
+
+   When Shopify sends a merchant to itskyro.com with a signed ?shop=…&hmac=…,
+   the store is held here until a brand is signed in to attach it to.
+   sessionStorage rather than localStorage: it is per tab and dies with it, so
+   a half-finished install cannot resurface days later in another window.
+   ───────────────────────────────────────────────────────────── */
+
+const PENDING_SHOP_KEY = 'kyro.pendingShop';
+
+/** True when the current URL is Shopify handing a merchant back to KYRO. */
+export function isShopifyLaunch(): boolean {
+  if (typeof window === 'undefined') return false;
+  const q = new URLSearchParams(window.location.search);
+  return q.has('shop') && q.has('hmac') && q.has('timestamp');
+}
+
+/**
+ * Check the signature server side and remember the store.
+ *
+ * Every parameter Shopify appended is forwarded untouched — the signature
+ * covers all of them, so adding or dropping one would make a genuine link
+ * fail verification.
+ */
+export async function acceptShopifyLaunch(): Promise<{ shop: string | null; error: string | null }> {
+  const params = Object.fromEntries(new URLSearchParams(window.location.search));
+
+  let res: Response;
+  try {
+    res = await fetch('/api/shopify/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+  } catch {
+    return { shop: null, error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+
+  let body: { shop?: string; error?: string } = {};
+  try {
+    body = (await res.json()) as typeof body;
+  } catch {
+    return { shop: null, error: 'Could not read the Shopify link.' };
+  }
+
+  if (!res.ok || !body.shop) return { shop: null, error: body.error ?? 'Could not read the Shopify link.' };
+
+  try {
+    sessionStorage.setItem(PENDING_SHOP_KEY, body.shop);
+  } catch {
+    /* Blocked storage: the install can still be started by hand. */
+  }
+
+  // Strip Shopify's parameters so a refresh does not replay the launch.
+  try {
+    window.history.replaceState({}, '', window.location.pathname);
+  } catch {
+    /* noop */
+  }
+
+  return { shop: body.shop, error: null };
+}
+
+/** The store waiting to be attached, taken once so it cannot loop. */
+export function takePendingShop(): string | null {
+  try {
+    const shop = sessionStorage.getItem(PENDING_SHOP_KEY);
+    if (shop) sessionStorage.removeItem(PENDING_SHOP_KEY);
+    return shop;
+  } catch {
+    return null;
+  }
+}
+
+export function peekPendingShop(): string | null {
+  try {
+    return sessionStorage.getItem(PENDING_SHOP_KEY);
+  } catch {
+    return null;
+  }
+}

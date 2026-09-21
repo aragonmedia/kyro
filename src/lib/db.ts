@@ -3206,3 +3206,59 @@ export async function removeBrandMember(memberId: string): Promise<Result<boolea
     return fail(false, describeError(e, 'Could not remove that teammate.'));
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   A campaign's video library
+   ───────────────────────────────────────────────────────────── */
+
+export interface CampaignVideo {
+  id: string;
+  creatorId: string;
+  creatorHandle: string;
+  usage: UsageState;
+  brandNote: string | null;
+  thumbnailUrl: string | null;
+  submittedAt: string;
+}
+
+/** Every video submitted to one campaign, newest first. */
+export async function listCampaignVideos(campaignId: string): Promise<Result<CampaignVideo[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('submissions')
+      .select('id, creator_id, status, brand_note, thumbnail_url, submitted_at, creators(handle)')
+      .eq('campaign_id', campaignId)
+      .order('submitted_at', { ascending: false });
+
+    if (error) return fail([], describeError(error, 'Could not load the videos.'));
+
+    const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+
+    return ok(
+      (data ?? []).map((r) => {
+        const row = r as {
+          id: string;
+          creator_id: string;
+          status: string;
+          brand_note: string | null;
+          thumbnail_url: string | null;
+          submitted_at: string;
+          creators: { handle: string } | Array<{ handle: string }> | null;
+        };
+        return {
+          id: row.id,
+          creatorId: row.creator_id,
+          creatorHandle: one(row.creators)?.handle ?? 'creator',
+          usage: usageStateFor(row.status),
+          brandNote: row.brand_note,
+          thumbnailUrl: row.thumbnail_url,
+          submittedAt: row.submitted_at,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load the videos.'));
+  }
+}
