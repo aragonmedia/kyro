@@ -15,16 +15,21 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, MessagesSquare, Send, Users } from 'lucide-react';
+import { ArrowLeft, MessagesSquare, Play, RefreshCw, Send, Users, X } from 'lucide-react';
 import {
+  getThreadVideo,
   listMessages,
   listMyThreads,
   markThreadRead,
   sendMessage,
   type ChatMessage,
   type ThreadSummary,
+  type ThreadVideo,
+  type UsageState,
 } from '../lib/db';
 import { useSession } from '../lib/session';
+import { signedVideoUrl } from '../lib/storage';
+import { CoverImage } from './MediaTile';
 
 const POLL_MS = 8000;
 
@@ -51,12 +56,136 @@ const relative = (iso: string | null) => {
   return `${Math.round(mins / 1440)}d`;
 };
 
-function titleFor(t: ThreadSummary) {
-  return t.kind === 'campaign' ? t.campaignName : `Your video · ${t.campaignName}`;
+const at = (h: string | null) => (h ? `@${h.replace(/^@+/, '')}` : 'Creator');
+
+/** The same thread reads differently depending on who is looking at it. */
+function titleFor(t: ThreadSummary, viewerIsBrand: boolean) {
+  if (t.kind === 'campaign') return t.campaignName;
+  return viewerIsBrand ? `${at(t.creatorHandle)}'s video` : `Your video · ${t.campaignName}`;
 }
 
-function subtitleFor(t: ThreadSummary) {
-  return t.kind === 'campaign' ? `${t.brandName} · everyone on this campaign` : `${t.brandName} · private`;
+function subtitleFor(t: ThreadSummary, viewerIsBrand: boolean) {
+  if (t.kind === 'campaign') return `${t.brandName} · everyone on this campaign`;
+  return viewerIsBrand ? `${t.campaignName} · private` : `${t.brandName} · private`;
+}
+
+const USAGE_TONE: Record<UsageState, { label: string; cls: string }> = {
+  in_use: { label: 'In use', cls: 'border-emerald-400/30 bg-emerald-400/15 text-emerald-300' },
+  not_used: { label: 'Not used', cls: 'border-amber-400/30 bg-amber-400/15 text-amber-300' },
+  awaiting: { label: 'Pending review', cls: 'border-purple-400/40 bg-purple-500/20 text-purple-200' },
+};
+
+/* ─────────────────────────────────────────────────────────────
+   The video a conversation is about
+
+   Pinned at the top of a video thread for both sides, so nobody has to
+   leave the chat to remember which video, or what the brand said about it.
+   ───────────────────────────────────────────────────────────── */
+
+function VideoContextCard({ threadId, viewerIsBrand }: { threadId: string; viewerIsBrand: boolean }) {
+  const [video, setVideo] = useState<ThreadVideo | null>(null);
+  const [src, setSrc] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setVideo(null);
+    setSrc(null);
+    setNotice(null);
+    void (async () => {
+      const res = await getThreadVideo(threadId);
+      if (alive) setVideo(res.data);
+    })();
+    return () => { alive = false; };
+  }, [threadId]);
+
+  useEffect(() => {
+    if (!src) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setSrc(null); };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [src]);
+
+  if (!video) return null;
+
+  const poster = video.thumbnailUrl ?? video.coverUrl;
+  const demo = !video.videoPath || video.videoPath.startsWith('demo/');
+  const tone = USAGE_TONE[video.usage];
+
+  const play = async () => {
+    setNotice(null);
+    if (demo) { setNotice('Demo video: no file is stored for this one.'); return; }
+    setOpening(true);
+    const url = await signedVideoUrl(video.videoPath as string);
+    setOpening(false);
+    if (!url) { setNotice("Couldn't load this video. It may still be processing."); return; }
+    setSrc(url);
+  };
+
+  return (
+    <>
+      <div className="px-4 py-3 border-b border-line bg-surface-2/40 flex gap-3">
+        <button
+          type="button"
+          onClick={() => void play()}
+          className="relative w-14 aspect-[9/16] rounded-lg overflow-hidden border border-line flex-shrink-0 group"
+          aria-label="Play video"
+        >
+          <CoverImage src={poster} name={video.campaignName} />
+          <span className="absolute inset-0 flex items-center justify-center bg-black/25 group-hover:bg-black/40 transition">
+            {opening
+              ? <RefreshCw size={14} className="text-white animate-spin" />
+              : <Play size={14} className="text-white fill-white" />}
+          </span>
+        </button>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-heading truncate">
+              {viewerIsBrand ? at(video.creatorHandle) : 'Your video'}
+            </p>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${tone.cls}`}>{tone.label}</span>
+          </div>
+          <p className="text-xs text-muted truncate">
+            {video.campaignName} · uploaded {new Date(video.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </p>
+          {video.brandNote && (
+            <p className="text-xs text-body leading-snug line-clamp-2">
+              <span className="text-faint">{viewerIsBrand ? 'Your note: ' : `${video.brandName}'s note: `}</span>
+              {video.brandNote}
+            </p>
+          )}
+          {notice && <p className="text-xs text-faint">{notice}</p>}
+        </div>
+      </div>
+
+      {src && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setSrc(null)}
+        >
+          <div className="relative w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setSrc(null)}
+              className="absolute -top-10 right-0 text-white/80 hover:text-white"
+              aria-label="Close video"
+            >
+              <X size={22} />
+            </button>
+            <video
+              src={src}
+              poster={poster ?? undefined}
+              controls
+              autoPlay
+              playsInline
+              className="w-full max-h-[80vh] rounded-xl bg-black object-contain"
+            />
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -66,10 +195,12 @@ function subtitleFor(t: ThreadSummary) {
 function ThreadRow({
   thread,
   active,
+  viewerIsBrand,
   onOpen,
 }: {
   thread: ThreadSummary;
   active: boolean;
+  viewerIsBrand: boolean;
   onOpen: () => void;
 }) {
   const Icon = thread.kind === 'campaign' ? Users : MessagesSquare;
@@ -81,15 +212,21 @@ function ThreadRow({
         active ? 'bg-surface-2' : 'hover:bg-surface-2'
       }`}
     >
-      <div className="w-9 h-9 rounded-lg bg-surface-2 border border-line flex items-center justify-center flex-shrink-0">
-        <Icon size={15} className="text-body" />
-      </div>
+      {thread.kind === 'submission' && thread.videoThumb ? (
+        <div className="w-9 aspect-[9/16] rounded-md overflow-hidden border border-line flex-shrink-0">
+          <CoverImage src={thread.videoThumb} name={thread.campaignName} />
+        </div>
+      ) : (
+        <div className="w-9 h-9 rounded-lg bg-surface-2 border border-line flex items-center justify-center flex-shrink-0">
+          <Icon size={15} className="text-body" />
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="font-semibold text-heading text-sm truncate flex-1">{titleFor(thread)}</p>
+          <p className="font-semibold text-heading text-sm truncate flex-1">{titleFor(thread, viewerIsBrand)}</p>
           <span className="text-[11px] text-faint flex-shrink-0">{relative(thread.lastAt)}</span>
         </div>
-        <p className="text-xs text-faint truncate">{subtitleFor(thread)}</p>
+        <p className="text-xs text-faint truncate">{subtitleFor(thread, viewerIsBrand)}</p>
         <p className="text-xs text-muted truncate mt-1">
           {thread.lastBody
             ? `${thread.lastSender ? `${thread.lastSender}: ` : ''}${thread.lastBody}`
@@ -120,6 +257,7 @@ function Conversation({
 }) {
   const session = useSession();
   const userId = session.userId;
+  const viewerIsBrand = session.role === 'brand';
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -209,10 +347,12 @@ function Conversation({
           <ArrowLeft size={18} />
         </button>
         <div className="min-w-0">
-          <p className="font-semibold text-heading truncate">{titleFor(thread)}</p>
-          <p className="text-xs text-faint truncate">{subtitleFor(thread)}</p>
+          <p className="font-semibold text-heading truncate">{titleFor(thread, viewerIsBrand)}</p>
+          <p className="text-xs text-faint truncate">{subtitleFor(thread, viewerIsBrand)}</p>
         </div>
       </div>
+
+      {thread.kind === 'submission' && <VideoContextCard threadId={thread.id} viewerIsBrand={viewerIsBrand} />}
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages === null && <p className="text-center text-sm text-muted py-8">Loading…</p>}
@@ -224,7 +364,9 @@ function Conversation({
             <p className="text-xs text-faint mt-1">
               {thread.kind === 'campaign'
                 ? 'Say hello to the brand and the other creators on this campaign.'
-                : 'Ask the brand anything about this video.'}
+                : viewerIsBrand
+                  ? 'Tell the creator what you think of this video.'
+                  : 'Ask the brand anything about this video.'}
             </p>
           </div>
         )}
@@ -305,6 +447,8 @@ function Conversation({
    ───────────────────────────────────────────────────────────── */
 
 export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
+  const session = useSession();
+  const viewerIsBrand = session.role === 'brand';
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(openThreadId ?? null);
   const [error, setError] = useState<string | null>(null);
@@ -323,9 +467,12 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
 
   // A thread opened from elsewhere (the Message brand button) wins over
   // whatever was selected here.
+  // A thread just created elsewhere is not in the list yet, so fetch again.
   useEffect(() => {
-    if (openThreadId) setActiveId(openThreadId);
-  }, [openThreadId]);
+    if (!openThreadId) return;
+    setActiveId(openThreadId);
+    void load();
+  }, [openThreadId, load]);
 
   const active = (threads ?? []).find((t) => t.id === activeId) ?? null;
 
@@ -337,7 +484,11 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
         <div className={`border-b md:border-b-0 md:border-r border-line ${active ? 'hidden md:block' : ''}`}>
           <div className="p-4 border-b border-line">
             <h2 className="font-bold text-heading">Conversations</h2>
-            <p className="text-xs text-muted mt-0.5">Campaign rooms and your private threads with brands.</p>
+            <p className="text-xs text-muted mt-0.5">
+              {viewerIsBrand
+                ? 'Campaign rooms and private threads with creators about their videos.'
+                : 'Campaign rooms and your private threads with brands.'}
+            </p>
           </div>
 
           {error && <p className="p-4 text-sm text-pink-300">{error}</p>}
@@ -360,6 +511,7 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
                   key={t.id}
                   thread={t}
                   active={t.id === activeId}
+                  viewerIsBrand={viewerIsBrand}
                   onOpen={() => setActiveId(t.id)}
                 />
               ))}

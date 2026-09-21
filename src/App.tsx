@@ -2128,6 +2128,8 @@ function BrandDashboard({
   // so a refresh does not replay a stale banner.
   const [connectOutcome, setConnectOutcome] = useState<ConnectOutcome | null>(() => takeConnectionOutcome());
   const [finishing, setFinishing] = useState<string | null>(null);
+  /** A video thread opened from Submissions, handed to the Chat page. */
+  const [chatThreadId, setChatThreadId] = useState<string | null>(null);
 
   /**
    * An App Store install waiting for this brand.
@@ -2558,7 +2560,13 @@ function BrandDashboard({
                   <ContentLibrary
                     brandId={brandId}
                     campaigns={allCards.map((c) => ({ id: c.id, name: c.name }))}
-                    renderReview={(sub, onDecided) => <SubmissionReviewCard sub={sub} onDecided={onDecided} />}
+                    renderReview={(sub, onDecided) => (
+                      <SubmissionReviewCard
+                        sub={sub}
+                        onDecided={onDecided}
+                        onOpenThread={(id) => { setChatThreadId(id); setPage('chat'); }}
+                      />
+                    )}
                   />
                 )
                 : <NeedsBrand what="submissions" />}
@@ -2585,7 +2593,7 @@ function BrandDashboard({
           {page === 'chat' && (
             <>
               <PageHead title="Chat" sub="Your campaign rooms, and the private threads creators start about their videos." />
-              {liveMode ? <ChatPanel /> : <NeedsBrand what="messages" />}
+              {liveMode ? <ChatPanel openThreadId={chatThreadId} /> : <NeedsBrand what="messages" />}
             </>
           )}
 
@@ -4206,22 +4214,31 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
    Creators post without waiting. The brand decides what runs, and owes a
    reason when it does not.
    ───────────────────────────────────────────────────────────── */
-function SubmissionReviewCard({ sub, onDecided }: { sub: CampaignSubmission; onDecided: () => void }) {
+function SubmissionReviewCard({
+  sub,
+  onDecided,
+  onOpenThread,
+}: {
+  sub: CampaignSubmission;
+  onDecided: () => void;
+  /** Take the brand to this video's private thread with the creator. */
+  onOpenThread?: (threadId: string) => void;
+}) {
   const [writing, setWriting] = useState(false);
   const [note, setNote] = useState(sub.brandNote ?? '');
   const [busy, setBusy] = useState(false);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Opening the thread creates it if it does not exist yet, then scrolls the
-  // brand's own inbox further down the page to it.
+  // Opening the thread creates it if it does not exist yet, then takes the
+  // brand to Chat with that conversation open and the video pinned on top.
   const openThread = async () => {
     setError(null);
     setOpening(true);
     const res = await openSubmissionThread(sub.id);
     setOpening(false);
-    if (res.error) { setError(res.error); return; }
-    document.getElementById('brand-messages')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (res.error || !res.data) { setError(res.error ?? 'Could not open the conversation.'); return; }
+    onOpenThread?.(res.data);
   };
 
   const decide = async (usage: 'in_use' | 'not_used') => {

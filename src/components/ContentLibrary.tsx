@@ -14,10 +14,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDownRight, Download, FileVideo, RefreshCw, X } from 'lucide-react';
+import { Download, FileVideo, RefreshCw, X } from 'lucide-react';
 import { listSubmissionsForBrand, type CampaignSubmission } from '../lib/db';
 import { signedVideoUrl } from '../lib/storage';
-import { toCsv, downloadCsv } from '../lib/csv';
 import { CoverImage, VideoTile } from './MediaTile';
 
 type UsageFilter = 'all' | 'awaiting' | 'in_use' | 'not_used';
@@ -167,7 +166,7 @@ export function ContentLibrary({
   const [campaignId, setCampaignId] = useState('');
   const [usage, setUsage] = useState<UsageFilter>('all');
   const [open, setOpen] = useState<CampaignSubmission | null>(null);
-  const [downloading, setDownloading] = useState<'in_use' | 'all' | null>(null);
+  const [downloading, setDownloading] = useState<'in_use' | 'not_used' | 'all' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -192,21 +191,6 @@ export function ContentLibrary({
 
   const shown = usage === 'all' ? byCampaign : byCampaign.filter((r) => r.usage === usage);
 
-  const exportCsv = (list: CampaignSubmission[], label: string) => {
-    const csv = toCsv(
-      ['Creator', 'Campaign', 'Status', 'Uploaded', 'Decided', 'Brand note'],
-      list.map((r) => [
-        r.creatorHandle,
-        r.campaignName,
-        USAGE[r.usage]?.label ?? r.usage,
-        r.submittedAt.slice(0, 10),
-        r.decidedAt ? r.decidedAt.slice(0, 10) : '',
-        r.brandNote ?? '',
-      ])
-    );
-    downloadCsv(`kyro-videos-${label}-${new Date().toISOString().slice(0, 10)}.csv`, csv);
-  };
-
   /**
    * Download every video in the list that has a file.
    *
@@ -214,7 +198,7 @@ export function ContentLibrary({
    * before allowing several downloads from a page. That prompt is the browser
    * protecting the brand, not an error.
    */
-  const downloadVideos = async (targets: CampaignSubmission[], which: 'in_use' | 'all') => {
+  const downloadVideos = async (targets: CampaignSubmission[], which: 'in_use' | 'not_used' | 'all') => {
     setNotice(null);
     setDownloading(which);
     let saved = 0;
@@ -261,6 +245,7 @@ export function ContentLibrary({
           <div className="flex flex-wrap items-center gap-2">
             {([
               { id: 'in_use' as const, label: 'Download in use', list: byCampaign.filter((r) => r.usage === 'in_use') },
+              { id: 'not_used' as const, label: 'Download not used', list: byCampaign.filter((r) => r.usage === 'not_used') },
               { id: 'all' as const, label: 'Download all', list: byCampaign },
             ]).map((b) => (
               <button
@@ -275,14 +260,6 @@ export function ContentLibrary({
                 <span className="text-faint">{b.list.length}</span>
               </button>
             ))}
-            <button
-              type="button"
-              onClick={() => exportCsv(shown, usage)}
-              disabled={shown.length === 0}
-              className="px-3 py-1.5 rounded-lg border border-line bg-surface-2 text-xs font-semibold text-muted hover:text-heading disabled:opacity-40 inline-flex items-center gap-1.5 whitespace-nowrap"
-            >
-              <ArrowDownRight size={12} /> Export CSV
-            </button>
           </div>
         </div>
 

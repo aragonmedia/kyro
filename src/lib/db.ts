@@ -2233,6 +2233,10 @@ export interface ThreadSummary {
   lastSender: string | null;
   lastAt: string | null;
   unread: number;
+  /** Video threads only: whose video, its frame, and where the brand stands. */
+  creatorHandle: string | null;
+  videoThumb: string | null;
+  videoUsage: UsageState | null;
 }
 
 export interface ChatMessage {
@@ -2265,10 +2269,54 @@ export async function listMyThreads(): Promise<Result<ThreadSummary[]>> {
         lastSender: (r.last_sender as string | null) ?? null,
         lastAt: (r.last_at as string | null) ?? null,
         unread: Number(r.unread ?? 0),
+        creatorHandle: (r.creator_handle as string | null) ?? null,
+        videoThumb: (r.video_thumb as string | null) ?? null,
+        videoUsage: r.video_status ? usageStateFor(r.video_status as string) : null,
       }))
     );
   } catch (e) {
     return fail([], describeError(e, 'Could not load your messages.'));
+  }
+}
+
+/** The video a submission thread is about, for the card at the top of it. */
+export interface ThreadVideo {
+  submissionId: string;
+  campaignName: string;
+  brandName: string;
+  creatorHandle: string;
+  videoPath: string | null;
+  thumbnailUrl: string | null;
+  coverUrl: string | null;
+  usage: UsageState;
+  brandNote: string | null;
+  submittedAt: string;
+  decidedAt: string | null;
+}
+
+export async function getThreadVideo(threadId: string): Promise<Result<ThreadVideo | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb.rpc('submission_thread_context', { p_thread_id: threadId });
+    if (error) return fail(null, describeError(error, 'Could not load the video.'));
+    const r = ((data ?? []) as Array<Record<string, unknown>>)[0];
+    if (!r) return ok(null);
+    return ok({
+      submissionId: r.submission_id as string,
+      campaignName: (r.campaign_name as string) ?? 'Campaign',
+      brandName: (r.brand_name as string) ?? '',
+      creatorHandle: (r.creator_handle as string) ?? '',
+      videoPath: (r.video_path as string | null) ?? null,
+      thumbnailUrl: (r.thumbnail_url as string | null) ?? null,
+      coverUrl: (r.cover_url as string | null) ?? null,
+      usage: usageStateFor((r.status as string) ?? ''),
+      brandNote: (r.brand_note as string | null) ?? null,
+      submittedAt: r.submitted_at as string,
+      decidedAt: (r.decided_at as string | null) ?? null,
+    });
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not load the video.'));
   }
 }
 
