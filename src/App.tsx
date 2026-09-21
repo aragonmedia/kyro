@@ -1362,6 +1362,8 @@ function OnboardingGates({
   const [signError, setSignError] = useState<string | null>(null);
   /** Null means "follow the first unfinished step"; a number means the brand chose. */
   const [chosen, setChosen] = useState<number | null>(null);
+  /** The other steps stay folded away until asked for. */
+  const [showAll, setShowAll] = useState(false);
 
   const sign = async () => {
     setSignError(null);
@@ -1584,8 +1586,22 @@ function OnboardingGates({
         )}
       </div>
 
-      {/* Everything else, quiet, and reachable. */}
-      <div className="border-t border-line divide-y divide-line">
+      {/* Everything else, folded away. One task on screen is the point; the
+          rest is available to anyone who wants to see what is coming. */}
+      <button
+        type="button"
+        onClick={() => setShowAll((v) => !v)}
+        className="w-full px-5 py-3 border-t border-line flex items-center justify-between gap-2 text-xs font-semibold text-muted hover:text-heading hover:bg-surface-2 transition"
+      >
+        <span>
+          {showAll
+            ? 'Hide the other steps'
+            : `Show the other ${plural(steps.length - 1, 'step')}`}
+        </span>
+        <ChevronRight size={14} className={`transition-transform ${showAll ? 'rotate-90' : ''}`} />
+      </button>
+
+      <div className={`border-t border-line divide-y divide-line ${showAll ? '' : 'hidden'}`}>
         {steps.map((s, i) =>
           i === current ? null : (
             <button

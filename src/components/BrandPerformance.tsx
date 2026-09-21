@@ -110,7 +110,9 @@ export function BrandPerformanceCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-        {campaigns.length > 1 && (
+        {/* Shown with one campaign too. A brand about to add a second should
+            already know the chart can be narrowed. */}
+        {campaigns.length > 0 && (
           <select
             value={campaignId}
             onChange={(e) => setCampaignId(e.target.value)}
