@@ -1,6 +1,20 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      // Shopify opens KYRO with ?shop=&hmac=&timestamp= after an App Store
+      // install, or when a merchant clicks KYRO in their admin. App Store
+      // rule 2.3.2: OAuth must run before any KYRO screen appears, so hand
+      // the signed request to the server before the app renders at all.
+      (function () {
+        try {
+          var q = new URLSearchParams(window.location.search);
+          if (window.location.pathname === '/' && q.has('shop') && q.has('hmac') && q.has('timestamp')) {
+            window.location.replace('/api/shopify/launch' + window.location.search);
+          }
+        } catch (e) { /* old browser: the app still loads normally */ }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/kyro-logo.png" />
     <link rel="apple-touch-icon" href="/kyro-logo.png" />

@@ -113,6 +113,12 @@ there is one base and it is never stacked.
 **The KYRO Fee is charged to you, not to the Creator.** It is billed alongside Creator
 Commission on the same cycle, and nothing is deducted from what a Creator earns.
 
+**Brands that install KYRO from the Shopify App Store.** If you first came to KYRO by
+installing it from the Shopify App Store, KYRO does not charge you the KYRO Fee directly.
+Any charge for KYRO to such a Brand is made only through Shopify's billing, shown on your
+Shopify bill, and only after you approve it in Shopify. You still pay Creator Commission
+as described above.
+
 ### 9. Content license — scope, term and conditions
 
 **The Creator owns their video.** Nothing here transfers ownership to you or to KYRO.

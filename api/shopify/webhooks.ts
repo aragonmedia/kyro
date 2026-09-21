@@ -457,6 +457,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       case 'shop/redact':
         if (brandId) await handleShopRedact(db, brandId);
+        // An App Store install that never became a brand still left a token.
+        await db.from('shopify_pending_installs').delete().eq('shop', shop);
         break;
 
       default:

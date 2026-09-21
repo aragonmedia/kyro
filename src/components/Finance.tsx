@@ -27,6 +27,7 @@ import {
   Receipt, RefreshCw,
 } from 'lucide-react';
 import { PaymentMethodSheet, type PayMethod } from './PaymentMethod';
+import { useSession } from '../lib/session';
 import {
   authorizePaymentRun,
   getBrandBalance,
@@ -192,6 +193,10 @@ export function BrandFinance({
   // Totals follow the filter, so the figures always describe what is on screen.
   const shownCommission = shown.reduce((s, r) => s + r.commissionCents, 0);
   const shownFee = shown.reduce((s, r) => s + r.feeCents, 0);
+  // App Store brands are billed only through Shopify, and the listing is free
+  // for now, so there is no KYRO fee to show them (App Store rule 1.2.1).
+  const { brand: sessionBrand } = useSession();
+  const feeFree = sessionBrand?.billingOrigin === 'shopify_app_store';
 
   const dueTotal = (balance?.dueCommissionCents ?? 0) + (balance?.dueFeeCents ?? 0);
   const nothingEver =
@@ -265,10 +270,12 @@ export function BrandFinance({
               <span className="text-muted">Creator commission</span>
               <span className="text-heading tabular-nums">{money(balance.dueCommissionCents)}</span>
             </div>
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-muted">KYRO fee · 1% of attributed sales</span>
-              <span className="text-heading tabular-nums">{money(balance.dueFeeCents)}</span>
-            </div>
+            {!feeFree && (
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted">KYRO fee · 1% of attributed sales</span>
+                <span className="text-heading tabular-nums">{money(balance.dueFeeCents)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3 pt-2 border-t border-line">
               <span className="font-semibold text-heading">Total to pay</span>
               <span className="text-xl font-bold text-heading tabular-nums">{money(dueTotal)}</span>
@@ -392,7 +399,7 @@ export function BrandFinance({
           </select>
           {shown.length > 0 && (
             <span className="text-xs text-faint self-center ml-auto tabular-nums">
-              {shown.length} lines · {money(shownCommission)} commission · {money(shownFee)} fee
+              {shown.length} lines · {money(shownCommission)} commission{feeFree ? '' : ` · ${money(shownFee)} fee`}
             </span>
           )}
         </div>
@@ -415,7 +422,7 @@ export function BrandFinance({
                   <th className="p-4 font-semibold">Creator</th>
                   <th className="p-4 font-semibold text-right">Order value</th>
                   <th className="p-4 font-semibold text-right">Commission</th>
-                  <th className="p-4 font-semibold text-right">KYRO fee</th>
+                  {!feeFree && <th className="p-4 font-semibold text-right">KYRO fee</th>}
                   <th className="p-4 font-semibold">Status</th>
                 </tr>
               </thead>
@@ -430,7 +437,7 @@ export function BrandFinance({
                     </td>
                     <td className="p-4 text-right text-body tabular-nums">{money(r.orderValueCents)}</td>
                     <td className="p-4 text-right font-semibold text-blue-400 tabular-nums">{money(r.commissionCents)}</td>
-                    <td className="p-4 text-right text-muted tabular-nums">{money(r.feeCents)}</td>
+                    {!feeFree && <td className="p-4 text-right text-muted tabular-nums">{money(r.feeCents)}</td>}
                     <td className="p-4">
                       <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${STATE_TONE[r.state] ?? STATE_TONE.pending}`}>
                         {STATE_LABEL[r.state] ?? r.state}
@@ -460,7 +467,7 @@ export function BrandFinance({
                   <p className="font-semibold text-heading tabular-nums">{money(r.totalCents)}</p>
                   <p className="text-xs text-muted">
                     {r.orderCount} orders · {r.creatorCount} creators · {money(r.commissionCents)} commission
-                    {' + '}{money(r.platformFeeCents)} fee
+                    {r.platformFeeCents > 0 && <>{' + '}{money(r.platformFeeCents)} fee</>}
                   </p>
                   <p className="text-xs text-faint mt-0.5">{day(r.authorizedAt)}</p>
                 </div>

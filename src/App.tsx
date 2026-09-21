@@ -60,7 +60,7 @@ import type { BrandBalance, LeaderboardCreator, BrandApplication, RosterCreator,
 import { uploadSubmissionVideo, uploadCampaignCover, uploadBrandLogo } from './lib/storage';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
-import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, isShopifyLaunch, acceptShopifyLaunch, takePendingShop, peekPendingShop, type ConnectOutcome } from './lib/platform';
+import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, takeShopifyInstall, claimShopifyInstall, takePendingShop, peekPendingShop, type ConnectOutcome } from './lib/platform';
 import { EarningsCard } from './components/EarningsCard';
 import { AffiliateOrdersCard, AffiliateOrdersPage } from './components/AffiliateOrders';
 import { CoverImage, VideoTile } from './components/MediaTile';
@@ -685,14 +685,26 @@ function SubmitButton({ loading, disabled, children }: { loading: boolean; disab
 
 /* ─── Sign in ─────────────────────────────────────────────── */
 
+/** Shown on sign-in and sign-up when Shopify has just installed KYRO. */
+function ShopifyInstallNotice({ shop }: { shop: string }) {
+  return (
+    <div className="p-3 rounded-lg border border-emerald-400/30 bg-emerald-400/10 text-sm text-emerald-200">
+      <span className="font-semibold">{shop.replace('.myshopify.com', '')}</span> is connected to KYRO.
+      Create your brand account, or sign in, to finish.
+    </div>
+  );
+}
+
 function SignIn({
   mode,
+  shopifyShop,
   onDone,
   onBack,
   onForgot,
   onGoSignUp,
 }: {
   mode: 'signin' | 'admin';
+  shopifyShop?: string | null;
   onDone: () => void | Promise<void>;
   onBack: () => void;
   onForgot: () => void;
@@ -742,6 +754,7 @@ function SignIn({
       }
     >
       <form onSubmit={submit} className="space-y-3">
+        {shopifyShop && <ShopifyInstallNotice shop={shopifyShop} />}
         {error && <AuthError message={error} />}
         <input
           type="email"
@@ -767,10 +780,12 @@ function SignIn({
 /* ─── Sign up ─────────────────────────────────────────────── */
 
 function SignUp({
+  shopifyShop,
   onDone,
   onBack,
   onGoSignIn,
 }: {
+  shopifyShop?: string | null;
   onDone: (role: Role) => void | Promise<void>;
   onBack: () => void;
   onGoSignIn: () => void;
@@ -855,6 +870,7 @@ function SignUp({
       }
     >
       <form onSubmit={submit} className="space-y-3">
+        {shopifyShop && <ShopifyInstallNotice shop={shopifyShop} />}
         {error && <AuthError message={error} />}
 
         <div className="flex gap-1 p-1 bg-surface-2 border border-line rounded-full mb-1">
@@ -1364,6 +1380,7 @@ function OnboardingGates({
   status: OnboardingStatus;
   onChanged: () => void;
 }) {
+  const session = useSession();
   const [agreed, setAgreed] = useState(false);
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
@@ -1447,7 +1464,9 @@ function OnboardingGates({
               signing up to pay before they pick how to pay it. */}
           <ul className="space-y-1.5 text-xs text-muted leading-relaxed">
             <li className="flex gap-2"><span className="text-purple-300">·</span>Creator commission on orders their videos drove</li>
-            <li className="flex gap-2"><span className="text-purple-300">·</span>Plus KYRO's 1% of attributed sales. Nothing stacked on top</li>
+            {session.brand?.billingOrigin !== 'shopify_app_store' && (
+              <li className="flex gap-2"><span className="text-purple-300">·</span>Plus KYRO's 1% of attributed sales. Nothing stacked on top</li>
+            )}
             <li className="flex gap-2"><span className="text-purple-300">·</span>Charged only after an order clears its return window</li>
           </ul>
           <div className="grid sm:grid-cols-2 gap-2">
@@ -2100,25 +2119,30 @@ function BrandDashboard({
   const [finishing, setFinishing] = useState<string | null>(null);
 
   /**
-   * A store Shopify handed us, waiting for a signed-in brand.
+   * An App Store install waiting for this brand.
    *
-   * Goes through startShopifyInstall — the same path the Connect button uses,
-   * which checks the signed-in user owns this brand. Taken once, so a failure
-   * cannot bounce the brand between KYRO and Shopify in a loop.
+   * OAuth already ran on Shopify's side; this trades the signed claim for the
+   * parked token (api/shopify/claim.ts, which checks the signed-in user owns
+   * this brand). Taken once, so a failure cannot loop.
    */
   useEffect(() => {
     if (!liveMode || !brandId || !pendingShop) return;
-    const shop = takePendingShop() ?? pendingShop;
+    const pending = takePendingShop();
     onShopConsumed();
+    if (!pending) return;
+    const shop = pending.shop;
     setFinishing(shop);
     void (async () => {
-      const res = await startShopifyInstall(brandId, shop);
-      if (res.error || !res.url) {
-        setFinishing(null);
-        setConnectOutcome({ provider: 'shopify', ok: false, shop, message: res.error ?? `Could not finish connecting ${shop}.` });
+      const res = await claimShopifyInstall(brandId, pending.claim);
+      setFinishing(null);
+      if (res.error) {
+        setConnectOutcome({ provider: 'shopify', ok: false, shop, message: res.error });
         return;
       }
-      window.location.href = res.url;
+      setConnectOutcome({ provider: 'shopify', ok: true, shop, message: `${shop} is connected.` });
+      void loadGates();
+      // Billing origin may have changed, which changes what Finance shows.
+      void session.refresh();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveMode, brandId, pendingShop]);
@@ -5805,24 +5829,22 @@ function App() {
   const nav = (path: string) => { try { window.history.pushState({}, '', path); } catch { /* noop */ } };
 
   /**
-   * Shopify sent someone here after they approved KYRO on Shopify's side.
-   * Verify the signature, remember the store, and send a signed-out visitor
-   * to sign in — the brand dashboard picks the store up from there.
+   * Shopify installed KYRO from the App Store and OAuth already ran (see
+   * index.html and api/shopify/launch.ts). The token is parked server side;
+   * the claim for it is remembered here, and a signed-out merchant goes to
+   * sign-up. The brand dashboard exchanges the claim once a brand exists.
    */
-  const [launchError, setLaunchError] = useState<string | null>(null);
-  // State, not a one-off read: verification is async, so the dashboard can
-  // mount before the store is known. Holding it here means it still arrives.
+  const [launchError] = useState<string | null>(null);
+  // State, not a one-off read, so the dashboard still receives it if it
+  // mounts before this effect runs.
   const [pendingShop, setPendingShop] = useState<string | null>(() => peekPendingShop());
   /** Asked-for brand page, so other screens can open the portal on one. */
   const [brandPage, setBrandPage] = useState<BrandPage | null>(null);
   useEffect(() => {
-    if (!isShopifyLaunch()) return;
-    void (async () => {
-      const res = await acceptShopifyLaunch();
-      if (res.error) { setLaunchError(res.error); return; }
-      setPendingShop(res.shop);
-      if (!session.userId) { setView('signin'); nav('/signin'); }
-    })();
+    const shop = takeShopifyInstall();
+    if (!shop) return;
+    setPendingShop(shop);
+    if (!session.userId) { setView('signup'); nav('/signup'); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -5973,13 +5995,14 @@ function App() {
   if (view === 'signin') return (
     <SignIn
       mode={adminEntry ? 'admin' : 'signin'}
+      shopifyShop={adminEntry ? null : pendingShop}
       onDone={handleSignedIn}
       onBack={goLanding}
       onForgot={goForgot}
       onGoSignUp={goSignUp}
     />
   );
-  if (view === 'signup') return <SignUp onDone={handleSignedUp} onBack={goLanding} onGoSignIn={() => goSignIn(false)} />;
+  if (view === 'signup') return <SignUp shopifyShop={pendingShop} onDone={handleSignedUp} onBack={goLanding} onGoSignIn={() => goSignIn(false)} />;
   if (view === 'forgot') return <ForgotPassword onBack={goLanding} onGoSignIn={() => goSignIn(false)} />;
   if (view === 'reset-password') return (
     <ResetPassword onDone={handlePasswordReset} onBack={goLanding} onGoSignIn={() => goSignIn(false)} />
@@ -6033,7 +6056,7 @@ function App() {
         <BrandDashboard
           pendingShop={pendingShop}
           launchError={launchError}
-          onShopConsumed={() => { setPendingShop(null); setLaunchError(null); }}
+          onShopConsumed={() => setPendingShop(null)}
           requestedPage={brandPage}
           onRequestedPageShown={() => setBrandPage(null)}
         />
@@ -6380,7 +6403,9 @@ function BrandPaymentSummary({ onOpenFinance }: { onOpenFinance: () => void }) {
           <p className="text-lg font-bold text-emerald-400 tabular-nums mt-0.5">
             {balance ? fmt(centsToDollars(due)) : '—'}
           </p>
-          <p className="text-[11px] text-faint">Commission plus KYRO's 1%</p>
+          <p className="text-[11px] text-faint">
+            {brand?.billingOrigin === 'shopify_app_store' ? 'Creator commission' : "Commission plus KYRO's 1%"}
+          </p>
         </div>
         <div className="p-4 rounded-xl border border-line bg-surface-2">
           <p className="text-xs text-faint">Paid to date</p>

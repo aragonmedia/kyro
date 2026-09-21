@@ -12,7 +12,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { serviceClient } from '../_lib/supabase.js';
-import { seal, verifyState } from '../_lib/crypto.js';
+import { seal, signClaim, verifyState } from '../_lib/crypto.js';
 import { exchangeCodeForToken, normalizeShopDomain, verifyOAuthHmac } from '../_lib/shopify.js';
 import { appOrigin } from '../_lib/env.js';
 import { subscribeWebhooks } from '../_lib/shopify-admin.js';
@@ -62,9 +62,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const sb = serviceClient();
 
+    // 3b. Which brand is this for?
+    //   · Started from KYRO: the brand in the signed state.
+    //   · Started from Shopify (App Store install, or opening KYRO from the
+    //     Shopify admin): the brand that already owns this store, if any.
+    //     If none, the merchant has no KYRO account yet. The token is parked
+    //     and they go on to sign up, which is the order review requires.
+    let brandId = state.brandId;
+    if (state.launch) {
+      const { data: owner } = await sb
+        .from('brand_connections')
+        .select('brand_id')
+        .eq('provider', 'shopify')
+        .eq('external_id', shop)
+        .eq('status', 'active')
+        .maybeSingle();
+      brandId = (owner?.brand_id as string | undefined) ?? '';
+    }
+
+    if (!brandId) {
+      const pending: Record<string, unknown> = {
+        shop,
+        access_token_ct: sealed.ct,
+        access_token_iv: sealed.iv,
+        access_token_tag: sealed.tag,
+        scopes,
+        expires_at: token.expires_in ? new Date(Date.now() + token.expires_in * 1000).toISOString() : null,
+        refresh_token_ct: null,
+        refresh_token_iv: null,
+        refresh_token_tag: null,
+        refresh_token_expires_at: null,
+        created_at: new Date().toISOString(),
+      };
+      if (token.refresh_token) {
+        const refresh = seal(token.refresh_token);
+        pending.refresh_token_ct = refresh.ct;
+        pending.refresh_token_iv = refresh.iv;
+        pending.refresh_token_tag = refresh.tag;
+        if (token.refresh_token_expires_in) {
+          pending.refresh_token_expires_at = new Date(
+            Date.now() + token.refresh_token_expires_in * 1000
+          ).toISOString();
+        }
+      }
+      const { error: pendingError } = await sb
+        .from('shopify_pending_installs')
+        .upsert(pending, { onConflict: 'shop' });
+      if (pendingError) {
+        console.error('[kyro] could not park shopify install', pendingError);
+        return back(res, { shopify: 'error', reason: 'storage' });
+      }
+      return back(res, { shopify: 'installed', shop, claim: signClaim(shop) });
+    }
+
     // 4. Store the token in the service-role-only table.
     const credential: Record<string, unknown> = {
-      brand_id: state.brandId,
+      brand_id: brandId,
       provider: 'shopify',
       external_id: shop,
       access_token_ct: sealed.ct,
@@ -104,7 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     //    readable by the brand owner, the credentials table is not.
     const { error: connError } = await sb.from('brand_connections').upsert(
       {
-        brand_id: state.brandId,
+        brand_id: brandId,
         provider: 'shopify',
         external_id: shop,
         display_name: shop.replace('.myshopify.com', ''),
@@ -135,7 +188,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await sb
           .from('brand_connections')
           .update({ last_error: `webhooks: ${failed.map((f) => f.topic).join(',')}` })
-          .eq('brand_id', state.brandId)
+          .eq('brand_id', brandId)
           .eq('provider', 'shopify');
       }
     } catch (e) {

@@ -103,7 +103,9 @@ export function takeConnectionOutcome(): ConnectOutcome | null {
 
   const params = new URLSearchParams(window.location.search);
   const shopify = params.get('shopify');
-  if (!shopify) return null;
+  // 'installed' is an App Store install waiting for a brand. takeShopifyInstall
+  // owns that one, and needs the claim still in the URL.
+  if (!shopify || shopify === 'installed') return null;
 
   const shop = params.get('shop') || undefined;
   const reason = params.get('reason') || '';
@@ -284,82 +286,97 @@ export async function startStripeSetup(
 /* ─────────────────────────────────────────────────────────────
    Shopify-initiated installs
 
-   When Shopify sends a merchant to itskyro.com with a signed ?shop=…&hmac=…,
-   the store is held here until a brand is signed in to attach it to.
-   sessionStorage rather than localStorage: it is per tab and dies with it, so
-   a half-finished install cannot resurface days later in another window.
+   index.html sends Shopify's signed ?shop=…&hmac=… launch straight to
+   /api/shopify/launch, which runs OAuth before any screen shows. If the store
+   has no KYRO brand yet, the callback parks the token and returns here with a
+   claim, which is exchanged once the merchant has signed up.
    ───────────────────────────────────────────────────────────── */
 
-const PENDING_SHOP_KEY = 'kyro.pendingShop';
+/**
+ * An App Store install, waiting for the merchant to have a KYRO brand.
+ *
+ * localStorage rather than sessionStorage: signing up can mean confirming an
+ * email in a new tab, and the claim has to survive that. It holds a signed,
+ * expiring claim for one shop and no token.
+ */
+const PENDING_SHOP_KEY = 'kyro.pendingShopify';
 
-/** True when the current URL is Shopify handing a merchant back to KYRO. */
-export function isShopifyLaunch(): boolean {
-  if (typeof window === 'undefined') return false;
-  const q = new URLSearchParams(window.location.search);
-  return q.has('shop') && q.has('hmac') && q.has('timestamp');
+interface PendingShop { shop: string; claim: string }
+
+function readPending(): PendingShop | null {
+  try {
+    const raw = localStorage.getItem(PENDING_SHOP_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<PendingShop>;
+    return v && typeof v.shop === 'string' && typeof v.claim === 'string' ? { shop: v.shop, claim: v.claim } : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Check the signature server side and remember the store.
- *
- * Every parameter Shopify appended is forwarded untouched — the signature
- * covers all of them, so adding or dropping one would make a genuine link
- * fail verification.
+ * Pick up `?shopify=installed&shop=&claim=` from the callback, remember it,
+ * and strip it from the address bar so a refresh cannot replay it.
  */
-export async function acceptShopifyLaunch(): Promise<{ shop: string | null; error: string | null }> {
-  const params = Object.fromEntries(new URLSearchParams(window.location.search));
-
-  let res: Response;
-  try {
-    res = await fetch('/api/shopify/launch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-  } catch {
-    return { shop: null, error: 'Could not reach KYRO. Check your connection and try again.' };
-  }
-
-  let body: { shop?: string; error?: string } = {};
-  try {
-    body = (await res.json()) as typeof body;
-  } catch {
-    return { shop: null, error: 'Could not read the Shopify link.' };
-  }
-
-  if (!res.ok || !body.shop) return { shop: null, error: body.error ?? 'Could not read the Shopify link.' };
-
-  try {
-    sessionStorage.setItem(PENDING_SHOP_KEY, body.shop);
-  } catch {
-    /* Blocked storage: the install can still be started by hand. */
-  }
-
-  // Strip Shopify's parameters so a refresh does not replay the launch.
+export function takeShopifyInstall(): string | null {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('shopify') !== 'installed') return null;
+  const shop = params.get('shop');
+  const claim = params.get('claim');
   try {
     window.history.replaceState({}, '', window.location.pathname);
   } catch {
     /* noop */
   }
-
-  return { shop: body.shop, error: null };
+  if (!shop || !claim) return null;
+  try {
+    localStorage.setItem(PENDING_SHOP_KEY, JSON.stringify({ shop, claim }));
+  } catch {
+    /* Blocked storage: the merchant can reopen KYRO from their Shopify admin. */
+  }
+  return shop;
 }
 
 /** The store waiting to be attached, taken once so it cannot loop. */
-export function takePendingShop(): string | null {
+export function takePendingShop(): PendingShop | null {
+  const v = readPending();
   try {
-    const shop = sessionStorage.getItem(PENDING_SHOP_KEY);
-    if (shop) sessionStorage.removeItem(PENDING_SHOP_KEY);
-    return shop;
+    localStorage.removeItem(PENDING_SHOP_KEY);
   } catch {
-    return null;
+    /* noop */
   }
+  return v;
 }
 
 export function peekPendingShop(): string | null {
+  return readPending()?.shop ?? null;
+}
+
+/** Attach a parked App Store install to the signed-in merchant's brand. */
+export async function claimShopifyInstall(brandId: string, claim: string): Promise<{ shop: string | null; error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { shop: null, error: 'This build has no Supabase connection.' };
+  const { data } = await sb.auth.getSession();
+  const token = data?.session?.access_token;
+  if (!token) return { shop: null, error: 'Your session has expired. Sign in again and retry.' };
+
+  let res: Response;
   try {
-    return sessionStorage.getItem(PENDING_SHOP_KEY);
+    res = await fetch('/api/shopify/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ brandId, claim }),
+    });
   } catch {
-    return null;
+    return { shop: null, error: 'Could not reach KYRO. Check your connection and try again.' };
   }
+  let body: { shop?: string; error?: string } = {};
+  try {
+    body = (await res.json()) as typeof body;
+  } catch {
+    body = {};
+  }
+  if (!res.ok || !body.shop) return { shop: null, error: body.error ?? 'Could not finish connecting Shopify.' };
+  return { shop: body.shop, error: null };
 }

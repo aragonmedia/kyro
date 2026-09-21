@@ -47,6 +47,8 @@ export interface Brand {
   currency: string;
   /** False until the brand has been through setup. */
   setupComplete: boolean;
+  /** 'shopify_app_store' brands are billed only through Shopify, so no KYRO fee today. */
+  billingOrigin: 'direct' | 'shopify_app_store';
   createdAt: string;
 }
 

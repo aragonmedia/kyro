@@ -118,6 +118,7 @@ export interface BrandRow {
   business_type: string | null;
   currency: string | null;
   setup_complete: boolean | null;
+  billing_origin?: string | null;
   created_at: string;
 }
 
@@ -199,6 +200,7 @@ export function toBrand(row: BrandRow): Brand {
     // Brands created before 0015 have no column value at all. Treating the
     // absence as "done" keeps an existing account out of the wizard.
     setupComplete: row.setup_complete ?? true,
+    billingOrigin: row.billing_origin === 'shopify_app_store' ? 'shopify_app_store' : 'direct',
     createdAt: row.created_at,
   };
 }
