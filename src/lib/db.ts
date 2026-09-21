@@ -1453,6 +1453,8 @@ export interface MyApplication {
   campaignId: string;
   status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
   createdAt: string;
+  /** What the brand said when deciding. Always present on a decline. */
+  decisionNote: string | null;
 }
 
 /** The creator's own applications, keyed by campaign for quick lookup. */
@@ -1462,14 +1464,14 @@ export async function listMyApplications(creatorId: string): Promise<Result<MyAp
   try {
     const { data, error } = await sb
       .from('applications')
-      .select('id, campaign_id, status, created_at')
+      .select('id, campaign_id, status, created_at, decision_note')
       .eq('creator_id', creatorId);
 
     if (error) return fail([], describeError(error, 'Could not load your applications.'));
     return ok(
       (data ?? []).map((r) => {
-        const row = r as { id: string; campaign_id: string; status: MyApplication['status']; created_at: string };
-        return { id: row.id, campaignId: row.campaign_id, status: row.status, createdAt: row.created_at };
+        const row = r as { id: string; campaign_id: string; status: MyApplication['status']; created_at: string; decision_note: string | null };
+        return { id: row.id, campaignId: row.campaign_id, status: row.status, createdAt: row.created_at, decisionNote: row.decision_note ?? null };
       })
     );
   } catch (e) {
@@ -1520,6 +1522,7 @@ export interface BrandApplication {
   status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
   message: string | null;
   createdAt: string;
+  decisionNote: string | null;
 }
 
 /** Applications across all of a brand's campaigns. */
@@ -1539,7 +1542,7 @@ export async function listApplicationsForBrand(brandId: string): Promise<Result<
 
     const { data, error } = await sb
       .from('applications')
-      .select('id, campaign_id, creator_id, status, message, created_at, creators(handle, niche)')
+      .select('id, campaign_id, creator_id, status, message, created_at, decision_note, creators(handle, niche)')
       .in('campaign_id', [...names.keys()])
       .order('created_at', { ascending: false });
 
@@ -1552,6 +1555,7 @@ export async function listApplicationsForBrand(brandId: string): Promise<Result<
       status: BrandApplication['status'];
       message: string | null;
       created_at: string;
+      decision_note: string | null;
       creators: { handle: string | null; niche: string[] | null } | Array<{ handle: string | null; niche: string[] | null }> | null;
     }>;
 
@@ -1568,6 +1572,7 @@ export async function listApplicationsForBrand(brandId: string): Promise<Result<
           status: r.status,
           message: r.message,
           createdAt: r.created_at,
+          decisionNote: r.decision_note ?? null,
         };
       })
     );
@@ -1577,14 +1582,24 @@ export async function listApplicationsForBrand(brandId: string): Promise<Result<
 }
 
 /** Accept or decline a creator onto a campaign. */
+/**
+ * The brand's decision on an application. Goes through decide_application()
+ * (migration 0024), which checks the caller owns the brand and refuses a
+ * decline without a note.
+ */
 export async function setApplicationStatus(
   applicationId: string,
-  status: 'accepted' | 'rejected'
+  status: 'accepted' | 'rejected',
+  note?: string
 ): Promise<Result<boolean>> {
   const sb = client();
   if (!sb) return ok(false);
   try {
-    const { error } = await sb.from('applications').update({ status }).eq('id', applicationId);
+    const { error } = await sb.rpc('decide_application', {
+      p_application_id: applicationId,
+      p_status: status,
+      p_note: (note ?? '').trim() || null,
+    });
     if (error) return fail(false, describeError(error, 'Could not save that decision.'));
     return ok(true);
   } catch (e) {

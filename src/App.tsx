@@ -3604,6 +3604,7 @@ function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (ca
   useEffect(() => { void load(); }, [load]);
 
   const statusFor = (campaignId: string) => apps.find((a) => a.campaignId === campaignId)?.status ?? null;
+  const noteFor = (campaignId: string) => apps.find((a) => a.campaignId === campaignId)?.decisionNote ?? null;
 
   if (campaigns !== null && campaigns.length === 0) return null;
 
@@ -3639,6 +3640,11 @@ function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (ca
                   </div>
                   {c.contentStyle && (
                     <p className="text-xs text-faint mt-1 line-clamp-2">{c.contentStyle}</p>
+                  )}
+                  {status === 'rejected' && noteFor(c.id) && (
+                    <p className="text-xs text-amber-200/90 mt-1.5 leading-relaxed">
+                      <span className="text-faint">{c.brandName || 'The brand'} said: </span>{noteFor(c.id)}
+                    </p>
                   )}
                 </div>
               </div>
@@ -4098,11 +4104,18 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const decide = async (id: string, status: 'accepted' | 'rejected') => {
+  /** The application whose decline note is being written, if any. */
+  const [declining, setDeclining] = useState<string | null>(null);
+  const [declineNote, setDeclineNote] = useState('');
+
+  const decide = async (id: string, status: 'accepted' | 'rejected', note?: string) => {
+    setError(null);
     setBusy(id);
-    const res = await setApplicationStatus(id, status);
+    const res = await setApplicationStatus(id, status, note);
     setBusy(null);
     if (res.error) { setError(res.error); return; }
+    setDeclining(null);
+    setDeclineNote('');
     await load();
   };
 
@@ -4157,7 +4170,7 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
               )}
             </div>
 
-            {a.status === 'pending' ? (
+            {a.status === 'pending' && declining !== a.id ? (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -4169,14 +4182,14 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void decide(a.id, 'rejected')}
+                  onClick={() => { setDeclining(a.id); setDeclineNote(''); setError(null); }}
                   disabled={busy === a.id}
                   className="px-3 py-1.5 rounded-lg border border-line text-xs font-semibold text-muted hover:text-heading disabled:opacity-50"
                 >
                   Decline
                 </button>
               </div>
-            ) : (
+            ) : a.status !== 'pending' ? (
               <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${
                 a.status === 'accepted'
                   ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
@@ -4184,6 +4197,51 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
               }`}>
                 {a.status === 'accepted' ? 'On the campaign' : 'Declined'}
               </span>
+            ) : null}
+
+            {/* Declining needs a reason, the same rule as passing on a video.
+                The creator sees it next to "Apply again". */}
+            {declining === a.id && (
+              <div className="w-full space-y-2 pt-1">
+                <label htmlFor={`decline-${a.id}`} className="text-xs font-semibold text-muted">
+                  Tell @{a.creatorHandle.replace(/^@+/, '')} why. They'll see this.
+                </label>
+                <textarea
+                  id={`decline-${a.id}`}
+                  autoFocus
+                  value={declineNote}
+                  onChange={(e) => setDeclineNote(e.target.value)}
+                  rows={3}
+                  maxLength={600}
+                  placeholder="e.g. We're looking for creators who film in Spanish for this one. Apply again if that changes."
+                  className="w-full px-3 py-2.5 bg-surface-2 border border-line rounded-lg text-sm text-heading placeholder-faint focus:outline-none focus:border-purple-500 resize-none"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void decide(a.id, 'rejected', declineNote)}
+                    disabled={busy === a.id || !declineNote.trim()}
+                    className="px-3 py-1.5 rounded-lg bg-pink-500/15 border border-pink-400/40 text-pink-200 text-xs font-semibold disabled:opacity-40"
+                  >
+                    {busy === a.id ? 'Declining…' : 'Decline with this note'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setDeclining(null); setDeclineNote(''); }}
+                    disabled={busy === a.id}
+                    className="px-3 py-1.5 text-xs font-semibold text-muted hover:text-heading"
+                  >
+                    Cancel
+                  </button>
+                  <span className="text-[11px] text-faint ml-auto">{declineNote.length}/600</span>
+                </div>
+              </div>
+            )}
+
+            {a.status === 'rejected' && a.decisionNote && (
+              <p className="w-full text-xs text-muted leading-relaxed">
+                <span className="text-faint">Your note: </span>{a.decisionNote}
+              </p>
             )}
           </div>
         ))}
