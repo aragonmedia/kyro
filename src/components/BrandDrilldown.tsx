@@ -127,12 +127,15 @@ export function BrandDrilldown({
   campaigns,
   onClose,
   onOpenCampaigns,
+  onOpenSubmissions,
 }: {
   kind: DrilldownKind;
   brandId: string;
   campaigns: Array<{ id: string; name: string; status: string; cover: string | null; orders: number; creators: number; submissions: number; spentDollars: number }>;
   onClose: () => void;
   onOpenCampaigns: () => void;
+  /** Take the brand to Submissions, where every video can be played and decided. */
+  onOpenSubmissions: () => void;
 }) {
   const [campaignId, setCampaignId] = useState('');
   const [orders, setOrders] = useState<BrandOrderRow[] | null>(null);
@@ -158,6 +161,13 @@ export function BrandDrilldown({
     if (!campaignId) return videos;
     const name = campaigns.find((c) => c.id === campaignId)?.name;
     return videos.filter((v) => v.campaignName === name);
+  }, [videos, campaignId, campaigns]);
+
+  // What needs the brand first, then what they passed on, then what is running.
+  const orderedVideos = useMemo(() => {
+    if (!shownVideos) return null;
+    const rank = { awaiting: 0, not_used: 1, in_use: 2 } as const;
+    return [...shownVideos].sort((a, b) => rank[a.usage] - rank[b.usage]);
   }, [videos, campaignId, campaigns]);
 
   /* ── Campaigns ── */
@@ -208,30 +218,47 @@ export function BrandDrilldown({
         {shownVideos !== null && shownVideos.length === 0 && (
           <Empty icon={FileVideo} line="No videos here yet." hint="Creators on your campaigns can upload whenever they like, with no approval first." />
         )}
-        {shownVideos !== null && shownVideos.length > 0 && (
+        {orderedVideos !== null && orderedVideos.length > 0 && (
           <div className="divide-y divide-line">
-            {shownVideos.map((v) => (
-              <div key={v.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0">
+            {orderedVideos.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => { onClose(); onOpenSubmissions(); }}
+                className="w-full p-4 flex items-center gap-3 text-left hover:bg-surface-2 transition"
+              >
+                <div className="w-12 aspect-[9/16] rounded-lg overflow-hidden border border-line flex-shrink-0">
+                  <CoverImage src={v.thumbnailUrl ?? v.coverUrl} name={v.campaignName} />
+                </div>
+                <div className="min-w-0 flex-1">
                   <p className="font-semibold text-heading truncate">@{v.creatorHandle.replace(/^@+/, '')}</p>
                   <p className="text-xs text-muted truncate">{v.campaignName}</p>
                   <p className="text-xs text-faint mt-0.5">Uploaded {day(v.submittedAt)}</p>
                 </div>
                 <span
-                  className={`px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap flex-shrink-0 ${
                     v.usage === 'in_use'
                       ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300'
                       : v.usage === 'not_used'
                         ? 'border-amber-400/30 bg-amber-400/10 text-amber-300'
-                        : 'border-line bg-surface-2 text-muted'
+                        : 'border-purple-400/40 bg-purple-500/20 text-purple-200'
                   }`}
                 >
                   {v.usage === 'in_use' ? 'In use' : v.usage === 'not_used' ? 'Not used' : 'Needs a decision'}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         )}
+        <div className="p-4 border-t border-line">
+          <button
+            type="button"
+            onClick={() => { onClose(); onOpenSubmissions(); }}
+            className="w-full px-4 py-2.5 rounded-lg bg-gradient-kyro text-white text-sm font-semibold inline-flex items-center justify-center gap-2"
+          >
+            <FileVideo size={15} /> View all videos in Submissions
+          </button>
+        </div>
       </Sheet>
     );
   }

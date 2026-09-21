@@ -2651,6 +2651,7 @@ function BrandDashboard({
           }))}
           onClose={() => setDrill(null)}
           onOpenCampaigns={() => setPage('campaigns')}
+          onOpenSubmissions={() => setPage('submissions')}
         />
       )}
 
