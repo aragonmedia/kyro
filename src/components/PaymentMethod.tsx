@@ -90,7 +90,12 @@ export function PaymentMethodSheet({
               <Icon size={18} className="text-body" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-heading">{c.title}</h2>
+              <h2 className="text-lg font-bold text-heading inline-flex items-center gap-2">
+                {c.title}
+                {method === 'ach' && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold border border-emerald-400/30 bg-emerald-400/10 text-emerald-300">Recommended</span>
+                )}
+              </h2>
               <p className="text-xs text-muted">Pay creator commission and the KYRO fee</p>
             </div>
           </div>

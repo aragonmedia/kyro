@@ -1464,14 +1464,19 @@ function OnboardingGates({
               signing up to pay before they pick how to pay it. */}
           <ul className="space-y-1.5 text-xs text-muted leading-relaxed">
             <li className="flex gap-2"><span className="text-purple-300">·</span>Creator commission on orders their videos drove</li>
-            {session.brand?.billingOrigin !== 'shopify_app_store' && (
-              <li className="flex gap-2"><span className="text-purple-300">·</span>Plus KYRO's 1% of attributed sales. Nothing stacked on top</li>
-            )}
+            <li className="flex gap-2"><span className="text-purple-300">·</span>
+              <span>
+                Plus KYRO's 1% of attributed sales. Nothing stacked on top
+                {session.brand?.feeWaivedUntil && Date.parse(session.brand.feeWaivedUntil) > Date.now() && (
+                  <span className="text-emerald-300"> · free for your first 30 days</span>
+                )}
+              </span>
+            </li>
             <li className="flex gap-2"><span className="text-purple-300">·</span>Charged only after an order clears its return window</li>
           </ul>
           <div className="grid sm:grid-cols-2 gap-2">
             {([
-              { id: 'ach' as PayMethod, icon: Banknote, title: 'Bank account', sub: 'Recommended' },
+              { id: 'ach' as PayMethod, icon: Banknote, title: 'Bank account', sub: 'Lowest processing cost' },
               { id: 'card' as PayMethod, icon: CreditCard, title: 'Card', sub: 'Faster for creators' },
             ]).map((m) => (
               <button
@@ -1482,7 +1487,12 @@ function OnboardingGates({
               >
                 <m.icon size={16} className="text-body flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-heading">{m.title}</p>
+                  <p className="text-sm font-semibold text-heading inline-flex items-center gap-1.5 flex-wrap">
+                    {m.title}
+                    {m.id === 'ach' && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold border border-emerald-400/30 bg-emerald-400/10 text-emerald-300 whitespace-nowrap">Recommended</span>
+                    )}
+                  </p>
                   <p className="text-xs text-faint">{m.sub}</p>
                 </div>
                 <span className="text-xs font-semibold text-purple-300">Connect</span>
@@ -2946,7 +2956,7 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
   const [mine, setMine] = useState<MySubmission[]>([]);
   const [accepted, setAccepted] = useState<OpenCampaign[]>([]);
   const [tab, setTab] = useState<'submissions' | 'browse' | 'chat' | 'payouts'>('submissions');
-  const [section, setSection] = useState<'in_use' | 'not_used' | 'campaigns'>('in_use');
+  const [section, setSection] = useState<'uploaded' | 'in_use' | 'not_used' | 'campaigns'>('in_use');
   const [chatThreadId, setChatThreadId] = useState<string | null>(null);
   const unread = useUnreadTotal();
 
@@ -2977,13 +2987,20 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
   const notUsed = mine.filter((s) => s.usage === 'not_used');
   const awaiting = mine.filter((s) => s.usage === 'awaiting');
 
+  // Everything the creator has sent, waiting on the brand first, so the whole
+  // journey from upload to decision is in one place.
+  const uploaded = [...awaiting, ...inUse, ...notUsed].sort((a, b) =>
+    a.usage === b.usage ? 0 : a.usage === 'awaiting' ? -1 : b.usage === 'awaiting' ? 1 : 0
+  );
+
   const SECTIONS = [
+    { id: 'uploaded' as const, label: 'Uploaded', count: mine.length },
     { id: 'not_used' as const, label: 'Not used', count: notUsed.length },
     { id: 'in_use' as const, label: 'In use', count: inUse.length },
     { id: 'campaigns' as const, label: 'Active campaigns', count: accepted.length },
   ];
 
-  const shown = section === 'in_use' ? inUse : section === 'not_used' ? notUsed : [];
+  const shown = section === 'uploaded' ? uploaded : section === 'in_use' ? inUse : section === 'not_used' ? notUsed : [];
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 relative">
@@ -3073,10 +3090,10 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
                 </span>
               </button>
             ))}
-            {awaiting.length > 0 && section !== 'campaigns' && (
-              <span className="text-xs text-faint ml-1">
+            {awaiting.length > 0 && section !== 'campaigns' && section !== 'uploaded' && (
+              <button type="button" onClick={() => setSection('uploaded')} className="text-xs text-faint hover:text-heading ml-1 underline-offset-2 hover:underline">
                 {plural(awaiting.length, 'video')} still with the brand
-              </span>
+              </button>
             )}
           </div>
 
@@ -3109,12 +3126,16 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
                 <div className="bg-surface border border-line rounded-2xl p-10 text-center">
                   <FileVideo size={28} className="mx-auto text-faint mb-3" />
                   <p className="text-sm text-muted">
-                    {section === 'in_use'
-                      ? 'Nothing running yet.'
-                      : 'Nothing has been passed on. Good sign.'}
+                    {section === 'uploaded'
+                      ? 'No videos uploaded yet.'
+                      : section === 'in_use'
+                        ? 'Nothing running yet.'
+                        : 'Nothing has been passed on. Good sign.'}
                   </p>
                   <p className="text-xs text-faint mt-1">
-                    {section === 'in_use'
+                    {section === 'uploaded'
+                      ? 'Everything you upload lands here first, then moves to In use or Not used once the brand decides.'
+                      : section === 'in_use'
                       ? 'Videos the brand is running show up here with what they earned.'
                       : 'When a brand passes on a video they have to say why and what they want instead.'}
                   </p>
@@ -3268,7 +3289,7 @@ function MySubmissionCard({
       ? { border: 'border-emerald-400/30', bg: 'bg-emerald-400/10', text: 'text-emerald-300', label: 'In use' }
       : sub.usage === 'not_used'
         ? { border: 'border-amber-400/30', bg: 'bg-amber-400/10', text: 'text-amber-300', label: 'Not used' }
-        : { border: 'border-line', bg: 'bg-surface-2', text: 'text-muted', label: 'With the brand' };
+        : { border: 'border-purple-400/40', bg: 'bg-purple-500/20', text: 'text-purple-200', label: 'Pending review' };
 
   return (
     <div className="bg-surface border border-line rounded-2xl overflow-hidden flex flex-col">
@@ -6423,7 +6444,7 @@ function BrandPaymentSummary({ onOpenFinance }: { onOpenFinance: () => void }) {
             {balance ? fmt(centsToDollars(due)) : '—'}
           </p>
           <p className="text-[11px] text-faint">
-            {brand?.billingOrigin === 'shopify_app_store' ? 'Creator commission' : "Commission plus KYRO's 1%"}
+            Commission plus KYRO's 1%
           </p>
         </div>
         <div className="p-4 rounded-xl border border-line bg-surface-2">
@@ -6439,7 +6460,7 @@ function BrandPaymentSummary({ onOpenFinance }: { onOpenFinance: () => void }) {
         <p className="text-xs font-semibold text-muted">Pay with</p>
         <div className="grid sm:grid-cols-2 gap-2">
           {([
-            { id: 'ach' as PayMethod, icon: Banknote, title: 'Bank account', sub: 'Recommended' },
+            { id: 'ach' as PayMethod, icon: Banknote, title: 'Bank account', sub: 'Lowest processing cost' },
             { id: 'card' as PayMethod, icon: CreditCard, title: 'Card', sub: 'Faster for creators' },
           ]).map((m) => (
             <button
@@ -6450,7 +6471,12 @@ function BrandPaymentSummary({ onOpenFinance }: { onOpenFinance: () => void }) {
             >
               <m.icon size={16} className="text-body flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-heading">{m.title}</p>
+                <p className="text-sm font-semibold text-heading inline-flex items-center gap-1.5 flex-wrap">
+                  {m.title}
+                  {m.id === 'ach' && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold border border-emerald-400/30 bg-emerald-400/10 text-emerald-300 whitespace-nowrap">Recommended</span>
+                  )}
+                </p>
                 <p className="text-xs text-faint">{m.sub}</p>
               </div>
               <span className="text-xs font-semibold text-purple-300">Connect</span>

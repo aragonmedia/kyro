@@ -193,10 +193,14 @@ export function BrandFinance({
   // Totals follow the filter, so the figures always describe what is on screen.
   const shownCommission = shown.reduce((s, r) => s + r.commissionCents, 0);
   const shownFee = shown.reduce((s, r) => s + r.feeCents, 0);
-  // App Store brands are billed only through Shopify, and the listing is free
-  // for now, so there is no KYRO fee to show them (App Store rule 1.2.1).
+  // App Store brands get a 30-day trial: orders landing before this date
+  // carry no KYRO fee. The rows already say $0; the label says why.
   const { brand: sessionBrand } = useSession();
-  const feeFree = sessionBrand?.billingOrigin === 'shopify_app_store';
+  const trialEnds = sessionBrand?.feeWaivedUntil ? new Date(sessionBrand.feeWaivedUntil) : null;
+  const inTrial = trialEnds !== null && trialEnds.getTime() > Date.now();
+  const trialLabel = trialEnds
+    ? trialEnds.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '';
 
   const dueTotal = (balance?.dueCommissionCents ?? 0) + (balance?.dueFeeCents ?? 0);
   const nothingEver =
@@ -270,12 +274,13 @@ export function BrandFinance({
               <span className="text-muted">Creator commission</span>
               <span className="text-heading tabular-nums">{money(balance.dueCommissionCents)}</span>
             </div>
-            {!feeFree && (
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-muted">KYRO fee · 1% of attributed sales</span>
-                <span className="text-heading tabular-nums">{money(balance.dueFeeCents)}</span>
-              </div>
-            )}
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted">
+                KYRO fee · 1% of attributed sales
+                {inTrial && <span className="text-emerald-300"> · free trial until {trialLabel}</span>}
+              </span>
+              <span className="text-heading tabular-nums">{money(balance.dueFeeCents)}</span>
+            </div>
             <div className="flex items-center justify-between gap-3 pt-2 border-t border-line">
               <span className="font-semibold text-heading">Total to pay</span>
               <span className="text-xl font-bold text-heading tabular-nums">{money(dueTotal)}</span>
@@ -303,7 +308,12 @@ export function BrandFinance({
                   >
                     <m.icon size={16} className="text-body flex-shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-heading">{m.title}</p>
+                      <p className="text-sm font-semibold text-heading inline-flex items-center gap-1.5 flex-wrap">
+                        {m.title}
+                        {m.id === 'ach' && (
+                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold border border-emerald-400/30 bg-emerald-400/10 text-emerald-300 whitespace-nowrap">Recommended</span>
+                        )}
+                      </p>
                       <p className="text-xs text-faint truncate">{m.sub}</p>
                     </div>
                     {!connected && (
@@ -399,7 +409,7 @@ export function BrandFinance({
           </select>
           {shown.length > 0 && (
             <span className="text-xs text-faint self-center ml-auto tabular-nums">
-              {shown.length} lines · {money(shownCommission)} commission{feeFree ? '' : ` · ${money(shownFee)} fee`}
+              {shown.length} lines · {money(shownCommission)} commission · {money(shownFee)} fee
             </span>
           )}
         </div>
@@ -422,7 +432,7 @@ export function BrandFinance({
                   <th className="p-4 font-semibold">Creator</th>
                   <th className="p-4 font-semibold text-right">Order value</th>
                   <th className="p-4 font-semibold text-right">Commission</th>
-                  {!feeFree && <th className="p-4 font-semibold text-right">KYRO fee</th>}
+                  <th className="p-4 font-semibold text-right">KYRO fee</th>
                   <th className="p-4 font-semibold">Status</th>
                 </tr>
               </thead>
@@ -437,7 +447,7 @@ export function BrandFinance({
                     </td>
                     <td className="p-4 text-right text-body tabular-nums">{money(r.orderValueCents)}</td>
                     <td className="p-4 text-right font-semibold text-blue-400 tabular-nums">{money(r.commissionCents)}</td>
-                    {!feeFree && <td className="p-4 text-right text-muted tabular-nums">{money(r.feeCents)}</td>}
+                    <td className="p-4 text-right text-muted tabular-nums">{money(r.feeCents)}</td>
                     <td className="p-4">
                       <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${STATE_TONE[r.state] ?? STATE_TONE.pending}`}>
                         {STATE_LABEL[r.state] ?? r.state}
