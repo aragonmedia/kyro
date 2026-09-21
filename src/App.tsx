@@ -555,7 +555,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () =>
               <h4 className="text-heading font-semibold mb-4">Company</h4>
               <ul className="space-y-2 text-muted text-sm">
                 <li><button onClick={onAbout} className="hover:text-heading transition">About</button></li>
-                <li><a href="mailto:chatwithkyro@gmail.com" className="hover:text-heading transition">Contact</a></li>
+                <li><a href="mailto:contact@itskyro.com" className="hover:text-heading transition">Contact</a></li>
               </ul>
             </div>
             <div>
@@ -5232,7 +5232,7 @@ function AboutPage({ onBack, onSignIn, onGetStarted }: { onBack: () => void; onS
             KYRO is built by a team obsessed with performance marketing — giving creators and the brands they love the tools to grow together, paid on real results.
           </p>
           <div className="flex flex-wrap gap-3 pt-3">
-            <a href="mailto:chatwithkyro@gmail.com" className="flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-body hover:text-heading transition"><Mail size={16} /> chatwithkyro@gmail.com</a>
+            <a href="mailto:contact@itskyro.com" className="flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-body hover:text-heading transition"><Mail size={16} /> contact@itskyro.com</a>
           </div>
         </section>
 
@@ -5330,7 +5330,7 @@ function ProfilePanel() {
           readOnly
           className="w-full px-4 py-2.5 bg-surface-2/50 border border-line rounded-lg text-muted cursor-not-allowed"
         />
-        <p className="text-xs text-faint">Your email is your sign-in. Write to chatwithkyro@gmail.com to change it.</p>
+        <p className="text-xs text-faint">Your email is your sign-in. Write to contact@itskyro.com to change it.</p>
       </div>
 
       <div className="flex items-center gap-3">
@@ -5780,7 +5780,7 @@ function LegalPage({ doc, onBack, onOther }: { doc: 'privacy' | 'terms'; onBack:
         <Markdown source={source} />
         <div className="mt-16 pt-8 border-t border-line flex flex-wrap items-center justify-between gap-4">
           <p className="text-faint text-xs">Kyvo LLC · 131 Continental Drive, Suite 305, Newark, DE 19713</p>
-          <a href="mailto:chatwithkyro@gmail.com" className="text-sm text-purple-400 hover:text-purple-300">chatwithkyro@gmail.com</a>
+          <a href="mailto:contact@itskyro.com" className="text-sm text-purple-400 hover:text-purple-300">contact@itskyro.com</a>
         </div>
       </main>
     </div>

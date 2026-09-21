@@ -1,6 +1,6 @@
 <!--
   DRAFT — NOT YET REVIEWED BY COUNSEL. Do not publish as-is.
-  Placeholders filled: Kyvo LLC, itskyro.com, chatwithkyro@gmail.com
+  Placeholders filled: Kyvo LLC, itskyro.com, contact@itskyro.com
   131 Continental Drive, Suite 305, Newark, DE 19713 August 31, 2026
   Note: §4 (order data) and §12 (Shopify) exist because KYRO receives end-customer
   personal data from connected Shopify stores. Shopify app review and Meta app review
@@ -65,7 +65,7 @@ Creators see that an order occurred and what they earned. They do not see who bo
 **Roles.** For this data the Brand is the controller and KYRO is a processor acting on the
 Brand's instructions. If you are a Customer and want your data accessed or deleted, contact
 the store you purchased from; we will act on their instruction, and you can also reach us
-directly at chatwithkyro@gmail.com.
+directly at contact@itskyro.com.
 
 ## 5. Payment and tax information
 
@@ -128,7 +128,7 @@ a copy of your personal information, to object to or restrict certain processing
 withdraw consent.
 
 **Account holders** can update most information in Settings, disconnect Meta or Shopify at
-any time, and request deletion of the account by writing to chatwithkyro@gmail.com. We respond
+any time, and request deletion of the account by writing to contact@itskyro.com. We respond
 within 45 days.
 
 **California residents.** Under the CCPA/CPRA you have the rights above plus the right not
@@ -185,5 +185,5 @@ take effect, and the effective date above will change.
 
 Kyvo LLC
 131 Continental Drive, Suite 305, Newark, DE 19713
-Privacy: chatwithkyro@gmail.com
-General: chatwithkyro@gmail.com
+Privacy: contact@itskyro.com
+General: contact@itskyro.com

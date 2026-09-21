@@ -1,6 +1,6 @@
 <!--
   DRAFT — NOT YET REVIEWED BY COUNSEL. Do not publish as-is.
-  Placeholders filled: Kyvo LLC, itskyro.com, chatwithkyro@gmail.com
+  Placeholders filled: Kyvo LLC, itskyro.com, contact@itskyro.com
   131 Continental Drive, Suite 305, Newark, DE 19713 Delaware August 31, 2026
   Mirrors docs/KYRO_MODEL.md. If you change one, change both.
   Have counsel review §7 (billing), §9 (license), §11 (termination and remedies)
@@ -324,4 +324,4 @@ courts located there.
 
 Kyvo LLC
 131 Continental Drive, Suite 305, Newark, DE 19713
-chatwithkyro@gmail.com
+contact@itskyro.com

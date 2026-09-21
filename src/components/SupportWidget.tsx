@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MessageCircle, Mail, X } from 'lucide-react';
 
-const SUPPORT_EMAIL = 'kevin@itskyro.com';
+const SUPPORT_EMAIL = 'contact@itskyro.com';
 
 export function SupportWidget({ context }: { context?: string }) {
   const [open, setOpen] = useState(false);

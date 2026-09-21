@@ -65,7 +65,7 @@ about your company, not the code.
 
 ## 4. Emergency developer contact (Partner Dashboard → Settings)
 
-Email and phone for critical issues. Requirement 4.5.6. Use `kevin@itskyro.com`.
+Email and phone for critical issues. Requirement 4.5.6. Use `contact@itskyro.com`.
 **The contact email must not contain the word "Shopify".**
 
 ## 5. App listing
@@ -100,7 +100,7 @@ Pricing details text:
 **Geographic requirements:** if you limit which countries creators can be paid in, say so here.
 
 **Privacy policy URL:** `https://itskyro.com/privacy`
-**Support:** `kevin@itskyro.com`
+**Support:** `contact@itskyro.com`
 
 ### Images you need to make (rules that get listings rejected are in bold)
 

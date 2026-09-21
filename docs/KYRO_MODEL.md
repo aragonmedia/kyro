@@ -5,7 +5,7 @@ _Last updated: 2026-09-09. This is the source of truth for how money moves throu
 ever disagree, fix both._
 
 > **Operating entity:** Kyvo LLC · 131 Continental Drive, Suite 305, Newark, DE 19713 ·
-> chatwithkyro@gmail.com · governing law Delaware · effective 31 Aug 2026.
+> contact@itskyro.com · governing law Delaware · effective 31 Aug 2026.
 >
 > **Domain:** `itskyro.com`, live on Vercel since 17 Sep 2026. Both legal docs name it.
 
@@ -293,5 +293,5 @@ brought somewhere cheap. Ask counsel whether that is worth adding.
 The company record carries a phone number at the registered agent. It is deliberately
 **not** printed in the public Terms or Privacy Policy: creators and customers reading those
 documents would be calling the agent, not KYRO. Public contact stays as
-chatwithkyro@gmail.com plus the registered address. Add a real business line later if you
+contact@itskyro.com plus the registered address. Add a real business line later if you
 want a phone published.
