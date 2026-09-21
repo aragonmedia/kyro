@@ -4138,13 +4138,16 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
         {[...pending, ...(showDecided ? decided : [])].map((a) => (
           <div key={a.id} className="p-5 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={() => setProfile(a.creatorId)}
-                className="font-semibold text-heading truncate hover:text-purple-300 transition text-left"
-              >
-                @{a.creatorHandle.replace(/^@+/, '')}
-              </button>
+              <div className="flex items-center gap-2 min-w-0">
+                <p className="font-semibold text-heading truncate">@{a.creatorHandle.replace(/^@+/, '')}</p>
+                <button
+                  type="button"
+                  onClick={() => setProfile(a.creatorId)}
+                  className="px-2.5 py-1 rounded-lg border border-line bg-surface-2 text-xs font-semibold text-muted hover:text-heading hover:border-purple-500/40 transition whitespace-nowrap flex-shrink-0"
+                >
+                  View profile
+                </button>
+              </div>
               <p className="text-xs text-muted truncate">{a.campaignName}</p>
               {a.creatorNiche.length > 0 && (
                 <p className="text-xs text-faint mt-0.5 truncate">{a.creatorNiche.join(' · ')}</p>
