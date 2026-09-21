@@ -2168,6 +2168,45 @@ export async function listCampaignProducts(campaignId: string): Promise<Result<C
   }
 }
 
+export interface NewCampaignProduct {
+  name: string;
+  imageUrl: string | null;
+  priceCents: Cents | null;
+  externalUrl: string | null;
+}
+
+/**
+ * Attach products to a campaign, in the order given.
+ *
+ * One insert for all of them, so a campaign never ends up with half its
+ * products. RLS checks the signed-in user owns the brand.
+ */
+export async function addCampaignProducts(
+  campaignId: string,
+  brandId: string,
+  products: NewCampaignProduct[]
+): Promise<Result<null>> {
+  const sb = client();
+  if (!sb || products.length === 0) return ok(null);
+  try {
+    const { error } = await sb.from('campaign_products').insert(
+      products.map((p, i) => ({
+        campaign_id: campaignId,
+        brand_id: brandId,
+        name: p.name,
+        image_url: p.imageUrl,
+        price_cents: p.priceCents,
+        external_url: p.externalUrl,
+        position: i,
+      }))
+    );
+    if (error) return fail(null, describeError(error, 'Could not save the products.'));
+    return ok(null);
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not save the products.'));
+  }
+}
+
 /* ─────────────────────────────────────────────────────────────
    Chat
 

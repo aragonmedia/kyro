@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { ArrowRight, FileVideo, Receipt, X } from 'lucide-react';
-import { listBrandOrders, listCampaignVideos, type BrandOrderRow, type CampaignVideo } from '../lib/db';
+import { listBrandOrders, listCampaignProducts, listCampaignVideos, type BrandOrderRow, type CampaignProduct, type CampaignVideo } from '../lib/db';
 import { BrandPerformanceCard } from './BrandPerformance';
 import { CoverImage, VideoTile } from './MediaTile';
 
@@ -53,17 +53,20 @@ export function CampaignSummarySheet({
   const [orders, setOrders] = useState<BrandOrderRow[] | null>(null);
   const [videos, setVideos] = useState<CampaignVideo[] | null>(null);
   const [allVideos, setAllVideos] = useState(false);
+  const [products, setProducts] = useState<CampaignProduct[]>([]);
 
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [o, v] = await Promise.all([
+      const [o, v, p] = await Promise.all([
         listBrandOrders(brandId, campaign.id, PREVIEW),
         listCampaignVideos(campaign.id),
+        listCampaignProducts(campaign.id),
       ]);
       if (!alive) return;
       setOrders(o.data);
       setVideos(v.data);
+      setProducts(p.data);
     })();
     return () => { alive = false; };
   }, [brandId, campaign.id]);
@@ -118,6 +121,29 @@ export function CampaignSummarySheet({
               </div>
             ))}
           </div>
+
+          {/* ── Products ── */}
+          {products.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-semibold text-heading">Products</p>
+                <span className="text-xs text-faint">{products.length} {products.length === 1 ? 'product' : 'products'}</span>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
+                {products.map((p) => (
+                  <div key={p.id} className="w-28 flex-shrink-0 space-y-1.5">
+                    <div className="aspect-square rounded-xl overflow-hidden border border-line">
+                      <CoverImage src={p.imageUrl} name={p.name} />
+                    </div>
+                    <p className="text-xs font-semibold text-heading line-clamp-2 leading-snug">{p.name}</p>
+                    {p.priceCents != null && (
+                      <p className="text-xs text-emerald-400 font-semibold tabular-nums">{money(p.priceCents)}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── Content library ── */}
           <div className="space-y-3">

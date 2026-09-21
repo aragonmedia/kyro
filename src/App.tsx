@@ -27,6 +27,7 @@ import {
   centsToDollars,
   connectProvider,
   createCampaign,
+  addCampaignProducts,
   disconnectProvider,
   getOnboardingStatus,
   createSubmission,
@@ -2713,6 +2714,146 @@ function NeedsBrand({ what }: { what: string }) {
  * the pool target is an intent, the balance is money that actually arrived, and
  * only Square (Phase 2) may credit it.
  */
+/* One product in the create-campaign form. */
+interface ProductDraft {
+  key: string;
+  file: File | null;
+  name: string;
+  price: string;
+  url: string;
+}
+
+const MAX_PRODUCTS = 10;
+
+const newProductDraft = (): ProductDraft => ({
+  key: Math.random().toString(36).slice(2),
+  file: null,
+  name: '',
+  price: '',
+  url: '',
+});
+
+/** Only http(s) links, so a product link can never run script when clicked. */
+function safeProductUrl(raw: string): string | null {
+  const v = raw.trim();
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`;
+  try {
+    const u = new URL(withScheme);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function ProductDraftRow({
+  draft,
+  index,
+  disabled,
+  error,
+  onChange,
+  onRemove,
+  canRemove,
+}: {
+  draft: ProductDraft;
+  index: number;
+  disabled: boolean;
+  error?: string;
+  onChange: (patch: Partial<ProductDraft>) => void;
+  onRemove: () => void;
+  canRemove: boolean;
+}) {
+  const input = useRef<HTMLInputElement | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  // Object URLs are a resource, not a string. Revoking on change and unmount
+  // keeps a brand who tries several images from leaking blobs.
+  useEffect(() => {
+    if (!draft.file) { setPreview(null); return; }
+    const url = URL.createObjectURL(draft.file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [draft.file]);
+
+  const small = 'w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-sm text-heading placeholder-faint focus:outline-none focus:border-purple-500';
+
+  return (
+    <div className={`p-3 rounded-xl border ${error ? 'border-pink-400/50' : 'border-line'} bg-surface-2/50 space-y-2`}>
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={() => input.current?.click()}
+          disabled={disabled}
+          className="relative w-20 h-20 rounded-lg overflow-hidden border border-line flex-shrink-0 bg-surface-2 group disabled:opacity-50"
+          aria-label={draft.file ? 'Change product image' : 'Add product image'}
+        >
+          {preview ? (
+            <img src={preview} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-faint group-hover:text-body">
+              <ImagePlus size={16} />
+              <span className="text-[10px] font-semibold">Image</span>
+            </span>
+          )}
+          {index === 0 && preview && (
+            <span className="absolute bottom-0 inset-x-0 text-[9px] font-bold text-white bg-black/60 py-0.5 text-center">COVER</span>
+          )}
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => { onChange({ file: e.target.files?.[0] ?? null }); e.target.value = ''; }}
+        />
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              value={draft.name}
+              onChange={(e) => onChange({ name: e.target.value })}
+              disabled={disabled}
+              className={small}
+              placeholder={`Product ${index + 1} name`}
+            />
+            {canRemove && (
+              <button
+                type="button"
+                onClick={onRemove}
+                disabled={disabled}
+                className="text-faint hover:text-pink-300 flex-shrink-0 disabled:opacity-50"
+                aria-label="Remove product"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-[96px_1fr] gap-2">
+            <div className="relative">
+              <span className="absolute left-3 top-2 text-sm text-muted">$</span>
+              <input
+                value={draft.price}
+                onChange={(e) => onChange({ price: e.target.value })}
+                disabled={disabled}
+                inputMode="decimal"
+                className={`${small} pl-6`}
+                placeholder="Price"
+              />
+            </div>
+            <input
+              value={draft.url}
+              onChange={(e) => onChange({ url: e.target.value })}
+              disabled={disabled}
+              autoCapitalize="none"
+              className={small}
+              placeholder="Product link (optional)"
+            />
+          </div>
+        </div>
+      </div>
+      {error && <p className="text-xs text-pink-300">{error}</p>}
+    </div>
+  );
+}
+
 function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string | null; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState('');
   const [commissionType, setCommissionType] = useState<CommissionType>('percent_spend');
@@ -2720,21 +2861,15 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
   const [perConversion, setPerConversion] = useState('');
   const [deliverable, setDeliverable] = useState('');
   const [brief, setBrief] = useState('');
-  const [cover, setCover] = useState<File | null>(null);
-  const [coverPreview, setCoverPreview] = useState<string | null>(null);
-  const coverInput = useRef<HTMLInputElement | null>(null);
+  const [products, setProducts] = useState<ProductDraft[]>(() => [newProductDraft()]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Object URLs are a resource, not a string. Revoking on change and unmount
-  // keeps a brand who tries five images from leaking five blobs.
-  useEffect(() => {
-    if (!cover) { setCoverPreview(null); return; }
-    const url = URL.createObjectURL(cover);
-    setCoverPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [cover]);
+  const updateProduct = (key: string, patch: Partial<ProductDraft>) =>
+    setProducts((list) => list.map((p) => (p.key === key ? { ...p, ...patch } : p)));
+  const removeProduct = (key: string) =>
+    setProducts((list) => (list.length > 1 ? list.filter((p) => p.key !== key) : [newProductDraft()]));
 
   const wantsPercent = commissionType === 'percent_spend' || commissionType === 'hybrid';
   const wantsPerConversion = commissionType === 'per_conversion' || commissionType === 'hybrid';
@@ -2746,6 +2881,25 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
   const submit = async () => {
     const next: Record<string, string> = {};
     if (!name.trim()) next.name = 'Give the campaign a name.';
+
+    // A row the brand never touched is ignored. A row with anything in it
+    // needs a name, so creators never see an unnamed product.
+    const filled = products.filter((p) => p.file || p.name.trim() || p.price.trim() || p.url.trim());
+    const productRows: Array<{ draft: ProductDraft; priceCents: number | null; url: string | null }> = [];
+    for (const p of filled) {
+      if (!p.name.trim()) next[`product:${p.key}`] = 'Name this product.';
+      let priceCents: number | null = null;
+      if (p.price.trim()) {
+        priceCents = parseMoneyToCents(p.price);
+        if (priceCents === null) next[`product:${p.key}`] = 'Enter a price like 29.99, or leave it blank.';
+      }
+      let url: string | null = null;
+      if (p.url.trim()) {
+        url = safeProductUrl(p.url);
+        if (!url) next[`product:${p.key}`] = 'Enter a full link starting with https://';
+      }
+      productRows.push({ draft: p, priceCents, url });
+    }
 
 
     let percentFraction: number | null = null;
@@ -2788,25 +2942,46 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
       return;
     }
 
-    // The cover needs a campaign id, so it can only be attached after the row
-    // exists. If this half fails the campaign is still real — say so plainly
-    // and let them add the image from the campaign row, rather than implying
-    // nothing was created.
+    // Products need the campaign id, so they are attached after the row
+    // exists. If this half fails the campaign is still real: say so plainly
+    // rather than implying nothing was created.
     const created = res.data;
-    if (cover && created) {
-      const up = await uploadCampaignCover(brandId, cover);
-      if (up.error || !up.url) {
+    if (created && productRows.length > 0) {
+      const saved: Array<{ name: string; imageUrl: string | null; priceCents: number | null; externalUrl: string | null }> = [];
+      for (const row of productRows) {
+        let imageUrl: string | null = null;
+        if (row.draft.file) {
+          const up = await uploadCampaignCover(brandId, row.draft.file);
+          if (up.error || !up.url) {
+            setSaving(false);
+            setSubmitError(`Campaign created, but the image for "${row.draft.name.trim()}" didn't upload (${up.error ?? 'unknown error'}).`);
+            onCreated();
+            return;
+          }
+          imageUrl = up.url;
+        }
+        saved.push({ name: row.draft.name.trim(), imageUrl, priceCents: row.priceCents, externalUrl: row.url });
+      }
+
+      const added = await addCampaignProducts(created.id, brandId, saved);
+      if (added.error) {
         setSaving(false);
-        setSubmitError(`Campaign created, but the product image didn't upload (${up.error ?? 'unknown error'}). Add it from the campaign row.`);
+        setSubmitError(`Campaign created, but the products didn't save (${added.error}).`);
         onCreated();
         return;
       }
-      const saved = await setCampaignCover(created.id, up.url);
-      if (saved.error) {
-        setSaving(false);
-        setSubmitError(`Campaign created, but the product image didn't save (${saved.error}). Add it from the campaign row.`);
-        onCreated();
-        return;
+
+      // The first product's image doubles as the campaign cover, which is
+      // what creators see on the campaign card before opening it.
+      const coverUrl = saved.find((p) => p.imageUrl)?.imageUrl ?? null;
+      if (coverUrl) {
+        const cover = await setCampaignCover(created.id, coverUrl);
+        if (cover.error) {
+          setSaving(false);
+          setSubmitError(`Campaign created, but the cover image didn't save (${cover.error}).`);
+          onCreated();
+          return;
+        }
       }
     }
 
@@ -2838,49 +3013,40 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
             {errors.name && <p className="text-xs text-pink-300 mt-1.5">{errors.name}</p>}
           </div>
 
-          {/* The product image is the first thing a creator sees when deciding
-              whether to make a video, so it belongs in the create form rather
-              than being something to remember afterwards. */}
-          <div>
-            <label className={label}>Product Image</label>
-            <div className="flex items-center gap-3">
-              <div className="w-20 h-20 rounded-xl overflow-hidden border border-line flex-shrink-0 bg-surface-2">
-                <CoverImage src={coverPreview} name={name || 'Campaign'} />
-              </div>
-              <div className="space-y-1 min-w-0">
-                <input
-                  ref={coverInput}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={(e) => { setCover(e.target.files?.[0] ?? null); e.target.value = ''; }}
-                />
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => coverInput.current?.click()}
-                    disabled={saving}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line bg-surface-2 text-xs font-semibold text-muted hover:text-heading disabled:opacity-50"
-                  >
-                    <ImagePlus size={12} /> {cover ? 'Change image' : 'Add image'}
-                  </button>
-                  {cover && (
-                    <button
-                      type="button"
-                      onClick={() => setCover(null)}
-                      disabled={saving}
-                      className="text-xs text-faint hover:text-body disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-                <p className="text-xs text-faint">
-                  JPG, PNG or WebP up to 5 MB. Creators see this when they browse, apply, and look
-                  back at what they submitted.
-                </p>
-              </div>
+          {/* Products are the first thing a creator sees when deciding whether
+              to make a video, so they belong in the create form. A campaign can
+              carry several; the first image becomes the campaign cover. */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className={`${label} mb-0`}>Products</label>
+              <span className="text-xs text-faint">{products.length} of {MAX_PRODUCTS}</span>
             </div>
+            {products.map((p, i) => (
+              <ProductDraftRow
+                key={p.key}
+                draft={p}
+                index={i}
+                disabled={saving}
+                error={errors[`product:${p.key}`]}
+                onChange={(patch) => updateProduct(p.key, patch)}
+                onRemove={() => removeProduct(p.key)}
+                canRemove={products.length > 1 || Boolean(p.file || p.name || p.price || p.url)}
+              />
+            ))}
+            {products.length < MAX_PRODUCTS && (
+              <button
+                type="button"
+                onClick={() => setProducts((list) => [...list, newProductDraft()])}
+                disabled={saving}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-line text-xs font-semibold text-muted hover:text-heading hover:border-purple-500/40 disabled:opacity-50"
+              >
+                <Plus size={12} /> Add another product
+              </button>
+            )}
+            <p className="text-xs text-faint">
+              JPG, PNG or WebP up to 5 MB each. Creators see these when they browse, apply, and look
+              back at what they submitted.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
