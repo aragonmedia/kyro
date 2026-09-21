@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, Info, RefreshCw, Upload } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ChevronLeft, Info, RefreshCw, Upload } from 'lucide-react';
 import { completeBrandSetup } from '../lib/db';
 import { uploadBrandLogo } from '../lib/storage';
 
@@ -54,6 +54,8 @@ export function BrandSetupWizard({
   brandName,
   displayName,
   connectionsSlot,
+  otherBrands,
+  onSwitchBrand,
   onDone,
 }: {
   brandId: string;
@@ -61,6 +63,9 @@ export function BrandSetupWizard({
   displayName: string;
   /** The existing connection gates, rendered as the third step. */
   connectionsSlot: React.ReactNode;
+  /** Brands this account already finished. Empty on a first-ever setup. */
+  otherBrands: Array<{ id: string; name: string }>;
+  onSwitchBrand: (brandId: string) => void;
   onDone: () => void;
 }) {
   const [step, setStep] = useState(1);
@@ -89,8 +94,8 @@ export function BrandSetupWizard({
 
   const finish = async () => {
     setError(null);
-    if (!name.trim()) { setError('Give the brand a name.'); return; }
-    if (!logo && !logoPreview) { setError('Upload a logo. Creators see it on every campaign.'); return; }
+    if (!name.trim()) { setStep(2); setError('Give the brand a name.'); return; }
+    if (!logo) { setStep(2); setError('Upload a logo. Creators see it on every campaign.'); return; }
 
     setBusy(true);
 
@@ -133,7 +138,21 @@ export function BrandSetupWizard({
 
   return (
     <div className="min-h-screen bg-app">
-      <div className="max-w-xl mx-auto px-4 py-10 space-y-6">
+      <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 space-y-6">
+        {/* The way out. Without this, starting a second brand and changing
+            your mind leaves you on a screen whose only other control signs
+            you out. */}
+        {otherBrands.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onSwitchBrand(otherBrands[0].id)}
+            className="inline-flex items-center gap-2 text-sm text-muted hover:text-heading"
+          >
+            <ChevronLeft size={16} />
+            Back to {otherBrands[0].name}
+          </button>
+        )}
+
         <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-400/25 bg-amber-400/5">
           <Info size={16} className="text-amber-300 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-body leading-relaxed">
@@ -209,7 +228,9 @@ export function BrandSetupWizard({
                     </>
                   )}
                 </button>
-                <p className="text-xs text-faint">Required</p>
+                <p className="text-xs text-faint">
+                  Logo <span className="text-pink-300">*</span> required
+                </p>
                 <input
                   ref={logoInput}
                   type="file"
@@ -221,7 +242,7 @@ export function BrandSetupWizard({
 
               <div className="space-y-1.5">
                 <label htmlFor="setup-name" className="text-xs font-semibold text-muted">
-                  Brand name
+                  Brand name <span className="text-pink-300">*</span>
                 </label>
                 <input id="setup-name" value={name} onChange={(e) => setName(e.target.value)} className={field} />
               </div>
@@ -278,7 +299,7 @@ export function BrandSetupWizard({
           {error && <p className="text-sm text-pink-300">{error}</p>}
         </div>
 
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           {step > 1 ? (
             <button
               type="button"

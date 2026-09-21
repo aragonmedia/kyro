@@ -2667,3 +2667,136 @@ export async function listBrandLeaderboard(
     return fail([], describeError(e, 'Could not load your creators.'));
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Brand drilldowns
+
+   What sits behind each figure on the dashboard. A headline number a brand
+   cannot open is a number they have to take on trust.
+   ───────────────────────────────────────────────────────────── */
+
+export interface BrandOrderRow {
+  earningId: string;
+  orderNumber: string | null;
+  campaignName: string;
+  creatorHandle: string;
+  placedAt: string;
+  orderValueCents: Cents;
+  commissionCents: Cents;
+  state: string;
+}
+
+/** Every attributed order, newest first. Optionally one campaign's worth. */
+export async function listBrandOrders(
+  brandId: string,
+  campaignId?: string | null,
+  limit = 300
+): Promise<Result<BrandOrderRow[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    let q = sb
+      .from('earnings')
+      .select(
+        'id, commissionable_cents, commission_cents, state, created_at, orders(external_number, placed_at), campaigns(name), creators(handle)'
+      )
+      .eq('brand_id', brandId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (campaignId) q = q.eq('campaign_id', campaignId);
+
+    const { data, error } = await q;
+    if (error) return fail([], describeError(error, 'Could not load your orders.'));
+
+    const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+
+    return ok(
+      (data ?? []).map((r) => {
+        const row = r as {
+          id: string;
+          commissionable_cents: number;
+          commission_cents: number;
+          state: string;
+          created_at: string;
+          orders: { external_number: string | null; placed_at: string } | Array<{ external_number: string | null; placed_at: string }> | null;
+          campaigns: { name: string } | Array<{ name: string }> | null;
+          creators: { handle: string } | Array<{ handle: string }> | null;
+        };
+        const order = one(row.orders);
+        return {
+          earningId: row.id,
+          orderNumber: order?.external_number ?? null,
+          campaignName: one(row.campaigns)?.name ?? 'Campaign',
+          creatorHandle: one(row.creators)?.handle ?? 'Creator',
+          placedAt: order?.placed_at ?? row.created_at,
+          orderValueCents: row.commissionable_cents,
+          commissionCents: row.commission_cents,
+          state: row.state,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your orders.'));
+  }
+}
+
+export interface CreatorSummary {
+  id: string;
+  handle: string;
+  bio: string | null;
+  location: string | null;
+  niche: string[];
+  instagramHandle: string | null;
+  instagramFollowers: number | null;
+  tiktokHandle: string | null;
+  tiktokFollowers: number | null;
+}
+
+/**
+ * A creator's profile, for a brand looking at someone already on a campaign.
+ *
+ * `creators` is readable by any signed-in user, so this needs no special
+ * grant — but it deliberately returns nothing from `profiles`, which is
+ * private. A brand sees the public creator identity, not the person's email.
+ */
+export async function getCreatorSummary(creatorId: string): Promise<Result<CreatorSummary | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb
+      .from('creators')
+      .select('id, handle, bio, location, niche, instagram_handle, instagram_followers, tiktok_handle, tiktok_followers')
+      .eq('id', creatorId)
+      .maybeSingle();
+
+    if (error) return fail(null, describeError(error, 'Could not load that creator.'));
+    if (!data) return ok(null);
+
+    const row = data as {
+      id: string;
+      handle: string | null;
+      bio: string | null;
+      location: string | null;
+      niche: string[] | null;
+      instagram_handle: string | null;
+      instagram_followers: number | null;
+      tiktok_handle: string | null;
+      tiktok_followers: number | null;
+    };
+
+    return ok({
+      id: row.id,
+      handle: row.handle ?? 'creator',
+      bio: row.bio,
+      location: row.location,
+      niche: row.niche ?? [],
+      instagramHandle: row.instagram_handle,
+      instagramFollowers: row.instagram_followers,
+      tiktokHandle: row.tiktok_handle,
+      tiktokFollowers: row.tiktok_followers,
+    });
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not load that creator.'));
+  }
+}

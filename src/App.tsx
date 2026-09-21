@@ -74,6 +74,7 @@ import { BrandPerformanceCard } from './components/BrandPerformance';
 import { BrandSetupWizard } from './components/BrandSetup';
 import { SupportWidget } from './components/SupportWidget';
 import { CreatorInviteCard, InviteLanding } from './components/Invite';
+import { BrandDrilldown, CreatorProfileSheet, type DrilldownKind } from './components/BrandDrilldown';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -1405,7 +1406,7 @@ function OnboardingGates({
       icon: Globe,
       title: 'Connect your Shopify store',
       short: 'Shopify store',
-      blurb: 'Your store is the source of truth for orders, and therefore for what you owe. Meta’s numbers are used for optimisation only.',
+      blurb: 'Your store is the source of truth for orders, and therefore for what you owe. Shopify needs to know which store before it can show you its approval screen, so the name goes here first.',
       done: Boolean(status.shopify),
       doneLabel: status.shopify ? status.shopify.externalId : undefined,
       optional: false,
@@ -1413,12 +1414,12 @@ function OnboardingGates({
         <>
           {!status.shopify && (
             <ConnectField
-              placeholder="your-store.myshopify.com"
-              hint="Your permanent .myshopify.com domain, not your custom domain. You will be sent to Shopify to approve the install."
-              cta="Connect"
+              placeholder="your-store"
+              hint="Just the store name is enough, we add .myshopify.com. Next you land on Shopify to log in and approve the install."
+              cta="Continue to Shopify"
               onConnect={async (v) => {
                 const domain = normalizeShopifyDomain(v);
-                if (!domain) return 'Enter your store as your-store.myshopify.com.';
+                if (!domain) return 'Enter your store name, or the full your-store.myshopify.com address.';
                 // Real OAuth. Writing a brand_connections row here instead
                 // would mark the store "connected" without ever obtaining a
                 // token, so nothing could actually read orders.
@@ -2058,6 +2059,8 @@ function BrandDashboard() {
   const [loading, setLoading] = useState(liveMode);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
+  const [drill, setDrill] = useState<DrilldownKind | null>(null);
+  const [openCreator, setOpenCreator] = useState<LeaderboardCreator | null>(null);
   const unread = useUnreadTotal();
 
   // Onboarding gates + deposit usage. Loaded alongside campaigns rather than
@@ -2131,11 +2134,11 @@ function BrandDashboard() {
    * The KYRO fee is deliberately absent. It belongs on the invoice, under
    * Finance, not on the screen a brand opens every morning.
    */
-  const kpis = [
-    { label: 'Campaigns', value: allCards.filter((c) => c.status === 'live').length.toString(), sub: `of ${plural(allCards.length, 'campaign')} total`, icon: Layers, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-    { label: 'Videos submitted', value: totalSubs.toLocaleString(), sub: 'across every campaign', icon: FileVideo, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-    { label: 'Attributed orders', value: totalOrders.toLocaleString(), sub: 'bought after watching', icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-    { label: 'Impressions', value: totalImpr > 0 ? fmtK(totalImpr) : '—', sub: totalImpr > 0 ? 'from live ads' : 'needs Meta access', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
+  const kpis: Array<{ kind: DrilldownKind; label: string; value: string; sub: string; icon: typeof Eye; color: string; bg: string }> = [
+    { kind: 'campaigns', label: 'Campaigns', value: allCards.filter((c) => c.status === 'live').length.toString(), sub: `of ${plural(allCards.length, 'campaign')} total`, icon: Layers, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
+    { kind: 'videos', label: 'Videos submitted', value: totalSubs.toLocaleString(), sub: 'across every campaign', icon: FileVideo, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
+    { kind: 'orders', label: 'Attributed orders', value: totalOrders.toLocaleString(), sub: 'bought from creator content', icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
+    { kind: 'impressions', label: 'Impressions', value: totalImpr > 0 ? fmtK(totalImpr) : '—', sub: totalImpr > 0 ? 'from live ads' : 'needs Meta access', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
   ];
 
   if (liveMode && brand && brandId && !brand.setupComplete) {
@@ -2149,6 +2152,10 @@ function BrandDashboard() {
             ? <OnboardingGates brandId={brandId} status={onboarding} onChanged={() => void loadGates()} />
             : <p className="text-sm text-muted">Loading your connections…</p>
         }
+        otherBrands={session.brands
+          .filter((b) => b.id !== brandId && b.setupComplete)
+          .map((b) => ({ id: b.id, name: b.name }))}
+        onSwitchBrand={(id) => void session.setActiveBrand(id)}
         onDone={() => void session.refresh()}
       />
     );
@@ -2240,22 +2247,29 @@ function BrandDashboard() {
                 />
               )}
 
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {kpis.map((s, i) => (
-                  <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
+              {/* Each figure opens the rows it was computed from. A headline
+                  number a brand cannot open is one they have to take on trust. */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                {kpis.map((s) => (
+                  <button
+                    key={s.kind}
+                    type="button"
+                    onClick={() => setDrill(s.kind)}
+                    className={`p-4 sm:p-5 rounded-2xl border text-left transition hover:brightness-125 ${s.bg}`}
+                  >
                     <div className="flex items-center justify-between mb-3">
                       <s.icon size={20} className={s.color} />
-                      <span className="text-xs text-faint">All time</span>
+                      <ChevronRight size={14} className="text-faint" />
                     </div>
-                    <p className="text-xs text-muted mb-1">{s.label}</p>
-                    <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                    <p className="text-xs text-faint mt-1">{s.sub}</p>
-                  </div>
+                    <p className="text-xs text-muted mb-1 truncate">{s.label}</p>
+                    <p className={`text-xl sm:text-2xl font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-[11px] sm:text-xs text-faint mt-1 leading-snug">{s.sub}</p>
+                  </button>
                 ))}
               </div>
 
               {liveMode && brandId ? (
-                <BrandLeaderboard brandId={brandId} />
+                <BrandLeaderboard brandId={brandId} onOpenCreator={setOpenCreator} />
               ) : (
                 <div className="bg-surface border border-line rounded-2xl p-10 text-center">
                   <Trophy size={28} className="mx-auto text-faint mb-3" />
@@ -2464,6 +2478,34 @@ function BrandDashboard() {
       </div>
 
       <BrandMobileNav page={page} onGo={setPage} unread={unread} />
+
+      {drill && brandId && (
+        <BrandDrilldown
+          kind={drill}
+          brandId={brandId}
+          campaigns={allCards.map((c) => ({
+            id: c.id, name: c.name, status: c.status, cover: c.cover,
+            orders: c.orders, creators: c.creators, submissions: c.submissions,
+            spentDollars: c.spentDollars,
+          }))}
+          onClose={() => setDrill(null)}
+          onOpenCampaigns={() => setPage('campaigns')}
+        />
+      )}
+
+      {openCreator && (
+        <CreatorProfileSheet
+          creatorId={openCreator.creatorId}
+          stats={{
+            submissions: openCreator.submissions,
+            inUse: openCreator.inUse,
+            orders: openCreator.orders,
+            revenueCents: openCreator.revenueCents,
+            commissionCents: openCreator.commissionCents,
+          }}
+          onClose={() => setOpenCreator(null)}
+        />
+      )}
 
       {showCreate && (
         <CreateCampaignModal
@@ -6044,7 +6086,13 @@ function BrandProfilePanel({ brandId, onSaved }: { brandId: string; onSaved: () 
  * creator sending work that is not converting is a conversation the brand
  * should have rather than a row that quietly disappears.
  */
-function BrandLeaderboard({ brandId }: { brandId: string }) {
+function BrandLeaderboard({
+  brandId,
+  onOpenCreator,
+}: {
+  brandId: string;
+  onOpenCreator: (c: LeaderboardCreator) => void;
+}) {
   const [rows, setRows] = useState<LeaderboardCreator[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -6094,7 +6142,12 @@ function BrandLeaderboard({ brandId }: { brandId: string }) {
       {shown.length > 0 && (
         <div className="divide-y divide-line">
           {shown.map((c, i) => (
-            <div key={c.creatorId} className="p-4 flex items-center gap-4">
+            <button
+              key={c.creatorId}
+              type="button"
+              onClick={() => onOpenCreator(c)}
+              className="w-full p-4 flex items-center gap-4 text-left hover:bg-surface-2 transition"
+            >
               <div
                 className={`flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm flex-shrink-0 ${
                   c.revenueCents > 0
@@ -6134,7 +6187,8 @@ function BrandLeaderboard({ brandId }: { brandId: string }) {
                   </p>
                 </div>
               </div>
-            </div>
+              <ChevronRight size={16} className="text-faint flex-shrink-0" />
+            </button>
           ))}
         </div>
       )}
