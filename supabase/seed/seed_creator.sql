@@ -142,7 +142,9 @@ begin
         order_day   := greatest(0, least(89, floor(89 - day_weight * 89)::int));
         order_value := 3200 + floor(random() * 14500)::int;
         commission  := floor(order_value * rate_bps / 10000.0)::int;
-        fee         := floor(commission * 0.01)::int;
+        -- KYRO's 1% is on attributed sales, not on the creator's commission.
+        -- See migration 0019 and Terms of Service §8.
+        fee         := floor(order_value * 0.01)::int;
 
         placed    := date_trunc('day', now()) - (order_day || ' days')::interval
                      + (floor(random() * 14 + 8) || ' hours')::interval;

@@ -2062,8 +2062,12 @@ function BrandDashboard() {
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   const [drill, setDrill] = useState<DrilldownKind | null>(null);
   const [openCreator, setOpenCreator] = useState<LeaderboardCreator | null>(null);
-  /** Label for the bank account on file, so Finance can gate the pay button. */
-  const [brandBank, setBrandBank] = useState<string | null>(null);
+  /**
+   * Label for the payment method on file, so Finance can gate the pay button.
+   * Stays null until Stripe reports a stored method back — the brand-side
+   * bank form was removed, so nothing sets it locally any more.
+   */
+  const [brandBank] = useState<string | null>(null);
   const unread = useUnreadTotal();
 
   // Onboarding gates + deposit usage. Loaded alongside campaigns rather than
@@ -2463,7 +2467,6 @@ function BrandDashboard() {
                   hasVideos={totalSubs > 0}
                   paymentMethodLabel={brandBank}
                   onGo={setPage}
-                  billingSlot={<BrandBillingPanel onSaved={(label) => setBrandBank(label)} />}
                 />
               ) : (
                 <NeedsBrand what="finance" />

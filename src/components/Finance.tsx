@@ -23,9 +23,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle, ArrowRight, Banknote, CheckCircle, Clock, CreditCard,
+  AlertCircle, ArrowRight, Banknote, CheckCircle, ChevronRight, Clock, CreditCard,
   Receipt, RefreshCw,
 } from 'lucide-react';
+import { PaymentMethodSheet, type PayMethod } from './PaymentMethod';
 import {
   authorizePaymentRun,
   getBrandBalance,
@@ -144,7 +145,6 @@ export function BrandFinance({
   hasVideos,
   paymentMethodLabel,
   onGo,
-  billingSlot,
 }: {
   brandId: string;
   campaigns: Array<{ id: string; name: string }>;
@@ -154,15 +154,16 @@ export function BrandFinance({
   /** e.g. "Chase ····4821", or null when nothing is on file. */
   paymentMethodLabel: string | null;
   onGo: (page: 'campaigns' | 'creators' | 'submissions') => void;
-  /** The existing bank-account form. */
-  billingSlot: React.ReactNode;
 }) {
   const [balance, setBalance] = useState<BrandBalance | null>(null);
   const [rows, setRows] = useState<CommissionOrderRow[] | null>(null);
   const [runs, setRuns] = useState<PaymentRun[]>([]);
   const [campaignId, setCampaignId] = useState('');
   const [stateFilter, setStateFilter] = useState<StateFilter>('all');
-  const [method, setMethod] = useState<'ach' | 'card'>('ach');
+  const [method, setMethod] = useState<PayMethod>('ach');
+  const [connecting, setConnecting] = useState<PayMethod | null>(null);
+  /** The orders table is long. It stays folded until asked for. */
+  const [showOrders, setShowOrders] = useState(false);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -217,7 +218,6 @@ export function BrandFinance({
     return (
       <div className="space-y-6">
         <NextSteps hasCampaign={hasCampaign} hasCreators={hasCreators} hasVideos={hasVideos} onGo={onGo} />
-        {billingSlot}
       </div>
     );
   }
@@ -279,25 +279,32 @@ export function BrandFinance({
             <p className="text-xs font-semibold text-muted">Pay with</p>
             <div className="grid sm:grid-cols-2 gap-2">
               {([
-                { id: 'ach' as const, icon: Banknote, title: 'Bank account', sub: paymentMethodLabel ?? 'No account on file' },
-                { id: 'card' as const, icon: CreditCard, title: 'Card', sub: 'Not connected yet' },
-              ]).map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setMethod(m.id)}
-                  disabled={m.id === 'card'}
-                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                    method === m.id ? 'border-purple-500/60 bg-purple-400/5' : 'border-line bg-surface-2'
-                  }`}
-                >
-                  <m.icon size={16} className="text-body flex-shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-heading">{m.title}</p>
-                    <p className="text-xs text-faint truncate">{m.sub}</p>
-                  </div>
-                </button>
-              ))}
+                { id: 'ach' as PayMethod, icon: Banknote, title: 'Bank account', sub: paymentMethodLabel ?? 'Not connected yet' },
+                { id: 'card' as PayMethod, icon: CreditCard, title: 'Card', sub: 'Not connected yet' },
+              ]).map((m) => {
+                const connected = m.id === 'ach' && Boolean(paymentMethodLabel);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => (connected ? setMethod(m.id) : setConnecting(m.id))}
+                    className={`flex items-center gap-3 p-3 rounded-xl border text-left transition ${
+                      connected && method === m.id
+                        ? 'border-purple-500/60 bg-purple-400/5'
+                        : 'border-line bg-surface-2 hover:border-purple-500/40'
+                    }`}
+                  >
+                    <m.icon size={16} className="text-body flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-heading">{m.title}</p>
+                      <p className="text-xs text-faint truncate">{m.sub}</p>
+                    </div>
+                    {!connected && (
+                      <span className="text-xs font-semibold text-purple-300 whitespace-nowrap">Connect</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -350,7 +357,18 @@ export function BrandFinance({
           </button>
         </div>
 
-        <div className="p-4 border-b border-line flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setShowOrders((v) => !v)}
+          className="w-full px-5 py-3 border-b border-line flex items-center justify-between gap-2 text-sm font-semibold text-muted hover:text-heading hover:bg-surface-2 transition"
+        >
+          <span>
+            {showOrders ? 'Hide the list' : `Show all ${(rows ?? []).length} orders`}
+          </span>
+          <ChevronRight size={15} className={`transition-transform ${showOrders ? 'rotate-90' : ''}`} />
+        </button>
+
+        <div className={`p-4 border-b border-line flex flex-wrap gap-2 ${showOrders ? '' : 'hidden'}`}>
           <select
             value={campaignId}
             onChange={(e) => setCampaignId(e.target.value)}
@@ -380,14 +398,14 @@ export function BrandFinance({
         </div>
 
         {rows === null && <p className="p-10 text-center text-sm text-muted">Loading…</p>}
-        {rows !== null && shown.length === 0 && (
+        {showOrders && rows !== null && shown.length === 0 && (
           <div className="p-10 text-center">
             <Receipt size={26} className="mx-auto text-faint mb-3" />
             <p className="text-sm text-muted">Nothing matches these filters.</p>
           </div>
         )}
 
-        {shown.length > 0 && (
+        {showOrders && shown.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[720px]">
               <thead>
@@ -456,7 +474,9 @@ export function BrandFinance({
         </div>
       )}
 
-      {billingSlot}
+      {connecting && (
+        <PaymentMethodSheet method={connecting} brandId={brandId} onClose={() => setConnecting(null)} />
+      )}
     </div>
   );
 }

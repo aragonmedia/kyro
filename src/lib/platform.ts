@@ -232,3 +232,51 @@ export async function saveBrandBankAccount(input: BrandBankInput): Promise<BankA
   }
   return { accountLast4: body.accountLast4 ?? null, error: null };
 }
+
+/**
+ * Start Stripe setup for a brand's payment method.
+ *
+ * KYRO charges the brand and transfers to creators, which is Stripe's
+ * "separate charges and transfers" model — so the brand side is an ordinary
+ * Customer with a SetupIntent, not a Connect account. Connect accounts belong
+ * to the creators receiving money.
+ *
+ * The endpoint returns a hosted Stripe URL to send the browser to. Card and
+ * bank details are never entered on KYRO and never touch this codebase.
+ */
+export async function startStripeSetup(
+  brandId: string,
+  method: 'ach' | 'card'
+): Promise<InstallStart> {
+  const sb = getSupabase();
+  if (!sb) return { url: null, error: 'This build has no Supabase connection, so setup is disabled.' };
+
+  const { data, error } = await sb.auth.getSession();
+  const token = data?.session?.access_token;
+  if (error || !token) {
+    return { url: null, error: 'Your session has expired. Sign in again and retry.' };
+  }
+
+  let res: Response;
+  try {
+    res = await fetch('/api/stripe/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ brandId, method }),
+    });
+  } catch {
+    return { url: null, error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+
+  let body: { url?: string; error?: string } = {};
+  try {
+    body = (await res.json()) as typeof body;
+  } catch {
+    return { url: null, error: 'Payments are not switched on for this environment yet.' };
+  }
+
+  if (!res.ok || !body.url) {
+    return { url: null, error: body.error ?? 'Could not start the setup.' };
+  }
+  return { url: body.url, error: null };
+}
