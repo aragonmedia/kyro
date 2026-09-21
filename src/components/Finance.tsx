@@ -266,7 +266,7 @@ export function BrandFinance({
               <span className="text-heading tabular-nums">{money(balance.dueCommissionCents)}</span>
             </div>
             <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-muted">KYRO processing fee</span>
+              <span className="text-muted">KYRO fee · 1% of attributed sales</span>
               <span className="text-heading tabular-nums">{money(balance.dueFeeCents)}</span>
             </div>
             <div className="flex items-center justify-between gap-3 pt-2 border-t border-line">
@@ -415,7 +415,7 @@ export function BrandFinance({
                   <th className="p-4 font-semibold">Creator</th>
                   <th className="p-4 font-semibold text-right">Order value</th>
                   <th className="p-4 font-semibold text-right">Commission</th>
-                  <th className="p-4 font-semibold text-right">Fee</th>
+                  <th className="p-4 font-semibold text-right">KYRO fee</th>
                   <th className="p-4 font-semibold">Status</th>
                 </tr>
               </thead>

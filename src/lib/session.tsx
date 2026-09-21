@@ -240,6 +240,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       if (alive.current) {
         setUserId(user.id);
+        // Link any team invites addressed to this email, so the owner sees
+        // them flip from Invited to Joined. Matched server-side on the
+        // verified address. Best effort: never holds up sign-in.
+        void sb.rpc('claim_brand_invites').then(() => undefined, () => undefined);
         setEmail(user.email ?? null);
       }
 

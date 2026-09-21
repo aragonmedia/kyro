@@ -116,7 +116,8 @@ export function CreatorInviteCard({ campaigns }: { campaigns: OpenCampaign[] }) 
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <p className="text-xs text-faint">
-            Anyone with the link can join this campaign. Rotate it to kill every link you've sent.
+            Anyone with the link can join this campaign. Rotate it to issue a fresh link and retire
+            the old one.
           </p>
           <button
             type="button"

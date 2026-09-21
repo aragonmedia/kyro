@@ -3046,3 +3046,163 @@ export async function authorizePaymentRun(
     return fail(null, describeError(e, 'Could not authorise that payment.'));
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Brand teams
+
+   Stores who has been invited and what they may do. It does not yet grant
+   access to brand data — see migration 0020 — so nothing here should be read
+   as "this person can now see the brand".
+   ───────────────────────────────────────────────────────────── */
+
+export type BrandRole = 'admin' | 'manager' | 'creator_manager' | 'viewer';
+
+export type BrandPermission =
+  | 'campaigns.manage'
+  | 'creators.manage'
+  | 'videos.feedback'
+  | 'chat.manage'
+  | 'finance.view'
+  | 'finance.pay'
+  | 'team.manage';
+
+export const BRAND_PERMISSIONS: Array<{ id: BrandPermission; label: string; blurb: string }> = [
+  { id: 'campaigns.manage', label: 'Campaigns', blurb: 'Create and edit campaigns' },
+  { id: 'creators.manage', label: 'Creator outreach', blurb: 'Review applications and invite creators' },
+  { id: 'videos.feedback', label: 'Video notes', blurb: 'Decide what runs and leave feedback' },
+  { id: 'chat.manage', label: 'Chat', blurb: 'Message creators and manage rooms' },
+  { id: 'finance.view', label: 'See finances', blurb: 'Balances and order history' },
+  { id: 'finance.pay', label: 'Pay creators', blurb: 'Approve payment runs' },
+  { id: 'team.manage', label: 'Team', blurb: 'Invite and manage teammates' },
+];
+
+/** What each role starts with. Individual permissions can still be changed. */
+export const ROLE_DEFAULTS: Record<BrandRole, { label: string; blurb: string; permissions: BrandPermission[] }> = {
+  admin: {
+    label: 'Admin',
+    blurb: 'Everything, including paying creators and managing the team',
+    permissions: ['campaigns.manage', 'creators.manage', 'videos.feedback', 'chat.manage', 'finance.view', 'finance.pay', 'team.manage'],
+  },
+  manager: {
+    label: 'Manager',
+    blurb: 'Runs campaigns day to day, without moving money',
+    permissions: ['campaigns.manage', 'creators.manage', 'videos.feedback', 'chat.manage', 'finance.view'],
+  },
+  creator_manager: {
+    label: 'Creator manager',
+    blurb: 'Outreach, video notes and chat',
+    permissions: ['creators.manage', 'videos.feedback', 'chat.manage'],
+  },
+  viewer: {
+    label: 'Viewer',
+    blurb: 'Can look, cannot change anything',
+    permissions: ['finance.view'],
+  },
+};
+
+export interface BrandMember {
+  id: string;
+  email: string;
+  role: BrandRole;
+  permissions: BrandPermission[];
+  status: 'invited' | 'active' | 'removed';
+  createdAt: string;
+  acceptedAt: string | null;
+}
+
+export async function listBrandMembers(brandId: string): Promise<Result<BrandMember[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('brand_members')
+      .select('id, email, role, permissions, status, created_at, accepted_at')
+      .eq('brand_id', brandId)
+      .neq('status', 'removed')
+      .order('created_at', { ascending: true });
+    if (error) return fail([], describeError(error, 'Could not load your team.'));
+    return ok(
+      (data ?? []).map((r) => {
+        const row = r as {
+          id: string; email: string; role: BrandRole; permissions: BrandPermission[] | null;
+          status: BrandMember['status']; created_at: string; accepted_at: string | null;
+        };
+        return {
+          id: row.id,
+          email: row.email,
+          role: row.role,
+          permissions: row.permissions ?? [],
+          status: row.status,
+          createdAt: row.created_at,
+          acceptedAt: row.accepted_at,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your team.'));
+  }
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export async function inviteBrandMember(
+  brandId: string,
+  email: string,
+  role: BrandRole,
+  permissions: BrandPermission[]
+): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+
+  const clean = email.trim().toLowerCase();
+  if (!EMAIL.test(clean)) return fail(false, 'That email address does not look right.');
+
+  try {
+    const { data: auth } = await sb.auth.getUser();
+    const { error } = await sb.from('brand_members').insert({
+      brand_id: brandId,
+      email: clean,
+      role,
+      permissions,
+      status: 'invited',
+      invited_by: auth.user?.id ?? null,
+    });
+    if (error) {
+      if ((error as { code?: string }).code === '23505') {
+        return fail(false, 'That person is already on the team or has a pending invite.');
+      }
+      return fail(false, describeError(error, 'Could not send that invite.'));
+    }
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not send that invite.'));
+  }
+}
+
+export async function updateBrandMember(
+  memberId: string,
+  patch: { role?: BrandRole; permissions?: BrandPermission[] }
+): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+  try {
+    const { error } = await sb.from('brand_members').update(patch).eq('id', memberId);
+    if (error) return fail(false, describeError(error, 'Could not update that teammate.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not update that teammate.'));
+  }
+}
+
+/** Soft delete, so the history of who had access is kept. */
+export async function removeBrandMember(memberId: string): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+  try {
+    const { error } = await sb.from('brand_members').update({ status: 'removed' }).eq('id', memberId);
+    if (error) return fail(false, describeError(error, 'Could not remove that teammate.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not remove that teammate.'));
+  }
+}

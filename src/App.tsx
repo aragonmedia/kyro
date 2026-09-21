@@ -6,7 +6,7 @@ import {
   ArrowUpRight, RefreshCw, MessageSquare, Globe, Mail, Trophy, Hash,
   Instagram, Youtube, ShieldCheck, Cpu, Layers, Heart,
   ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3, PieChart, Calendar, ArrowDownRight, ImagePlus,
-  MessagesSquare, Settings as SettingsIcon
+  MessagesSquare, Settings as SettingsIcon, CreditCard, Banknote
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { mockApi } from './lib/api';
@@ -52,7 +52,6 @@ import {
   createAnotherBrand,
   listBrandLeaderboard,
   normalizeMetaAdAccount,
-  normalizeShopifyDomain,
   parseMoneyToCents,
   parsePercentToFraction,
   signCampaignAgreement,
@@ -76,6 +75,11 @@ import { SupportWidget } from './components/SupportWidget';
 import { CreatorInviteCard, InviteLanding } from './components/Invite';
 import { BrandDrilldown, CreatorProfileSheet, type DrilldownKind } from './components/BrandDrilldown';
 import { BrandFinance } from './components/Finance';
+import { ShopifyConnectButton } from './components/ShopifyConnect';
+import { CampaignSummarySheet } from './components/CampaignSummary';
+import { TeamPanel } from './components/Team';
+import { toCsv, downloadCsv } from './lib/csv';
+import { PaymentMethodSheet, type PayMethod } from './components/PaymentMethod';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
@@ -1366,6 +1370,7 @@ function OnboardingGates({
   const [chosen, setChosen] = useState<number | null>(null);
   /** The other steps stay folded away until asked for. */
   const [showAll, setShowAll] = useState(false);
+  const [payWith, setPayWith] = useState<PayMethod | null>(null);
 
   const sign = async () => {
     setSignError(null);
@@ -1407,30 +1412,13 @@ function OnboardingGates({
       icon: Globe,
       title: 'Connect your Shopify store',
       short: 'Shopify store',
-      blurb: 'Your store is the source of truth for orders, and therefore for what you owe. Shopify needs to know which store before it can show you its approval screen, so the name goes here first.',
+      blurb: 'Your store is the source of truth for orders, and therefore for what you owe. You approve the install on Shopify.',
       done: Boolean(status.shopify),
       doneLabel: status.shopify ? status.shopify.externalId : undefined,
       optional: false,
       body: (
         <>
-          {!status.shopify && (
-            <ConnectField
-              placeholder="your-store"
-              hint="Just the store name is enough, we add .myshopify.com. Next you land on Shopify to log in and approve the install."
-              cta="Continue to Shopify"
-              onConnect={async (v) => {
-                const domain = normalizeShopifyDomain(v);
-                if (!domain) return 'Enter your store name, or the full your-store.myshopify.com address.';
-                // Real OAuth. Writing a brand_connections row here instead
-                // would mark the store "connected" without ever obtaining a
-                // token, so nothing could actually read orders.
-                const res = await startShopifyInstall(brandId, domain);
-                if (res.error || !res.url) return res.error ?? 'Could not start the install.';
-                window.location.href = res.url;
-                return null;
-              }}
-            />
-          )}
+          {!status.shopify && <ShopifyConnectButton brandId={brandId} />}
           {status.shopify && (
             <ReconnectShopify
               brandId={brandId}
@@ -1446,15 +1434,42 @@ function OnboardingGates({
       icon: Wallet,
       title: 'Add a payment method',
       short: 'Payment method',
-      blurb: 'Commission on attributed orders is billed to your bank account by ACH. There is no ad budget to fund and no deposit to hold.',
+      blurb: 'How you pay creators their commission. You only pay on orders that have cleared, never up front, and there is no ad budget or deposit to hold.',
       done: status.paymentReady,
       doneLabel: undefined,
-      optional: true,
+      // Required: without it, orders can be attributed but no creator can be
+      // paid for them, which is the one outcome that makes creators leave.
+      optional: false,
       body: !status.paymentReady ? (
-        <p className="text-xs text-faint leading-relaxed">
-          Add your bank details under Finance. You can create campaigns before this, but nothing
-          can be billed until it is done.
-        </p>
+        <div className="space-y-3">
+          {/* A short version of Finance, so the brand knows what they are
+              signing up to pay before they pick how to pay it. */}
+          <ul className="space-y-1.5 text-xs text-muted leading-relaxed">
+            <li className="flex gap-2"><span className="text-purple-300">·</span>Creator commission on orders their videos drove</li>
+            <li className="flex gap-2"><span className="text-purple-300">·</span>Plus KYRO's 1% of attributed sales. Nothing stacked on top</li>
+            <li className="flex gap-2"><span className="text-purple-300">·</span>Charged only after an order clears its return window</li>
+          </ul>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {([
+              { id: 'ach' as PayMethod, icon: Banknote, title: 'Bank account', sub: 'Recommended' },
+              { id: 'card' as PayMethod, icon: CreditCard, title: 'Card', sub: 'Faster for creators' },
+            ]).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setPayWith(m.id)}
+                className="flex items-center gap-3 p-3 rounded-xl border border-line bg-surface-2 hover:border-purple-500/40 text-left transition"
+              >
+                <m.icon size={16} className="text-body flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-heading">{m.title}</p>
+                  <p className="text-xs text-faint">{m.sub}</p>
+                </div>
+                <span className="text-xs font-semibold text-purple-300">Connect</span>
+              </button>
+            ))}
+          </div>
+        </div>
       ) : null,
     },
     {
@@ -1602,6 +1617,10 @@ function OnboardingGates({
         </span>
         <ChevronRight size={14} className={`transition-transform ${showAll ? 'rotate-90' : ''}`} />
       </button>
+
+      {payWith && (
+        <PaymentMethodSheet method={payWith} brandId={brandId} onClose={() => setPayWith(null)} />
+      )}
 
       <div className={`border-t border-line divide-y divide-line ${showAll ? '' : 'hidden'}`}>
         {steps.map((s, i) =>
@@ -2061,6 +2080,7 @@ function BrandDashboard() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   const [drill, setDrill] = useState<DrilldownKind | null>(null);
+  const [openCampaign, setOpenCampaign] = useState<string | null>(null);
   const [openCreator, setOpenCreator] = useState<LeaderboardCreator | null>(null);
   /**
    * Label for the payment method on file, so Finance can gate the pay button.
@@ -2367,7 +2387,18 @@ function BrandDashboard() {
                 {!busy && !loadError && cards.length > 0 && (
                   <div className="divide-y divide-line">
                     {cards.map((c) => (
-                      <div key={c.id} className="p-5 hover:bg-surface-2 transition">
+                      <div
+                        key={c.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          // Controls inside the row keep their own behaviour.
+                          if ((e.target as HTMLElement).closest('button, input, select, a, label')) return;
+                          setOpenCampaign(c.id);
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') setOpenCampaign(c.id); }}
+                        className="p-5 hover:bg-surface-2 transition cursor-pointer"
+                      >
                         <div className="flex flex-col lg:flex-row gap-5">
                           {c.cover
                             ? <img src={c.cover} alt={c.name} className="w-full lg:w-48 h-32 rounded-xl object-cover flex-shrink-0" />
@@ -2438,7 +2469,7 @@ function BrandDashboard() {
                 <>
                   <CreatorInviteCard campaigns={inviteCampaigns} />
                   <ApplicationsPanel brandId={brandId} />
-                  <CampaignRoster brandId={brandId} campaigns={allCards} />
+                  <CampaignRoster brandId={brandId} campaigns={allCards} onPay={() => setPage('finance')} />
                 </>
               ) : (
                 <NeedsBrand what="creators" />
@@ -2477,9 +2508,12 @@ function BrandDashboard() {
           {/* ── SETTINGS ── */}
           {page === 'settings' && (
             <>
-              <PageHead title="Settings" sub="Your brand profile, as creators see it." />
+              <PageHead title="Settings" sub="Your brand profile, and the people who run it with you." />
               {liveMode && brandId ? (
-                <BrandProfilePanel brandId={brandId} onSaved={() => void session.refresh()} />
+                <>
+                  <BrandProfilePanel brandId={brandId} onSaved={() => void session.refresh()} />
+                  <TeamPanel brandId={brandId} ownerEmail={session.email} />
+                </>
               ) : (
                 <NeedsBrand what="settings" />
               )}
@@ -2507,6 +2541,22 @@ function BrandDashboard() {
           onOpenCampaigns={() => setPage('campaigns')}
         />
       )}
+
+      {openCampaign && brandId && (() => {
+        const c = allCards.find((x) => x.id === openCampaign);
+        return c ? (
+          <CampaignSummarySheet
+            brandId={brandId}
+            campaign={{
+              id: c.id, name: c.name, status: c.status, cover: c.cover,
+              creators: c.creators, submissions: c.submissions, orders: c.orders,
+              spentDollars: c.spentDollars,
+            }}
+            onClose={() => setOpenCampaign(null)}
+            onOpenFinance={() => setPage('finance')}
+          />
+        ) : null;
+      })()}
 
       {openCreator && (
         <CreatorProfileSheet
@@ -3571,15 +3621,57 @@ function ApplyModal({
    BRAND — CAMPAIGN ROSTER
    Who is actually on each campaign, and whether they are producing.
    ───────────────────────────────────────────────────────────── */
-function CampaignRoster({ brandId, campaigns }: { brandId: string; campaigns: CampaignCard[] }) {
+function CampaignRoster({
+  brandId,
+  campaigns,
+  onPay,
+}: {
+  brandId: string;
+  campaigns: CampaignCard[];
+  onPay: () => void;
+}) {
   const [roster, setRoster] = useState<Record<string, RosterCreator[]> | null>(null);
+  // The leaderboard already computes each creator's orders and commission, so
+  // the profile reads the same figures the dashboard shows rather than a
+  // second calculation that could disagree with it.
+  const [stats, setStats] = useState<Map<string, LeaderboardCreator>>(new Map());
+  const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const res = await listRosterForBrand(brandId);
+    const [res, lb] = await Promise.all([listRosterForBrand(brandId), listBrandLeaderboard(brandId, 30)]);
     setRoster(res.data);
+    setStats(new Map(lb.data.map((c) => [c.creatorId, c])));
     setError(res.error);
   }, [brandId]);
+
+  const exportCsv = () => {
+    const rows: unknown[][] = [];
+    for (const c of campaigns) {
+      for (const r of roster?.[c.id] ?? []) {
+        const st = stats.get(r.creatorId);
+        rows.push([
+          r.handle,
+          c.name,
+          r.niche.join('; '),
+          r.instagramFollowers ?? '',
+          r.tiktokFollowers ?? '',
+          new Date(r.joinedAt).toISOString().slice(0, 10),
+          r.submissions,
+          st?.inUse ?? 0,
+          st?.orders ?? 0,
+          ((st?.revenueCents ?? 0) / 100).toFixed(2),
+          ((st?.commissionCents ?? 0) / 100).toFixed(2),
+        ]);
+      }
+    }
+    const csv = toCsv(
+      ['Handle', 'Campaign', 'Niche', 'Instagram followers', 'TikTok followers', 'Joined',
+       'Videos', 'In use', 'Orders (30d)', 'Revenue (30d)', 'Commission owed (30d)'],
+      rows
+    );
+    downloadCsv(`kyro-creators-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  };
 
   useEffect(() => { void load(); }, [load]);
 
@@ -3593,7 +3685,16 @@ function CampaignRoster({ brandId, campaigns }: { brandId: string; campaigns: Ca
           <p className="text-sm text-muted mt-0.5">Everyone you've accepted, and what they've posted.</p>
         </div>
         {total > 0 && (
-          <span className="text-sm font-mono text-muted whitespace-nowrap">{plural(total, 'creator')}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-mono text-muted whitespace-nowrap">{plural(total, 'creator')}</span>
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="px-3 py-1.5 rounded-lg border border-line bg-surface-2 text-xs font-semibold text-muted hover:text-heading inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <ArrowDownRight size={12} /> Export CSV
+            </button>
+          </div>
         )}
       </div>
 
@@ -3622,7 +3723,12 @@ function CampaignRoster({ brandId, campaigns }: { brandId: string; campaigns: Ca
                 </div>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {(roster[c.id] ?? []).map((r) => (
-                    <div key={r.applicationId} className="p-3 rounded-xl border border-line bg-surface-2 space-y-1.5">
+                    <button
+                      key={r.applicationId}
+                      type="button"
+                      onClick={() => setOpen(r.creatorId)}
+                      className="w-full text-left p-3 rounded-xl border border-line bg-surface-2 space-y-1.5 hover:border-purple-500/40 transition"
+                    >
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-heading truncate">{r.handle}</p>
                         <span className={`text-xs font-semibold whitespace-nowrap ${r.submissions > 0 ? 'text-emerald-400' : 'text-faint'}`}>
@@ -3640,12 +3746,27 @@ function CampaignRoster({ brandId, campaigns }: { brandId: string; campaigns: Ca
                         </p>
                       )}
                       <p className="text-xs text-faint">Joined {new Date(r.joinedAt).toLocaleDateString()}</p>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
             ))}
         </div>
+      )}
+
+      {open && (
+        <CreatorProfileSheet
+          creatorId={open}
+          stats={{
+            submissions: stats.get(open)?.submissions ?? 0,
+            inUse: stats.get(open)?.inUse ?? 0,
+            orders: stats.get(open)?.orders ?? 0,
+            revenueCents: stats.get(open)?.revenueCents ?? 0,
+            commissionCents: stats.get(open)?.commissionCents ?? 0,
+          }}
+          onClose={() => setOpen(null)}
+          onPay={() => { setOpen(null); onPay(); }}
+        />
       )}
     </div>
   );
@@ -3658,6 +3779,9 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
   const [rows, setRows] = useState<BrandApplication[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showDecided, setShowDecided] = useState(false);
+  /** A brand should see who they are approving before they approve them. */
+  const [profile, setProfile] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await listApplicationsForBrand(brandId);
@@ -3677,6 +3801,7 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
 
   const all = rows ?? [];
   const pending = all.filter((r) => r.status === 'pending');
+  const decided = all.filter((r) => r.status !== 'pending');
 
   if (rows !== null && all.length === 0) return null;
 
@@ -3697,16 +3822,29 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
       {error && <p className="p-5 text-sm text-pink-300">{error}</p>}
       {rows === null && <p className="p-10 text-center text-sm text-muted">Loading…</p>}
 
+      {rows !== null && pending.length === 0 && (
+        <p className="p-5 text-sm text-muted">Nothing waiting on you.</p>
+      )}
+
+      {/* Pending first. Decided ones fold away so the queue is the page. */}
       <div className="divide-y divide-line">
-        {all.map((a) => (
-          <div key={a.id} className="p-5 flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-semibold text-heading truncate">{a.creatorHandle}</p>
+        {[...pending, ...(showDecided ? decided : [])].map((a) => (
+          <div key={a.id} className="p-5 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => setProfile(a.creatorId)}
+                className="font-semibold text-heading truncate hover:text-purple-300 transition text-left"
+              >
+                @{a.creatorHandle.replace(/^@+/, '')}
+              </button>
               <p className="text-xs text-muted truncate">{a.campaignName}</p>
               {a.creatorNiche.length > 0 && (
                 <p className="text-xs text-faint mt-0.5 truncate">{a.creatorNiche.join(' · ')}</p>
               )}
-              {a.message && <p className="text-sm text-muted mt-1.5 leading-relaxed">{a.message}</p>}
+              {a.message && (
+                <p className="text-sm text-muted mt-1.5 leading-relaxed line-clamp-3">{a.message}</p>
+              )}
             </div>
 
             {a.status === 'pending' ? (
@@ -3740,6 +3878,26 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
           </div>
         ))}
       </div>
+
+      {decided.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowDecided((v) => !v)}
+          className="w-full px-5 py-3 border-t border-line flex items-center justify-between text-xs font-semibold text-muted hover:text-heading hover:bg-surface-2 transition"
+        >
+          <span>{showDecided ? 'Hide decided' : `Show ${decided.length} already decided`}</span>
+          <ChevronRight size={14} className={`transition-transform ${showDecided ? 'rotate-90' : ''}`} />
+        </button>
+      )}
+
+      {profile && (
+        <CreatorProfileSheet
+          creatorId={profile}
+          stats={{ submissions: 0, inUse: 0, orders: 0, revenueCents: 0, commissionCents: 0 }}
+          onClose={() => setProfile(null)}
+          onPay={() => setProfile(null)}
+        />
+      )}
     </div>
   );
 }

@@ -54,13 +54,17 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 export function BrandPerformanceCard({
   brandId,
   campaigns,
+  lockedCampaignId,
 }: {
   brandId: string;
   /** For the campaign filter. Empty means the filter is hidden. */
   campaigns: Array<{ id: string; name: string }>;
+  /** Pins the chart to one campaign and hides the picker — for a campaign's own page. */
+  lockedCampaignId?: string;
 }) {
   const [windowDays, setWindowDays] = useState<number>(30);
-  const [campaignId, setCampaignId] = useState<string>('');
+  const [picked, setCampaignId] = useState<string>('');
+  const campaignId = lockedCampaignId ?? picked;
   const [data, setData] = useState<BrandPerformance | null>(null);
   const [loading, setLoading] = useState(true);
   const [hover, setHover] = useState<number | null>(null);
@@ -94,7 +98,7 @@ export function BrandPerformanceCard({
         <div>
           <p className="text-sm font-semibold text-muted">
             Revenue driven
-            {campaignId && (
+            {campaignId && !lockedCampaignId && (
               <span className="text-faint font-normal">
                 {' · '}
                 {campaigns.find((c) => c.id === campaignId)?.name ?? 'campaign'}
@@ -112,7 +116,7 @@ export function BrandPerformanceCard({
         <div className="flex flex-wrap items-center gap-2">
         {/* Shown with one campaign too. A brand about to add a second should
             already know the chart can be narrowed. */}
-        {campaigns.length > 0 && (
+        {!lockedCampaignId && campaigns.length > 0 && (
           <select
             value={campaignId}
             onChange={(e) => setCampaignId(e.target.value)}
