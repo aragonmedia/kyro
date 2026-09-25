@@ -236,3 +236,19 @@ export async function subscribeWebhooks(
 
   return results;
 }
+
+/**
+ * The store's Shopify id, which every usage event has to carry.
+ *
+ * Cheap, and cached on the brand row by the caller, because it never changes
+ * for a given store.
+ */
+export async function fetchShopGid(shop: string, token: string): Promise<string | null> {
+  const data = await graphql<{ shop: { id: string } | null }>(
+    shop,
+    token,
+    'query { shop { id } }',
+    {}
+  );
+  return data.shop?.id ?? null;
+}

@@ -201,8 +201,14 @@ export function BrandFinance({
   const trialLabel = trialEnds
     ? trialEnds.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : '';
+  /**
+   * A brand that installed from the App Store is charged KYRO's 1% by Shopify,
+   * on their Shopify bill. Collecting it here as well would bill the same 1%
+   * twice, so this payment covers creator commission only.
+   */
+  const feeOnShopify = sessionBrand?.billingOrigin === 'shopify_app_store';
 
-  const dueTotal = (balance?.dueCommissionCents ?? 0) + (balance?.dueFeeCents ?? 0);
+  const dueTotal = (balance?.dueCommissionCents ?? 0) + (feeOnShopify ? 0 : (balance?.dueFeeCents ?? 0));
   const nothingEver =
     balance !== null &&
     balance.dueOrders === 0 && balance.clearingOrders === 0 &&
@@ -277,12 +283,14 @@ export function BrandFinance({
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-muted">
                 KYRO fee · 1% of attributed sales
-                {inTrial && <span className="text-emerald-300"> · free trial until {trialLabel}</span>}
+                {inTrial
+                  ? <span className="text-emerald-300"> · free trial until {trialLabel}</span>
+                  : feeOnShopify && <span className="text-faint"> · charged on your Shopify bill</span>}
               </span>
-              <span className="text-heading tabular-nums">{money(balance.dueFeeCents)}</span>
+              <span className={`tabular-nums ${feeOnShopify ? 'text-faint' : 'text-heading'}`}>{money(balance.dueFeeCents)}</span>
             </div>
             <div className="flex items-center justify-between gap-3 pt-2 border-t border-line">
-              <span className="font-semibold text-heading">Total to pay</span>
+              <span className="font-semibold text-heading">{feeOnShopify ? 'Total to pay creators' : 'Total to pay'}</span>
               <span className="text-xl font-bold text-heading tabular-nums">{money(dueTotal)}</span>
             </div>
           </div>

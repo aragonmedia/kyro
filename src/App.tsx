@@ -61,6 +61,7 @@ import type { BrandBalance, LeaderboardCreator, BrandApplication, RosterCreator,
 import { uploadSubmissionVideo, uploadCampaignCover, uploadBrandLogo } from './lib/storage';
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
+import { HELP_MD } from './lib/help';
 import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, takeShopifyInstall, claimShopifyInstall, takePendingShop, peekPendingShop, type ConnectOutcome } from './lib/platform';
 import { EarningsCard } from './components/EarningsCard';
 import { AffiliateOrdersCard, AffiliateOrdersPage } from './components/AffiliateOrders';
@@ -562,6 +563,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () =>
             <div>
               <h4 className="text-heading font-semibold mb-4">Legal</h4>
               <ul className="space-y-2 text-muted text-sm">
+                <li><a href="/help" className="hover:text-heading transition">Help</a></li>
                 <li><button onClick={() => onLegal('privacy')} className="hover:text-heading transition">Privacy Policy</button></li>
                 <li><button onClick={() => onLegal('terms')} className="hover:text-heading transition">Terms of Service</button></li>
               </ul>
@@ -6074,6 +6076,41 @@ function AccountSettings({
    Rendered from the markdown in docs/legal/, so the published page and the
    document counsel reviews can never drift apart.
    ───────────────────────────────────────────────────────────── */
+/**
+ * /help — getting started for brands and creators, pricing, and how
+ * attribution works. Linked from the Shopify listing, so it has to stand on
+ * its own for someone who has never seen KYRO.
+ */
+function HelpPage({ onBack, onLegal }: { onBack: () => void; onLegal: (doc: 'privacy' | 'terms') => void }) {
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+  return (
+    <div className="min-h-screen bg-app">
+      <header className="sticky top-0 z-40 backdrop-blur-md bg-app/85 border-b border-line">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <button onClick={onBack} className="flex items-center gap-2.5">
+            <KyroLogo size={30} />
+            <span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
+          </button>
+          <div className="flex items-center gap-5 text-sm">
+            <button onClick={() => onLegal('privacy')} className="text-muted hover:text-heading transition">Privacy</button>
+            <button onClick={() => onLegal('terms')} className="text-muted hover:text-heading transition">Terms</button>
+            <button onClick={onBack} className="flex items-center gap-1.5 text-muted hover:text-heading transition">
+              <ChevronLeft size={16} /> Home
+            </button>
+          </div>
+        </div>
+      </header>
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-14">
+        <Markdown source={HELP_MD} />
+        <div className="mt-16 pt-8 border-t border-line flex flex-wrap items-center justify-between gap-4">
+          <p className="text-faint text-xs">Kyvo LLC · 131 Continental Drive, Suite 305, Newark, DE 19713</p>
+          <a href="mailto:contact@itskyro.com" className="text-sm text-purple-400 hover:text-purple-300">contact@itskyro.com</a>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 function LegalPage({ doc, onBack, onOther }: { doc: 'privacy' | 'terms'; onBack: () => void; onOther: () => void }) {
   const source = doc === 'privacy' ? PRIVACY_POLICY_MD : TERMS_OF_SERVICE_MD;
   useEffect(() => { window.scrollTo(0, 0); }, [doc]);
@@ -6114,6 +6151,7 @@ type View =
   | 'reset-password'
   | 'privacy'
   | 'terms'
+  | 'help'
   | 'onboard'
   | 'app'
   | 'about'
@@ -6138,6 +6176,7 @@ function readRoute(): { view: View; admin: boolean } {
     if (path === '/signin' || path === '/login') return { view: 'signin', admin: false };
     if (path === '/signup' || path === '/join') return { view: 'signup', admin: false };
     if (path === '/forgot-password') return { view: 'forgot', admin: false };
+    if (path === '/help' || path === '/faq') return { view: 'help', admin: false };
     if (path === '/privacy' || path === '/privacy-policy') return { view: 'privacy', admin: false };
     if (path === '/terms' || path === '/terms-of-service') return { view: 'terms', admin: false };
     // Supabase sends password-reset links back here with a token in the hash.
@@ -6349,6 +6388,7 @@ function App() {
   }
 
   if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} onAbout={() => setView('about')} onLegal={goLegal} />;
+  if (view === 'help') return <HelpPage onBack={goLanding} onLegal={goLegal} />;
   if (view === 'privacy') return <LegalPage doc="privacy" onBack={goLanding} onOther={() => goLegal('terms')} />;
   if (view === 'terms') return <LegalPage doc="terms" onBack={goLanding} onOther={() => goLegal('privacy')} />;
   if (view === 'signin') return (
