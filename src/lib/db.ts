@@ -1351,6 +1351,8 @@ export interface CampaignSubmission {
   thumbnailUrl: string | null;
   /** The campaign's product image — the fallback when there is no frame. */
   coverUrl: string | null;
+  /** The code that credits an order to this video, carried in utm_content. */
+  trackingToken: string | null;
 }
 
 /** Every video submitted across this brand's campaigns, newest first. */
@@ -1360,7 +1362,7 @@ export async function listSubmissionsForBrand(brandId: string): Promise<Result<C
   try {
     const { data, error } = await sb
       .from('submissions')
-      .select('id, campaign_id, creator_id, status, brand_note, decided_at, video_url, thumbnail_url, submitted_at, campaigns(name, cover_url), creators(handle)')
+      .select('id, campaign_id, creator_id, status, brand_note, decided_at, video_url, thumbnail_url, tracking_token, submitted_at, campaigns(name, cover_url), creators(handle)')
       .eq('brand_id', brandId)
       .order('submitted_at', { ascending: false });
 
@@ -1375,6 +1377,7 @@ export async function listSubmissionsForBrand(brandId: string): Promise<Result<C
       decided_at: string | null;
       video_url: string | null;
       thumbnail_url: string | null;
+      tracking_token: string | null;
       submitted_at: string;
       campaigns: { name: string; cover_url: string | null } | { name: string; cover_url: string | null }[] | null;
       creators: { handle: string | null } | { handle: string | null }[] | null;
@@ -1398,6 +1401,7 @@ export async function listSubmissionsForBrand(brandId: string): Promise<Result<C
           submittedAt: r.submitted_at,
           thumbnailUrl: r.thumbnail_url,
           coverUrl: campaign?.cover_url ?? null,
+          trackingToken: r.tracking_token ?? null,
         };
       })
     );

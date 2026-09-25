@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, FileVideo, RefreshCw, X } from 'lucide-react';
+import { Check, Copy, Download, FileVideo, RefreshCw, X } from 'lucide-react';
 import { listSubmissionsForBrand, type CampaignSubmission } from '../lib/db';
 import { signedVideoUrl } from '../lib/storage';
 import { CoverImage, VideoTile } from './MediaTile';
@@ -36,6 +36,48 @@ const isPlaceholder = (path: string | null) => !path || path.startsWith('demo/')
 /* ─────────────────────────────────────────────────────────────
    One video
    ───────────────────────────────────────────────────────────── */
+
+/**
+ * The link the brand puts behind this video's ad.
+ *
+ * The code in utm_content is what credits the order back to this creator.
+ * Without it on screen, a brand running ads by hand has no way to attribute
+ * anything, which is most brands until the Meta connection exists.
+ */
+function TrackingLink({ token }: { token: string }) {
+  const [copied, setCopied] = useState(false);
+  const params = `utm_source=kyro&utm_content=${token}`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(params);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* Clipboard blocked: the code is on screen to copy by hand. */
+    }
+  };
+
+  return (
+    <div className="p-3 rounded-lg border border-line bg-surface-2 space-y-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold text-muted">Ad link for this video</p>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="text-xs font-semibold text-purple-300 hover:text-purple-200 inline-flex items-center gap-1"
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <p className="text-xs font-mono text-body break-all">{params}</p>
+      <p className="text-[11px] text-faint leading-relaxed">
+        Add these to the product URL your ad points at. Orders from that link are credited to this
+        creator, for example your-store.com/products/x?{params}
+      </p>
+    </div>
+  );
+}
 
 function VideoSheet({
   sub,
@@ -136,6 +178,12 @@ function VideoSheet({
                 )
               )}
             </div>
+
+            {sub.trackingToken && (
+              <div className="px-5 pb-5">
+                <TrackingLink token={sub.trackingToken} />
+              </div>
+            )}
 
             {/* The same decision controls as everywhere else, so there is one
                 place that decides what "not used" requires. */}
