@@ -25,7 +25,6 @@ import {
 import { useSession } from './lib/session';
 import {
   centsToDollars,
-  connectProvider,
   createCampaign,
   addCampaignProducts,
   disconnectProvider,
@@ -52,7 +51,6 @@ import {
   createAnotherBrand,
   listBrandLeaderboard,
   getBrandBalance,
-  normalizeMetaAdAccount,
   parseMoneyToCents,
   parsePercentToFraction,
   signCampaignAgreement,
@@ -78,6 +76,7 @@ import { CreatorInviteCard, InviteLanding } from './components/Invite';
 import { BrandDrilldown, CreatorProfileSheet, type DrilldownKind } from './components/BrandDrilldown';
 import { BrandFinance } from './components/Finance';
 import { ShopifyConnectButton } from './components/ShopifyConnect';
+import { MetaAdAccountPicker, MetaConnectButton } from './components/MetaConnect';
 import { CampaignSummarySheet } from './components/CampaignSummary';
 import { TeamPanel } from './components/Team';
 import { ContentLibrary } from './components/ContentLibrary';
@@ -1266,63 +1265,6 @@ function NotificationsBell() {
    and signs the Campaign Agreement before a campaign may launch.
    ───────────────────────────────────────────────────────────── */
 
-/** Text input + connect button used by the Meta and Shopify steps. */
-function ConnectField({
-  placeholder,
-  hint,
-  cta,
-  onConnect,
-}: {
-  placeholder: string;
-  hint: string;
-  cta: string;
-  onConnect: (value: string) => Promise<string | null>;
-}) {
-  const [value, setValue] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const submit = async () => {
-    setError(null);
-    setSaving(true);
-    const err = await onConnect(value);
-    setSaving(false);
-    if (err) setError(err);
-    else setValue('');
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-col sm:flex-row gap-2">
-        <input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
-          placeholder={placeholder}
-          className={`flex-1 px-4 py-2.5 bg-surface-2 border rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500 ${error ? 'border-pink-400/60' : 'border-line'}`}
-        />
-        <button
-          onClick={() => void submit()}
-          disabled={saving || !value.trim()}
-          className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
-        >
-          {saving && <RefreshCw size={14} className="animate-spin" />}
-          {cta}
-        </button>
-      </div>
-      <p className={`text-xs ${error ? 'text-pink-300' : 'text-faint'}`}>{error || hint}</p>
-    </div>
-  );
-}
-
-/**
- * Re-run the Shopify authorisation for a store that is already connected.
- *
- * Needed because a connected store is not necessarily a working one. Tokens
- * expire, scopes change, and a token issued before KYRO started requesting
- * expiring offline tokens is rejected by the Admin API on every call. Without
- * this the only escape was to uninstall the app from the Shopify side.
- */
 function ReconnectShopify({ brandId, shop, errored }: { brandId: string; shop: string; errored: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1409,23 +1351,15 @@ function OnboardingGates({
       title: 'Connect your Meta ad account',
       short: 'Meta ad account',
       blurb: 'Creator videos run as partnership ads here, and nowhere else. The licence you grant is scoped to this account.',
-      done: Boolean(status.meta),
-      doneLabel: status.meta ? status.meta.externalId : undefined,
+      // Connected means both halves: approved on Meta, and an ad account
+      // chosen. A token with no ad account cannot publish anything.
+      done: Boolean(status.meta && session.brand?.metaAdAccountId),
+      doneLabel: session.brand?.metaAdAccountId ?? undefined,
       optional: false,
       body: !status.meta ? (
-        <ConnectField
-          placeholder="act_1234567890"
-          hint="Find this in Meta Ads Manager, top left, next to your account name."
-          cta="Connect"
-          onConnect={async (v) => {
-            const id = normalizeMetaAdAccount(v);
-            if (!id) return 'That does not look like an ad account ID. It should be act_ followed by digits.';
-            const res = await connectProvider(brandId, 'meta', id);
-            if (res.error) return res.error;
-            onChanged();
-            return null;
-          }}
-        />
+        <MetaConnectButton brandId={brandId} />
+      ) : !session.brand?.metaAdAccountId ? (
+        <MetaAdAccountPicker brandId={brandId} onChosen={() => { onChanged(); void session.refresh(); }} />
       ) : null,
     },
     {

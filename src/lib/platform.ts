@@ -69,8 +69,90 @@ export async function startShopifyInstall(brandId: string, shop: string): Promis
    Coming back from the platform
    ───────────────────────────────────────────────────────────── */
 
+export interface MetaAdAccount {
+  id: string;
+  accountId: string;
+  name: string;
+  currency: string;
+  /** 1 means the account can run ads today. */
+  status: number;
+  businessName: string | null;
+}
+
+/** Send a brand to Meta's approval screen. */
+export async function startMetaConnect(brandId: string): Promise<InstallStart> {
+  const sb = getSupabase();
+  if (!sb) return { url: null, error: 'This build has no Supabase connection.' };
+  const { data } = await sb.auth.getSession();
+  const token = data?.session?.access_token;
+  if (!token) return { url: null, error: 'Your session has expired. Sign in again and retry.' };
+
+  let res: Response;
+  try {
+    res = await fetch('/api/meta/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ brandId }),
+    });
+  } catch {
+    return { url: null, error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+  let body: { url?: string; error?: string } = {};
+  try { body = (await res.json()) as typeof body; } catch { body = {}; }
+  if (!res.ok || !body.url) return { url: null, error: body.error ?? 'Could not start the Meta connection.' };
+  return { url: body.url, error: null };
+}
+
+/** The ad accounts the brand's Meta login can advertise with. */
+export async function listMetaAdAccounts(
+  brandId: string
+): Promise<{ accounts: MetaAdAccount[]; selected: string | null; error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { accounts: [], selected: null, error: 'This build has no Supabase connection.' };
+  const { data } = await sb.auth.getSession();
+  const token = data?.session?.access_token;
+  if (!token) return { accounts: [], selected: null, error: 'Your session has expired. Sign in again.' };
+
+  let res: Response;
+  try {
+    res = await fetch(`/api/meta/accounts?brandId=${encodeURIComponent(brandId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return { accounts: [], selected: null, error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+  let body: { accounts?: MetaAdAccount[]; selected?: string | null; error?: string } = {};
+  try { body = (await res.json()) as typeof body; } catch { body = {}; }
+  if (!res.ok) return { accounts: [], selected: null, error: body.error ?? 'Could not read your Meta ad accounts.' };
+  return { accounts: body.accounts ?? [], selected: body.selected ?? null, error: null };
+}
+
+/** Choose the ad account KYRO publishes this brand's creator videos to. */
+export async function selectMetaAdAccount(brandId: string, adAccountId: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'This build has no Supabase connection.' };
+  const { data } = await sb.auth.getSession();
+  const token = data?.session?.access_token;
+  if (!token) return { error: 'Your session has expired. Sign in again.' };
+
+  let res: Response;
+  try {
+    res = await fetch('/api/meta/accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ brandId, adAccountId }),
+    });
+  } catch {
+    return { error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+  let body: { error?: string } = {};
+  try { body = (await res.json()) as typeof body; } catch { body = {}; }
+  if (!res.ok) return { error: body.error ?? 'Could not save that ad account.' };
+  return { error: null };
+}
+
 export interface ConnectOutcome {
-  provider: 'shopify';
+  provider: 'shopify' | 'meta';
   ok: boolean;
   shop?: string;
   message: string;
@@ -83,6 +165,15 @@ export interface ConnectOutcome {
  * wording lives here next to the rest of the UI copy. An unrecognised code
  * still produces something a person can act on.
  */
+/** Plain-language versions of the reason codes api/meta/callback.ts emits. */
+const META_REASONS: Record<string, string> = {
+  declined: 'You cancelled on Meta before approving KYRO. Nothing was connected.',
+  expired: 'That connection link had expired. Start again from this page.',
+  incomplete: 'Meta sent an incomplete response. Try connecting again.',
+  storage: 'Meta approved the connection but KYRO could not store it. Nothing was saved, so it is safe to retry.',
+  unexpected: 'Something went wrong finishing the Meta connection. Nothing was saved, so it is safe to retry.',
+};
+
 const SHOPIFY_REASONS: Record<string, string> = {
   signature:
     'Shopify could not confirm that request came from them, so the connection was refused. Start again from this page rather than an old link.',
@@ -102,6 +193,27 @@ export function takeConnectionOutcome(): ConnectOutcome | null {
   if (typeof window === 'undefined') return null;
 
   const params = new URLSearchParams(window.location.search);
+  const meta = params.get('meta');
+  if (meta) {
+    const reason = params.get('reason') || '';
+    params.delete('meta');
+    params.delete('reason');
+    const rest = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
+    if (meta === 'choose-account') {
+      return {
+        provider: 'meta',
+        ok: true,
+        message: 'Meta is connected. Choose which ad account KYRO should publish to.',
+      };
+    }
+    return {
+      provider: 'meta',
+      ok: false,
+      message: META_REASONS[reason] || 'The Meta connection did not complete. Nothing was saved, so it is safe to retry.',
+    };
+  }
+
   const shopify = params.get('shopify');
   // 'installed' is an App Store install waiting for a brand. takeShopifyInstall
   // owns that one, and needs the claim still in the URL.
