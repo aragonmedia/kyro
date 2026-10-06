@@ -829,6 +829,8 @@ export interface BrandUnbilled {
 export interface OnboardingStatus {
   meta: BrandConnection | null;
   shopify: BrandConnection | null;
+  /** Which ad account Meta publishes to. Null until the brand chooses one. */
+  metaAdAccountId: string | null;
   paymentReady: boolean;
   agreementSignedAt: string | null;
   /** True when a campaign may be launched. */
@@ -1082,6 +1084,7 @@ export async function getOnboardingStatus(brandId: string): Promise<Result<Onboa
   const empty: OnboardingStatus = {
     meta: null,
     shopify: null,
+    metaAdAccountId: null,
     paymentReady: false,
     agreementSignedAt: null,
     complete: false,
@@ -1089,10 +1092,11 @@ export async function getOnboardingStatus(brandId: string): Promise<Result<Onboa
   const sb = client();
   if (!sb) return ok(empty);
 
-  const [connections, agreement, billing] = await Promise.all([
+  const [connections, agreement, billing, brandRow] = await Promise.all([
     listConnections(brandId),
     getLatestAgreement(brandId),
     ensureBrandBilling(brandId),
+    sb.from('brands').select('meta_ad_account_id').eq('id', brandId).maybeSingle(),
   ]);
 
   const error = connections.error || agreement.error || billing.error;
@@ -1101,12 +1105,18 @@ export async function getOnboardingStatus(brandId: string): Promise<Result<Onboa
   const shopify = active.find((c) => c.provider === 'shopify') ?? null;
   const paymentReady = Boolean(billing.data?.achMandateRef);
 
+  const metaAdAccountId = (brandRow.data?.meta_ad_account_id as string | null) ?? null;
+
   const status: OnboardingStatus = {
     meta,
     shopify,
+    metaAdAccountId,
     paymentReady,
     agreementSignedAt: agreement.data,
-    complete: Boolean(meta && shopify && agreement.data),
+    // A Meta token with no ad account cannot publish anything, so setup is not
+    // complete until one is chosen. Without this the gates panel vanishes the
+    // instant OAuth succeeds, hiding the ad account picker it contains.
+    complete: Boolean(meta && metaAdAccountId && shopify && agreement.data),
   };
   return error ? fail(status, error) : ok(status);
 }

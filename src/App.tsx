@@ -1353,12 +1353,12 @@ function OnboardingGates({
       blurb: 'Creator videos run as partnership ads here, and nowhere else. The licence you grant is scoped to this account.',
       // Connected means both halves: approved on Meta, and an ad account
       // chosen. A token with no ad account cannot publish anything.
-      done: Boolean(status.meta && session.brand?.metaAdAccountId),
-      doneLabel: session.brand?.metaAdAccountId ?? undefined,
+      done: Boolean(status.meta && status.metaAdAccountId),
+      doneLabel: status.metaAdAccountId ?? undefined,
       optional: false,
       body: !status.meta ? (
         <MetaConnectButton brandId={brandId} />
-      ) : !session.brand?.metaAdAccountId ? (
+      ) : !status.metaAdAccountId ? (
         <MetaAdAccountPicker brandId={brandId} onChosen={() => { onChanged(); void session.refresh(); }} />
       ) : null,
     },
