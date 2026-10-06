@@ -13,9 +13,9 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { serviceClient } from '../_lib/supabase.js';
-import { signState } from '../_lib/crypto.js';
-import { buildLoginUrl } from '../_lib/meta.js';
+import { serviceClient } from './supabase.js';
+import { signState } from './crypto.js';
+import { buildLoginUrl } from './meta.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

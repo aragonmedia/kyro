@@ -10,9 +10,9 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { serviceClient } from '../_lib/supabase.js';
-import { unseal } from '../_lib/crypto.js';
-import { listAdAccounts, MetaError } from '../_lib/meta.js';
+import { serviceClient } from './supabase.js';
+import { unseal } from './crypto.js';
+import { listAdAccounts, MetaError } from './meta.js';
 
 type Db = ReturnType<typeof serviceClient>;
 

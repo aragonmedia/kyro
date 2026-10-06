@@ -11,10 +11,10 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { serviceClient } from '../_lib/supabase.js';
-import { seal, verifyState } from '../_lib/crypto.js';
-import { appOrigin } from '../_lib/env.js';
-import { exchangeCode, fetchMe, longLivedToken } from '../_lib/meta.js';
+import { serviceClient } from './supabase.js';
+import { seal, verifyState } from './crypto.js';
+import { appOrigin } from './env.js';
+import { exchangeCode, fetchMe, longLivedToken } from './meta.js';
 
 function back(res: VercelResponse, params: Record<string, string>) {
   const qs = new URLSearchParams(params).toString();
