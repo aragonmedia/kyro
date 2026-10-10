@@ -465,13 +465,25 @@ export function peekPendingShop(): string | null {
   return readPending()?.shop ?? null;
 }
 
-/** Attach a parked App Store install to the signed-in merchant's brand. */
-export async function claimShopifyInstall(brandId: string, claim: string): Promise<{ shop: string | null; error: string | null }> {
+/**
+ * Attach a parked App Store install to the signed-in merchant's brand.
+ *
+ * `pricingUrl` comes back set when Shopify has no approved subscription for
+ * the store yet. Shopify charges for KYRO, so the merchant has to approve a
+ * plan on Shopify's own page before anything can be billed, and that is where
+ * the link goes.
+ */
+export async function claimShopifyInstall(
+  brandId: string,
+  claim: string
+): Promise<{ shop: string | null; pricingUrl: string | null; error: string | null }> {
+  const fail = (error: string) => ({ shop: null, pricingUrl: null, error });
+
   const sb = getSupabase();
-  if (!sb) return { shop: null, error: 'This build has no Supabase connection.' };
+  if (!sb) return fail('This build has no Supabase connection.');
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token;
-  if (!token) return { shop: null, error: 'Your session has expired. Sign in again and retry.' };
+  if (!token) return fail('Your session has expired. Sign in again and retry.');
 
   let res: Response;
   try {
@@ -481,14 +493,14 @@ export async function claimShopifyInstall(brandId: string, claim: string): Promi
       body: JSON.stringify({ brandId, claim }),
     });
   } catch {
-    return { shop: null, error: 'Could not reach KYRO. Check your connection and try again.' };
+    return fail('Could not reach KYRO. Check your connection and try again.');
   }
-  let body: { shop?: string; error?: string } = {};
+  let body: { shop?: string; pricingUrl?: string | null; error?: string } = {};
   try {
     body = (await res.json()) as typeof body;
   } catch {
     body = {};
   }
-  if (!res.ok || !body.shop) return { shop: null, error: body.error ?? 'Could not finish connecting Shopify.' };
-  return { shop: body.shop, error: null };
+  if (!res.ok || !body.shop) return fail(body.error ?? 'Could not finish connecting Shopify.');
+  return { shop: body.shop, pricingUrl: body.pricingUrl ?? null, error: null };
 }

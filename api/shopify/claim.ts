@@ -25,6 +25,7 @@ import { verifyClaim } from '../_lib/crypto.js';
 import { appOrigin } from '../_lib/env.js';
 import { subscribeWebhooks } from '../_lib/shopify-admin.js';
 import { requireStoreToken } from '../_lib/shopify-token.js';
+import { syncPlan } from '../_lib/shopify-plan.js';
 
 /**
  * A brand created after the install began found KYRO on the App Store and
@@ -160,7 +161,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('[kyro] claim: webhook subscription step threw', e);
     }
 
-    return res.status(200).json({ shop });
+    // 5. Plan. The merchant has an account and a store now, so this is the
+    //    moment to find out whether Shopify holds an approved subscription for
+    //    them. If not, the caller sends them to Shopify to choose one.
+    let pricingUrl: string | null = null;
+    try {
+      const accessToken = await requireStoreToken(sb, brandId, shop);
+      const plan = await syncPlan(sb, brandId, shop, accessToken);
+      if (plan && !plan.active) pricingUrl = plan.pricingUrl;
+    } catch (e) {
+      console.error('[kyro] claim: plan step threw', e);
+    }
+
+    return res.status(200).json({ shop, pricingUrl });
   } catch (e) {
     console.error('[kyro] shopify/claim failed', e);
     return res.status(500).json({ error: 'Could not finish connecting Shopify.' });

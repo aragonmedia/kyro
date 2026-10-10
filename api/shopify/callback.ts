@@ -16,6 +16,7 @@ import { seal, signClaim, verifyState } from '../_lib/crypto.js';
 import { exchangeCodeForToken, normalizeShopDomain, verifyOAuthHmac } from '../_lib/shopify.js';
 import { appOrigin } from '../_lib/env.js';
 import { subscribeWebhooks } from '../_lib/shopify-admin.js';
+import { syncPlan } from '../_lib/shopify-plan.js';
 
 /** Send the merchant back into the app with a readable outcome. */
 function back(res: VercelResponse, params: Record<string, string>) {
@@ -193,6 +194,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } catch (e) {
       console.error('[kyro] webhook subscription step threw', e);
+    }
+
+    // 7. Shopify does the charging (rule 1.2.1), and it can only do that once
+    //    the merchant has approved a plan. A store with no approved
+    //    subscription goes straight to Shopify's own pricing page. Everyone
+    //    else goes back into the app.
+    //
+    //    Best effort on purpose: failing to read the plan must not cost the
+    //    merchant the install they just approved.
+    try {
+      const plan = await syncPlan(sb, brandId, shop, token.access_token);
+      if (plan && !plan.active && plan.pricingUrl) {
+        res.setHeader('Location', plan.pricingUrl);
+        return res.status(302).end();
+      }
+    } catch (e) {
+      console.error('[kyro] shopify/callback plan step threw', e);
     }
 
     return back(res, { shopify: 'connected', shop });

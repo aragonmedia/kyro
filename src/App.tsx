@@ -2092,6 +2092,10 @@ function BrandDashboard({
       void loadGates();
       // Billing origin may have changed, which changes what Finance shows.
       void session.refresh();
+      // Shopify charges for KYRO, so a merchant who has not approved a plan
+      // is sent to Shopify's own pricing page to approve one. Shopify returns
+      // them here afterwards.
+      if (res.pricingUrl) window.location.assign(res.pricingUrl);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveMode, brandId, pendingShop]);

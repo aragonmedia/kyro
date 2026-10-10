@@ -237,6 +237,82 @@ export async function subscribeWebhooks(
   return results;
 }
 
+/** What Shopify reports about this store's subscription to KYRO. */
+export interface ShopifyPlanState {
+  /** The app's handle. The merchant-facing pricing page URL needs it. */
+  appHandle: string | null;
+  name: string | null;
+  status: string | null;
+  test: boolean;
+  trialEndsAt: string | null;
+}
+
+/**
+ * Read the store's current subscription.
+ *
+ * KYRO uses Shopify Managed Pricing, so the plan and its usage meter are
+ * configured in the Dev Dashboard and approved by the merchant on Shopify's
+ * own page. There is nothing to create here. This answers one question: has
+ * this merchant agreed to a plan yet.
+ */
+export async function fetchPlanState(shop: string, token: string): Promise<ShopifyPlanState> {
+  const data = await graphql<{
+    currentAppInstallation: {
+      app?: { handle?: string | null } | null;
+      activeSubscriptions?: Array<{
+        name?: string | null;
+        status?: string | null;
+        test?: boolean | null;
+        trialDays?: number | null;
+        createdAt?: string | null;
+      }> | null;
+    } | null;
+  }>(
+    shop,
+    token,
+    `query {
+      currentAppInstallation {
+        app { handle }
+        activeSubscriptions { name status test trialDays createdAt }
+      }
+    }`,
+    {}
+  );
+
+  const installation = data.currentAppInstallation;
+  const subscriptions = installation?.activeSubscriptions ?? [];
+  const sub = subscriptions.find((s) => s.status === 'ACTIVE') ?? subscriptions[0] ?? null;
+
+  // Shopify reports the trial as a length, not a date. The merchant cares
+  // about the date, and so does anything that decides whether to charge.
+  let trialEndsAt: string | null = null;
+  if (sub?.createdAt && sub.trialDays && sub.trialDays > 0) {
+    const started = Date.parse(sub.createdAt);
+    if (Number.isFinite(started)) {
+      trialEndsAt = new Date(started + sub.trialDays * 86_400_000).toISOString();
+    }
+  }
+
+  return {
+    appHandle: installation?.app?.handle ?? null,
+    name: sub?.name ?? null,
+    status: sub?.status ?? null,
+    test: Boolean(sub?.test),
+    trialEndsAt,
+  };
+}
+
+/**
+ * Where a merchant chooses or changes their plan.
+ *
+ * Shopify hosts this page, which is precisely why it is a link and not a form
+ * inside KYRO: the charge is created by Shopify, as rule 1.2.1 requires.
+ */
+export function pricingPlansUrl(shop: string, appHandle: string): string {
+  const store = shop.replace('.myshopify.com', '');
+  return `https://admin.shopify.com/store/${store}/charges/${appHandle}/pricing_plans`;
+}
+
 /**
  * The store's Shopify id, which every usage event has to carry.
  *
