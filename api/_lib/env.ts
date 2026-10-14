@@ -52,6 +52,19 @@ export const shopifyConfig = () => ({
  * between versions, and a silent bump on their release day is how an
  * integration stops working on a Tuesday for no visible reason.
  */
+/**
+ * Stripe.
+ *
+ * The publishable key is public by design and lives under VITE_. The secret
+ * key is read only here and must never gain that prefix: it can move money.
+ */
+export const stripeConfig = () => ({
+  secretKey: required('STRIPE_SECRET_KEY'),
+  /** Where Stripe returns a creator after hosted onboarding. */
+  returnUrl: optional('STRIPE_RETURN_URL') || `${appOrigin()}/?stripe=payouts`,
+  refreshUrl: optional('STRIPE_REFRESH_URL') || `${appOrigin()}/?stripe=payouts-retry`,
+});
+
 export const metaConfig = () => ({
   appId: required('VITE_META_APP_ID'),
   appSecret: required('META_APP_SECRET'),

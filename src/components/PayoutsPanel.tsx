@@ -10,8 +10,9 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowUpRight, RefreshCw, Wallet } from 'lucide-react';
+import { ArrowUpRight, CheckCircle2, ExternalLink, RefreshCw, Wallet } from 'lucide-react';
 import { getCreatorEarnings, listPayouts, type PayoutRow } from '../lib/db';
+import { fetchPayoutStatus, startCreatorPayouts, type CreatorPayoutStatus } from '../lib/platform';
 import { useSession } from '../lib/session';
 
 const money = (cents: number) =>
@@ -37,29 +38,48 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
   const [available, setAvailable] = useState(0);
   const [rows, setRows] = useState<PayoutRow[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [payout, setPayout] = useState<CreatorPayoutStatus | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [earn, pay] = await Promise.all([
+    const [earn, pay, status] = await Promise.all([
       getCreatorEarnings(creatorId, 90),
       listPayouts(creatorId),
+      fetchPayoutStatus(),
     ]);
     setAvailable(earn.data.availableCents);
     setRows(pay.data);
+    setPayout(status.data);
     setLoading(false);
   }, [creatorId]);
+
+  const beginSetup = async () => {
+    setStarting(true);
+    setSetupError(null);
+    const res = await startCreatorPayouts();
+    if (res.url) {
+      window.location.assign(res.url);
+      return;
+    }
+    setStarting(false);
+    setSetupError(res.error);
+  };
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const hasBank = Boolean(creator?.payoutBankLast4);
+  // Stripe decides whether this person can be paid, not KYRO. Anything stored
+  // on our side is a copy of their answer and goes stale.
+  const payoutsReady = Boolean(payout?.payoutsEnabled);
   const taxDone = creator?.taxFormStatus === 'complete';
   const enough = available >= MIN_WITHDRAW_CENTS;
-  const canWithdraw = hasBank && taxDone && enough;
+  const canWithdraw = payoutsReady && taxDone && enough;
 
-  const blocker = !hasBank
-    ? 'Add a payout account first.'
+  const blocker = !payoutsReady
+    ? 'Set up payouts with Stripe first.'
     : !taxDone
       ? 'Your tax info has to be on file before KYRO can release a payout.'
       : !enough
@@ -68,6 +88,53 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
 
   return (
     <div className="space-y-6">
+      {/* Payout account. Stripe collects the bank details on its own pages,
+          so none of them ever reach KYRO. */}
+      <div className="bg-surface border border-line rounded-2xl p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              {payoutsReady ? (
+                <CheckCircle2 size={16} className="text-emerald-400" />
+              ) : (
+                <Wallet size={16} className="text-body" />
+              )}
+              <p className="text-sm font-semibold text-heading">
+                {payoutsReady ? 'Payouts are set up' : 'Set up payouts'}
+              </p>
+            </div>
+            <p className="text-sm text-muted mt-1 max-w-prose">
+              {payoutsReady
+                ? 'Stripe has everything it needs, so your earnings can be sent to you.'
+                : payout?.connected
+                  ? 'Stripe still needs a few details before it can pay you.'
+                  : 'KYRO pays creators through Stripe. You enter your bank details on Stripe, never here.'}
+            </p>
+
+            {payout?.requirementsDue?.length ? (
+              <p className="text-xs text-faint mt-2">
+                Still outstanding: {payout.requirementsDue.length}{' '}
+                {payout.requirementsDue.length === 1 ? 'item' : 'items'}. Continue setup to finish.
+              </p>
+            ) : null}
+
+            {setupError && <p className="text-xs text-pink-300 mt-2">{setupError}</p>}
+          </div>
+
+          {!payoutsReady && (
+            <button
+              type="button"
+              onClick={() => void beginSetup()}
+              disabled={starting || loading}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-2 border border-line text-sm font-semibold text-heading hover:border-line disabled:opacity-50 whitespace-nowrap"
+            >
+              {starting ? <RefreshCw size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+              {payout?.connected ? 'Continue setup' : 'Set up with Stripe'}
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Withdraw */}
       <div className="bg-surface border border-line rounded-2xl p-5 md:p-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -79,10 +146,8 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
             <p className="text-4xl font-bold text-heading mt-1">
               {loading ? '—' : money(available)}
             </p>
-            {creator?.payoutBankLast4 && (
-              <p className="text-xs text-faint mt-1">
-                To {creator.payoutBankName || 'your bank'} ····{creator.payoutBankLast4}
-              </p>
+            {payoutsReady && (
+              <p className="text-xs text-faint mt-1">To your Stripe payout account</p>
             )}
           </div>
 

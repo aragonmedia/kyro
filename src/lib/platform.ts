@@ -504,3 +504,75 @@ export async function claimShopifyInstall(
   if (!res.ok || !body.shop) return fail(body.error ?? 'Could not finish connecting Shopify.');
   return { shop: body.shop, pricingUrl: body.pricingUrl ?? null, error: null };
 }
+
+/* ─────────────────────────────────────────────────────────────
+   STRIPE — creator payouts
+
+   Creators are Express connected accounts. Stripe hosts their onboarding and
+   is the only thing that decides whether somebody can be paid, so the app asks
+   Stripe rather than inferring it from whatever KYRO happens to have stored.
+   ───────────────────────────────────────────────────────────── */
+
+export interface CreatorPayoutStatus {
+  /** A Stripe account exists. Not the same thing as being payable. */
+  connected: boolean;
+  /** Stripe will send money to this person. The only gate that counts. */
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  /** What Stripe is still waiting on, in its own words. */
+  requirementsDue: string[];
+}
+
+async function creatorToken(): Promise<string | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data } = await sb.auth.getSession();
+  return data?.session?.access_token ?? null;
+}
+
+/** What Stripe currently says about the signed-in creator's payout account. */
+export async function fetchPayoutStatus(): Promise<{ data: CreatorPayoutStatus | null; error: string | null }> {
+  const token = await creatorToken();
+  if (!token) return { data: null, error: null };
+
+  try {
+    const res = await fetch('/api/stripe/status', { headers: { Authorization: `Bearer ${token}` } });
+    const body = (await res.json()) as Partial<CreatorPayoutStatus> & { error?: string };
+    if (!res.ok) return { data: null, error: body.error ?? 'Could not read your payout status.' };
+    return {
+      data: {
+        connected: Boolean(body.connected),
+        payoutsEnabled: Boolean(body.payoutsEnabled),
+        detailsSubmitted: Boolean(body.detailsSubmitted),
+        requirementsDue: body.requirementsDue ?? [],
+      },
+      error: null,
+    };
+  } catch {
+    return { data: null, error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+}
+
+/**
+ * Start or resume Stripe's hosted onboarding.
+ *
+ * The link is single use and expires in minutes, so it is minted per click and
+ * followed immediately rather than stored anywhere.
+ */
+export async function startCreatorPayouts(): Promise<{ url: string | null; error: string | null }> {
+  const token = await creatorToken();
+  if (!token) return { url: null, error: 'Your session has expired. Sign in again and retry.' };
+
+  try {
+    const res = await fetch('/api/stripe/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    });
+    const body = (await res.json()) as { url?: string; error?: string };
+    if (!res.ok || !body.url) return { url: null, error: body.error ?? 'Could not start payout setup.' };
+    return { url: body.url, error: null };
+  } catch {
+    return { url: null, error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+}
