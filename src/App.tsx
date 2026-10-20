@@ -60,7 +60,7 @@ import { uploadSubmissionVideo, uploadCampaignCover, uploadBrandLogo } from './l
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { HELP_MD } from './lib/help';
-import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, takeShopifyInstall, claimShopifyInstall, takePendingShop, peekPendingShop, type ConnectOutcome } from './lib/platform';
+import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, takeShopifyInstall, claimShopifyInstall, takePendingShop, peekPendingShop, takeStripeReturn, confirmStripeMethod, type ConnectOutcome, type StripeReturn } from './lib/platform';
 import { EarningsCard } from './components/EarningsCard';
 import { AffiliateOrdersCard, AffiliateOrdersPage } from './components/AffiliateOrders';
 import { CoverImage, VideoTile } from './components/MediaTile';
@@ -1391,7 +1391,7 @@ function OnboardingGates({
       short: 'Payment method',
       blurb: 'How you pay creators their commission. You only pay on orders that have cleared, never up front, and there is no ad budget or deposit to hold.',
       done: status.paymentReady,
-      doneLabel: undefined,
+      doneLabel: status.paymentMethodLabel ?? undefined,
       // Required: without it, orders can be attributed but no creator can be
       // paid for them, which is the one outcome that makes creators leave.
       optional: false,
@@ -2063,6 +2063,13 @@ function BrandDashboard({
   // redirected back with. Read once on mount and stripped from the URL there,
   // so a refresh does not replay a stale banner.
   const [connectOutcome, setConnectOutcome] = useState<ConnectOutcome | null>(() => takeConnectionOutcome());
+  /**
+   * A Stripe hosted page just returned here. Read once on mount for the same
+   * reason as the install outcome above: taking it strips the query string, so
+   * a refresh cannot replay it.
+   */
+  const [stripeReturn] = useState<StripeReturn | null>(() => takeStripeReturn());
+  const [methodNotice, setMethodNotice] = useState<{ ok: boolean; message: string } | null>(null);
   const [finishing, setFinishing] = useState<string | null>(null);
   /** A video thread opened from Submissions, handed to the Chat page. */
   const [chatThreadId, setChatThreadId] = useState<string | null>(null);
@@ -2108,10 +2115,10 @@ function BrandDashboard({
   const [openCreator, setOpenCreator] = useState<LeaderboardCreator | null>(null);
   /**
    * Label for the payment method on file, so Finance can gate the pay button.
-   * Stays null until Stripe reports a stored method back — the brand-side
-   * bank form was removed, so nothing sets it locally any more.
+   * It comes from the gate read rather than local state: the database is the
+   * only thing that knows whether Stripe holds a method for this brand.
    */
-  const [brandBank] = useState<string | null>(null);
+  const brandBank = onboarding?.paymentMethodLabel ?? null;
   const unread = useUnreadTotal();
 
   // Onboarding gates + deposit usage. Loaded alongside campaigns rather than
@@ -2129,6 +2136,34 @@ function BrandDashboard({
   useEffect(() => {
     if (connectOutcome?.ok) void loadGates();
   }, [connectOutcome, loadGates]);
+
+  // A brand coming back from Stripe Checkout. Confirming is what actually
+  // stores the method: KYRO reads it back from Stripe server-side rather than
+  // believing the URL. Then the gates are re-read, so the payment step and
+  // Finance both see it without a refresh.
+  useEffect(() => {
+    if (stripeReturn?.kind !== 'method' || !brandId) return;
+    const session = stripeReturn.session;
+    if (!session) {
+      setMethodNotice({
+        ok: false,
+        message: 'Stripe did not say which setup that was. Nothing was charged, so start the payment method again.',
+      });
+      return;
+    }
+    let live = true;
+    void (async () => {
+      const res = await confirmStripeMethod(brandId, session);
+      if (!live) return;
+      setMethodNotice(
+        res.saved
+          ? { ok: true, message: 'Your payment method is on file. Nothing is charged until an order clears its return window.' }
+          : { ok: false, message: res.error ?? 'Could not confirm your payment method.' }
+      );
+      if (res.saved) void loadGates();
+    })();
+    return () => { live = false; };
+  }, [stripeReturn, brandId, loadGates]);
 
   const reload = useCallback(async () => {
     if (!brandId) return;
@@ -2275,6 +2310,28 @@ function BrandDashboard({
                 {connectOutcome.message}
               </p>
               <button onClick={() => setConnectOutcome(null)} className="text-xs text-muted hover:text-heading px-2 py-0.5">
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Coming back from Stripe is the one moment a brand is unsure
+              whether anything was saved, so it gets said on every page. */}
+          {methodNotice && (
+            <div
+              className={`flex items-start gap-3 p-4 rounded-xl border ${
+                methodNotice.ok
+                  ? 'border-emerald-400/30 bg-emerald-400/10'
+                  : 'border-pink-400/30 bg-pink-400/10'
+              }`}
+            >
+              {methodNotice.ok
+                ? <CheckCircle size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                : <AlertCircle size={18} className="text-pink-400 flex-shrink-0 mt-0.5" />}
+              <p className={`text-sm flex-1 ${methodNotice.ok ? 'text-emerald-200' : 'text-pink-200'}`}>
+                {methodNotice.message}
+              </p>
+              <button onClick={() => setMethodNotice(null)} className="text-xs text-muted hover:text-heading px-2 py-0.5">
                 Dismiss
               </button>
             </div>
@@ -2549,6 +2606,7 @@ function BrandDashboard({
                   hasCreators={allCards.some((c) => c.creators > 0)}
                   hasVideos={totalSubs > 0}
                   paymentMethodLabel={brandBank}
+                  paymentMethodType={onboarding?.paymentMethodType ?? null}
                   onGo={setPage}
                 />
               ) : (

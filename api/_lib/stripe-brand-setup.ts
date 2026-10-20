@@ -5,19 +5,20 @@
  * for the browser to follow. Card and bank details are entered on Stripe and
  * never reach KYRO.
  *
- * KYRO charges the brand once per payment run and transfers each creator
- * their share — Stripe's "separate charges and transfers" model. So the brand
+ * KYRO charges the brand once per payment run and transfers each creator their
+ * share, which is Stripe's separate charges and transfers model. So the brand
  * side is an ordinary Customer plus a SetupIntent. Connect accounts belong to
- * the creators receiving money, and are created elsewhere.
+ * the creators receiving money and are created elsewhere.
  *
- * ⚠ Not wired to Stripe yet. Until STRIPE_SECRET_KEY exists this answers with
- *   a clear explanation rather than a half-built redirect. The contract below
- *   is what the real implementation fills in, and the client already speaks
- *   it, so switching on is a change inside this file only.
+ * Nothing is charged here. The brand is storing a method for later, and the
+ * result is only believed once the server reads the completed session back
+ * from Stripe in the `method` action.
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createClient } from '@supabase/supabase-js';
+import { serviceClient } from './supabase.js';
+import { appOrigin } from './env.js';
+import { createCustomer, createSetupCheckout } from './stripe-billing.js';
 
 type Method = 'ach' | 'card';
 
@@ -27,83 +28,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed.' });
   }
 
-  const { brandId, method } = (req.body ?? {}) as { brandId?: string; method?: Method };
+  const body = (typeof req.body === 'string' ? JSON.parse(req.body) : req.body) ?? {};
+  const brandId = typeof body.brandId === 'string' ? body.brandId : '';
+  const method = body.method as Method | undefined;
   if (!brandId || (method !== 'ach' && method !== 'card')) {
     return res.status(400).json({ error: 'Missing brand or payment method.' });
   }
 
-  // The caller has to be the brand's owner. Checked against their own token
-  // rather than trusting the brandId in the body.
+  // The caller has to own the brand. Checked against their own token rather
+  // than trusting the brandId in the body.
   const auth = req.headers.authorization ?? '';
   const jwt = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!jwt) return res.status(401).json({ error: 'Not signed in.' });
 
-  const url = process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL;
-  const anon = process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
-  if (!url || !anon) {
-    return res.status(500).json({ error: 'This environment is not configured.' });
-  }
+  const sb = serviceClient();
+  const { data: userData, error: userError } = await sb.auth.getUser(jwt);
+  const userId = userData?.user?.id;
+  if (userError || !userId) return res.status(401).json({ error: 'Not signed in.' });
 
-  const db = createClient(url, anon, {
-    global: { headers: { Authorization: `Bearer ${jwt}` } },
-    auth: { persistSession: false },
-  });
-
-  const { data: brand, error } = await db
+  const { data: brand, error: brandError } = await sb
     .from('brands')
-    .select('id, name')
+    .select('id, name, owner_user_id')
     .eq('id', brandId)
     .maybeSingle();
 
-  if (error || !brand) {
+  if (brandError) return res.status(500).json({ error: 'Could not verify the brand.' });
+  if (!brand || brand.owner_user_id !== userId) {
     return res.status(403).json({ error: 'That brand is not yours.' });
   }
 
-  const secret = process.env.STRIPE_SECRET_KEY;
-  if (!secret) {
-    // Honest, specific, and actionable — not a generic failure.
-    return res.status(503).json({
-      error:
-        'Payments are not switched on yet. KYRO is completing Stripe onboarding; ' +
-        'until then, approving a payment run records what is owed and the KYRO team settles it directly.',
-    });
+  try {
+    // brand_billing is created on demand elsewhere; make sure a row exists so
+    // the customer id has somewhere to live.
+    await sb.from('brand_billing').upsert({ brand_id: brandId }, { onConflict: 'brand_id' });
+
+    const { data: billing } = await sb
+      .from('brand_billing')
+      .select('stripe_customer_id')
+      .eq('brand_id', brandId)
+      .maybeSingle();
+
+    let customerId = (billing?.stripe_customer_id as string | null) ?? null;
+    if (!customerId) {
+      const customer = await createCustomer(brandId, brand.name as string, userData.user?.email);
+      customerId = customer.id;
+      const { error } = await sb
+        .from('brand_billing')
+        .update({ stripe_customer_id: customerId })
+        .eq('brand_id', brandId);
+      // Losing this write would create a second Customer on the next click,
+      // so it stops rather than carrying on.
+      if (error) {
+        console.error('[kyro] could not store the stripe customer', error);
+        return res.status(500).json({ error: 'Could not start setup. Nothing was charged.' });
+      }
+    }
+
+    const origin = appOrigin();
+    const session = await createSetupCheckout(
+      customerId,
+      method,
+      `${origin}/?stripe=method&session={CHECKOUT_SESSION_ID}`,
+      `${origin}/?stripe=method-cancelled`
+    );
+
+    if (!session.url) {
+      return res.status(502).json({ error: 'Stripe did not return a setup page. Try again shortly.' });
+    }
+    return res.status(200).json({ url: session.url });
+  } catch (e) {
+    console.error('[kyro] stripe/setup failed', e);
+    return res.status(502).json({ error: 'Stripe could not start setup right now. Try again shortly.' });
   }
-
-  /*
-   * ── What goes here when the key exists ──────────────────────
-   *
-   *  1. Find or create the Stripe Customer for this brand, storing
-   *     `stripe_customer_id` on `brands` so it is reused rather than
-   *     duplicated on every visit.
-   *
-   *  2. Create a SetupIntent (not a PaymentIntent — nothing is being charged
-   *     yet, we are storing a method for later):
-   *
-   *       payment_method_types: method === 'ach'
-   *         ? ['us_bank_account']
-   *         : ['card']
-   *       usage: 'off_session'
-   *
-   *     off_session matters: the brand will not be present when a payment run
-   *     is charged, so the mandate has to permit that.
-   *
-   *  3. Create a Checkout Session in setup mode, which gives Stripe-hosted
-   *     collection with no card fields in KYRO:
-   *
-   *       mode: 'setup'
-   *       customer: <customer id>
-   *       success_url: `${origin}/?stripe=ok`
-   *       cancel_url:  `${origin}/?stripe=cancelled`
-   *
-   *  4. Return { url: session.url }.
-   *
-   *  5. A webhook on `setup_intent.succeeded` writes the payment method id and
-   *     last four onto the brand, so Finance can gate its pay button on a real
-   *     stored method rather than on the redirect having happened.
-   *
-   * Deliberately NOT here: any handling of raw card or bank numbers. If a
-   * future change makes this file touch a PAN, the change is wrong.
-   */
-
-  return res.status(503).json({ error: 'Stripe is configured but the setup flow is not implemented yet.' });
 }

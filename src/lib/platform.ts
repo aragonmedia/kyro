@@ -395,6 +395,84 @@ export async function startStripeSetup(
   return { url: body.url, error: null };
 }
 
+/**
+ * A return trip from a Stripe hosted page.
+ *
+ * `method` is a brand coming back from Checkout and carries the session id
+ * that has to be read back server-side. The payout kinds are a creator coming
+ * back from onboarding and carry nothing: whether they finished is Stripe's
+ * answer to give, not the URL's.
+ */
+export interface StripeReturn {
+  kind: 'method' | 'payouts' | 'payouts-retry';
+  session: string | null;
+}
+
+/**
+ * Read a Stripe return off the URL and strip it from the address bar, so a
+ * refresh does not replay a stale confirmation.
+ */
+export function takeStripeReturn(): StripeReturn | null {
+  if (typeof window === 'undefined') return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const stripe = params.get('stripe');
+  if (stripe !== 'method' && stripe !== 'payouts' && stripe !== 'payouts-retry') return null;
+
+  const session = params.get('session');
+  params.delete('stripe');
+  params.delete('session');
+  const rest = params.toString();
+  window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
+
+  // Only Stripe issues cs_ ids. Anything else in that slot is a stale or
+  // tampered link, and is dropped rather than sent on to the server.
+  return { kind: stripe, session: session?.startsWith('cs_') ? session : null };
+}
+
+/**
+ * Confirm the payment method a brand just added on Stripe.
+ *
+ * The browser is trusted with nothing: it hands over the Checkout session id,
+ * and KYRO reads the method back from Stripe itself before storing anything.
+ * The reply says only whether something was stored, so the label shown on
+ * screen still comes from the database on the next read.
+ */
+export async function confirmStripeMethod(
+  brandId: string,
+  sessionId: string
+): Promise<{ saved: boolean; error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { saved: false, error: 'This build has no Supabase connection, so billing is disabled.' };
+
+  const { data, error } = await sb.auth.getSession();
+  const token = data?.session?.access_token;
+  if (error || !token) {
+    return { saved: false, error: 'Your session has expired. Sign in again and retry.' };
+  }
+
+  let res: Response;
+  try {
+    const query = new URLSearchParams({ brandId, session: sessionId });
+    res = await fetch(`/api/stripe/method?${query.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return { saved: false, error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+
+  let body: { saved?: boolean; error?: string } = {};
+  try { body = (await res.json()) as typeof body; } catch { body = {}; }
+
+  if (!res.ok) return { saved: false, error: body.error ?? 'Could not confirm your payment method.' };
+  if (!body.saved) {
+    // Checkout can return before Stripe has attached the method. Nothing is
+    // broken and nothing was charged, so say so plainly and let them retry.
+    return { saved: false, error: 'Stripe has not finished that setup yet. Give it a moment and try again.' };
+  }
+  return { saved: true, error: null };
+}
+
 /* ─────────────────────────────────────────────────────────────
    Shopify-initiated installs
 

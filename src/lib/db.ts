@@ -818,6 +818,36 @@ export interface BrandBilling {
   accrualCapCents: Cents;
   completedCampaigns: number;
   state: 'active' | 'paused' | 'suspended';
+  /**
+   * The method KYRO charges, as Stripe holds it. Null until the brand has
+   * finished Stripe's hosted setup. KYRO stores the id and a label and
+   * nothing else: no card or bank number ever reaches this codebase.
+   */
+  stripePaymentMethodId: string | null;
+  stripeMethodType: StripeMethodType | null;
+  /** Card network, e.g. "visa", or the bank's name for a debit. */
+  stripeMethodBrand: string | null;
+  stripeMethodLast4: string | null;
+}
+
+export type StripeMethodType = 'us_bank_account' | 'card';
+
+/**
+ * The payment method on file, in words a brand recognises.
+ *
+ * Returns null when there is nothing on file, which is also what gates the
+ * pay button: no label, nothing to charge.
+ */
+export function describeStripeMethod(billing: BrandBilling | null): string | null {
+  if (!billing?.stripePaymentMethodId) return null;
+  const tail = billing.stripeMethodLast4 ? ` ····${billing.stripeMethodLast4}` : '';
+  if (billing.stripeMethodType === 'us_bank_account') {
+    return `${billing.stripeMethodBrand || 'Bank account'}${tail}`;
+  }
+  const network = billing.stripeMethodBrand
+    ? billing.stripeMethodBrand.charAt(0).toUpperCase() + billing.stripeMethodBrand.slice(1)
+    : 'Card';
+  return `${network}${tail}`;
 }
 
 export interface BrandUnbilled {
@@ -832,6 +862,10 @@ export interface OnboardingStatus {
   /** Which ad account Meta publishes to. Null until the brand chooses one. */
   metaAdAccountId: string | null;
   paymentReady: boolean;
+  /** The method on file, e.g. "Visa ····4242". Null when there is none. */
+  paymentMethodLabel: string | null;
+  /** Which kind it is, so the right tile reads as connected. */
+  paymentMethodType: StripeMethodType | null;
   agreementSignedAt: string | null;
   /** True when a campaign may be launched. */
   complete: boolean;
@@ -995,6 +1029,10 @@ export async function ensureBrandBilling(brandId: string): Promise<Result<BrandB
       accrualCapCents: (r.accrual_cap_cents as number) ?? 0,
       completedCampaigns: (r.completed_campaigns as number) ?? 0,
       state: (r.state as BrandBilling['state']) ?? 'active',
+      stripePaymentMethodId: (r.stripe_payment_method_id as string | null) ?? null,
+      stripeMethodType: (r.stripe_method_type as StripeMethodType | null) ?? null,
+      stripeMethodBrand: (r.stripe_method_brand as string | null) ?? null,
+      stripeMethodLast4: (r.stripe_method_last4 as string | null) ?? null,
     });
   } catch (e) {
     return fail(null, describeError(e, 'Could not load billing.'));
@@ -1075,10 +1113,10 @@ export async function signCampaignAgreement(brandId: string): Promise<Result<str
 /**
  * One round of queries, one answer: may this brand launch a campaign?
  *
- * `paymentReady` is false for now by design — card and ACH setup needs a
- * payment processor and server-side endpoints that don't exist yet. It is
- * deliberately NOT part of `complete`, so testing isn't blocked on it, but it
- * is surfaced in the UI so nobody forgets it is missing.
+ * `paymentReady` is true once Stripe holds a method KYRO can charge. It is
+ * deliberately NOT part of `complete`, so testing a campaign isn't blocked on
+ * billing, but it is surfaced in the UI because a brand with no method on file
+ * can attribute orders and still pay nobody.
  */
 export async function getOnboardingStatus(brandId: string): Promise<Result<OnboardingStatus>> {
   const empty: OnboardingStatus = {
@@ -1086,6 +1124,8 @@ export async function getOnboardingStatus(brandId: string): Promise<Result<Onboa
     shopify: null,
     metaAdAccountId: null,
     paymentReady: false,
+    paymentMethodLabel: null,
+    paymentMethodType: null,
     agreementSignedAt: null,
     complete: false,
   };
@@ -1103,7 +1143,10 @@ export async function getOnboardingStatus(brandId: string): Promise<Result<Onboa
   const active = connections.data.filter((c) => c.status === 'active');
   const meta = active.find((c) => c.provider === 'meta') ?? null;
   const shopify = active.find((c) => c.provider === 'shopify') ?? null;
-  const paymentReady = Boolean(billing.data?.achMandateRef);
+  // Either column means a method is on file: ach_mandate_ref predates Stripe
+  // here, and stripe/method keeps it in step for bank debits.
+  const paymentReady = Boolean(billing.data?.stripePaymentMethodId || billing.data?.achMandateRef);
+  const paymentMethodLabel = describeStripeMethod(billing.data);
 
   const metaAdAccountId = (brandRow.data?.meta_ad_account_id as string | null) ?? null;
 
@@ -1112,6 +1155,8 @@ export async function getOnboardingStatus(brandId: string): Promise<Result<Onboa
     shopify,
     metaAdAccountId,
     paymentReady,
+    paymentMethodLabel,
+    paymentMethodType: billing.data?.stripeMethodType ?? null,
     agreementSignedAt: agreement.data,
     // A Meta token with no ad account cannot publish anything, so setup is not
     // complete until one is chosen. Without this the gates panel vanishes the

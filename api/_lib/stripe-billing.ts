@@ -1,0 +1,167 @@
+/**
+ * KYRO — Stripe billing for brands
+ *
+ * The paying side. A brand is an ordinary Stripe Customer with a saved payment
+ * method; KYRO charges that Customer once per payment run and transfers each
+ * creator their share.
+ *
+ * These are v1 endpoints and that is correct. Only Accounts creation moved to
+ * v2; Customers, Checkout and SetupIntents are unchanged, and v1 speaks
+ * form-encoded bodies rather than the JSON that api/_lib/stripe.ts uses.
+ *
+ * Nothing in this file may ever handle a card or bank number. Stripe collects
+ * those on its own hosted page. If a change makes this file touch a PAN, the
+ * change is wrong.
+ */
+
+import { stripeConfig } from './env.js';
+import { StripeError } from './stripe.js';
+
+const API = 'https://api.stripe.com/v1';
+
+/** v1 takes form bodies, with brackets for anything nested. */
+function encode(params: Record<string, unknown>, prefix = ''): string[] {
+  const out: string[] = [];
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null) continue;
+    const name = prefix ? `${prefix}[${key}]` : key;
+    if (Array.isArray(value)) {
+      value.forEach((v, i) =>
+        out.push(`${encodeURIComponent(`${name}[${i}]`)}=${encodeURIComponent(String(v))}`)
+      );
+    } else if (typeof value === 'object') {
+      out.push(...encode(value as Record<string, unknown>, name));
+    } else {
+      out.push(`${encodeURIComponent(name)}=${encodeURIComponent(String(value))}`);
+    }
+  }
+  return out;
+}
+
+async function request<T>(
+  path: string,
+  method: 'GET' | 'POST',
+  params?: Record<string, unknown>,
+  idempotencyKey?: string
+): Promise<T> {
+  const { secretKey } = stripeConfig();
+  const body = method === 'POST' && params ? encode(params).join('&') : undefined;
+  const query = method === 'GET' && params ? `?${encode(params).join('&')}` : '';
+
+  const headers: Record<string, string> = { Authorization: `Bearer ${secretKey}` };
+  if (body) headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API}${path}${query}`, { method, headers, body });
+  } catch (e) {
+    throw new StripeError((e as Error).message || 'Could not reach Stripe.', null, 0);
+  }
+
+  const text = await res.text();
+  let json: { error?: { message?: string; code?: string } } = {};
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    /* Stripe answers JSON; a non-JSON body is handled below. */
+  }
+
+  if (!res.ok) {
+    throw new StripeError(
+      json.error?.message || `Stripe returned ${res.status}.`,
+      json.error?.code ?? null,
+      res.status
+    );
+  }
+
+  return json as T;
+}
+
+export async function createCustomer(
+  brandId: string,
+  name?: string | null,
+  email?: string | null
+): Promise<{ id: string }> {
+  return request<{ id: string }>(
+    '/customers',
+    'POST',
+    {
+      name: name || undefined,
+      email: email || undefined,
+      metadata: { kyro_brand_id: brandId },
+    },
+    `kyro-brand-customer-${brandId}`
+  );
+}
+
+/**
+ * A Stripe-hosted page for entering a payment method.
+ *
+ * `mode: 'setup'` stores a method without charging, and `usage: off_session`
+ * matters: the brand will not be present when a payment run is charged, so the
+ * mandate has to permit charging without them.
+ */
+export async function createSetupCheckout(
+  customerId: string,
+  method: 'ach' | 'card',
+  successUrl: string,
+  cancelUrl: string
+): Promise<{ url: string | null }> {
+  return request<{ url: string | null }>('/checkout/sessions', 'POST', {
+    mode: 'setup',
+    customer: customerId,
+    payment_method_types: [method === 'ach' ? 'us_bank_account' : 'card'],
+    'setup_intent_data[usage]': 'off_session',
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  });
+}
+
+export interface SavedMethod {
+  paymentMethodId: string;
+  type: string;
+  brand: string | null;
+  last4: string | null;
+}
+
+interface SessionResponse {
+  customer?: string | null;
+  setup_intent?: {
+    payment_method?: {
+      id?: string;
+      type?: string;
+      card?: { brand?: string | null; last4?: string | null } | null;
+      us_bank_account?: { bank_name?: string | null; last4?: string | null } | null;
+    } | null;
+  } | null;
+}
+
+/**
+ * What the brand just saved, read back from the completed Checkout session.
+ *
+ * Expanded in one call rather than walking session to setup intent to payment
+ * method, which would be three round trips on a page the brand is waiting on.
+ * Reading this server-side is also what makes the result trustworthy: a
+ * browser returning to a success URL proves nothing on its own.
+ */
+export async function readSavedMethod(sessionId: string): Promise<SavedMethod | null> {
+  const session = await request<SessionResponse>(
+    `/checkout/sessions/${encodeURIComponent(sessionId)}`,
+    'GET',
+    { expand: ['setup_intent.payment_method'] }
+  );
+
+  const pm = session.setup_intent?.payment_method;
+  if (!pm?.id) return null;
+
+  const type = pm.type ?? 'card';
+  const detail = type === 'us_bank_account' ? pm.us_bank_account : pm.card;
+
+  return {
+    paymentMethodId: pm.id,
+    type,
+    brand: (type === 'us_bank_account' ? pm.us_bank_account?.bank_name : pm.card?.brand) ?? null,
+    last4: detail?.last4 ?? null,
+  };
+}

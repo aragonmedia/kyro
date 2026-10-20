@@ -25,6 +25,7 @@ import {
   type StripeAccountV2,
 } from '../_lib/stripe.js';
 import brandSetup from '../_lib/stripe-brand-setup.js';
+import { readSavedMethod } from '../_lib/stripe-billing.js';
 
 type Db = ReturnType<typeof serviceClient>;
 
@@ -95,11 +96,86 @@ async function recordAccount(sb: Db, creatorId: string, account: StripeAccountV2
   };
 }
 
+/**
+ * GET /api/stripe/method?brandId=…&session=cs_…
+ *
+ * Records the payment method a brand just saved, after reading the completed
+ * Checkout session back from Stripe. A browser arriving at a success URL
+ * proves nothing by itself, so the server asks Stripe what actually happened.
+ */
+async function brandMethod(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return res.status(405).json({ error: 'Method not allowed.' });
+  }
+
+  const brandId = typeof req.query.brandId === 'string' ? req.query.brandId : '';
+  const sessionId = typeof req.query.session === 'string' ? req.query.session : '';
+  if (!brandId || !sessionId) return res.status(400).json({ error: 'Missing brand or session.' });
+
+  const auth = req.headers.authorization || '';
+  const jwt = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!jwt) return res.status(401).json({ error: 'Not signed in.' });
+
+  const sb = serviceClient();
+  const { data: userData, error: userError } = await sb.auth.getUser(jwt);
+  const userId = userData?.user?.id;
+  if (userError || !userId) return res.status(401).json({ error: 'Not signed in.' });
+
+  const { data: brand } = await sb
+    .from('brands')
+    .select('id, owner_user_id')
+    .eq('id', brandId)
+    .maybeSingle();
+  if (!brand || brand.owner_user_id !== userId) {
+    return res.status(403).json({ error: 'That brand is not yours.' });
+  }
+
+  try {
+    const saved = await readSavedMethod(sessionId);
+    if (!saved) {
+      return res.status(200).json({ saved: false });
+    }
+
+    const update: Record<string, unknown> = {
+      stripe_payment_method_id: saved.paymentMethodId,
+      stripe_method_type: saved.type,
+      stripe_method_brand: saved.brand,
+      stripe_method_last4: saved.last4,
+      stripe_method_at: new Date().toISOString(),
+    };
+    // ach_mandate_ref predates Stripe here and still gates paymentReady for
+    // bank methods. Keep it in step rather than leaving it lying.
+    if (saved.type === 'us_bank_account') update.ach_mandate_ref = saved.paymentMethodId;
+
+    const { error } = await sb.from('brand_billing').update(update).eq('brand_id', brandId);
+    if (error) {
+      console.error('[kyro] could not store the brand payment method', error);
+      return res.status(500).json({ error: 'Stripe saved your method but KYRO could not record it.' });
+    }
+
+    return res.status(200).json({
+      saved: true,
+      type: saved.type,
+      brand: saved.brand,
+      last4: saved.last4,
+    });
+  } catch (e) {
+    if (e instanceof StripeError) {
+      console.error('[kyro] stripe method read failed', e.code, e.message);
+      return res.status(502).json({ error: 'Could not confirm that with Stripe. Try again shortly.' });
+    }
+    console.error('[kyro] stripe/method failed', e);
+    return res.status(500).json({ error: 'Could not record your payment method.' });
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const raw = req.query.action;
   const action = Array.isArray(raw) ? raw[0] : raw;
 
   if (action === 'setup') return brandSetup(req, res);
+  if (action === 'method') return brandMethod(req, res);
 
   if (action !== 'connect' && action !== 'status') {
     return res.status(404).json({ error: 'Not found.' });

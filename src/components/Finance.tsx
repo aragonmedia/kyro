@@ -36,6 +36,7 @@ import {
   type BrandBalance,
   type CommissionOrderRow,
   type PaymentRun,
+  type StripeMethodType,
 } from '../lib/db';
 
 const money = (cents: number) =>
@@ -145,6 +146,7 @@ export function BrandFinance({
   hasCreators,
   hasVideos,
   paymentMethodLabel,
+  paymentMethodType,
   onGo,
 }: {
   brandId: string;
@@ -154,6 +156,8 @@ export function BrandFinance({
   hasVideos: boolean;
   /** e.g. "Chase ····4821", or null when nothing is on file. */
   paymentMethodLabel: string | null;
+  /** Which kind is on file, so the right tile reads as connected. */
+  paymentMethodType: StripeMethodType | null;
   onGo: (page: 'campaigns' | 'creators' | 'submissions') => void;
 }) {
   const [balance, setBalance] = useState<BrandBalance | null>(null);
@@ -182,6 +186,12 @@ export function BrandFinance({
   }, [brandId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Default to whatever is actually on file, so the selected tile and the
+  // method a payment run would use are never two different things.
+  useEffect(() => {
+    if (paymentMethodType) setMethod(paymentMethodType === 'card' ? 'card' : 'ach');
+  }, [paymentMethodType]);
 
   const shown = useMemo(() => {
     let out = rows ?? [];
@@ -299,10 +309,22 @@ export function BrandFinance({
             <p className="text-xs font-semibold text-muted">Pay with</p>
             <div className="grid sm:grid-cols-2 gap-2">
               {([
-                { id: 'ach' as PayMethod, icon: Banknote, title: 'Bank account', sub: paymentMethodLabel ?? 'Not connected yet' },
-                { id: 'card' as PayMethod, icon: CreditCard, title: 'Card', sub: 'Not connected yet' },
+                {
+                  id: 'ach' as PayMethod,
+                  icon: Banknote,
+                  title: 'Bank account',
+                  sub: paymentMethodType === 'us_bank_account' ? paymentMethodLabel ?? 'Connected' : 'Not connected yet',
+                },
+                {
+                  id: 'card' as PayMethod,
+                  icon: CreditCard,
+                  title: 'Card',
+                  sub: paymentMethodType === 'card' ? paymentMethodLabel ?? 'Connected' : 'Not connected yet',
+                },
               ]).map((m) => {
-                const connected = m.id === 'ach' && Boolean(paymentMethodLabel);
+                const connected =
+                  (m.id === 'ach' && paymentMethodType === 'us_bank_account') ||
+                  (m.id === 'card' && paymentMethodType === 'card');
                 return (
                   <button
                     key={m.id}
@@ -350,7 +372,7 @@ export function BrandFinance({
             type="button"
             onClick={() => void pay()}
             disabled={paying || dueTotal === 0 || !paymentMethodLabel}
-            title={!paymentMethodLabel ? 'Add a bank account below first.' : undefined}
+            title={!paymentMethodLabel ? 'Add a payment method below first.' : undefined}
             className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
           >
             {paying && <RefreshCw size={14} className="animate-spin" />}
