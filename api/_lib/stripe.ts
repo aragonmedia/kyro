@@ -1,21 +1,25 @@
 /**
- * KYRO — Stripe
+ * KYRO — Stripe, Accounts v2
  *
- * Only what Connect onboarding needs: create a creator's Express account, send
- * them to Stripe to complete it, and read back whether Stripe will pay them.
+ * Only what creator payout onboarding needs: create a creator's connected
+ * account, send them to Stripe's hosted flow, and read back whether Stripe
+ * will actually pay them.
  *
- * Written against the REST API with fetch, like the Shopify and Meta clients
- * in this folder, so there is one dependency-free pattern for every provider
- * rather than three different ones.
+ * Why v2 rather than v1: Stripe refuses POST /v1/accounts for new Connect
+ * integrations outright. v2 replaces the single `type: 'express'` flag with
+ * configurations. A creator gets the `recipient` configuration, which carries
+ * `stripe_balance.stripe_transfers`, the capability that lets the platform
+ * transfer funds to them. They do not get `merchant`, because KYRO never takes
+ * payments on a creator's behalf.
  *
- * No Stripe-Version header is sent on purpose. Pinning a version KYRO has not
- * tested against is how an integration breaks on somebody else's release day;
- * the account's own default version is stable and is what the dashboard shows.
+ * Two API shapes worth remembering: v2 speaks JSON and requires a pinned
+ * Stripe-Version header, where v1 spoke form-encoded bodies and tolerated no
+ * version at all.
  */
 
 import { stripeConfig } from './env.js';
 
-const API = 'https://api.stripe.com/v1';
+const API = 'https://api.stripe.com/v2';
 
 export class StripeError extends Error {
   constructor(
@@ -28,59 +32,46 @@ export class StripeError extends Error {
   }
 }
 
-/** Stripe takes form bodies, with brackets for anything nested. */
-function encode(params: Record<string, unknown>, prefix = ''): string[] {
-  const out: string[] = [];
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null) continue;
-    const name = prefix ? `${prefix}[${key}]` : key;
-    if (Array.isArray(value)) {
-      value.forEach((v, i) =>
-        out.push(`${encodeURIComponent(`${name}[${i}]`)}=${encodeURIComponent(String(v))}`)
-      );
-    } else if (typeof value === 'object') {
-      out.push(...encode(value as Record<string, unknown>, name));
-    } else {
-      out.push(`${encodeURIComponent(name)}=${encodeURIComponent(String(value))}`);
-    }
-  }
-  return out;
-}
-
 async function request<T>(
   path: string,
   method: 'GET' | 'POST',
-  params?: Record<string, unknown>,
+  body?: Record<string, unknown>,
   idempotencyKey?: string
 ): Promise<T> {
-  const { secretKey } = stripeConfig();
-  const body = params ? encode(params).join('&') : undefined;
+  const { secretKey, apiVersion } = stripeConfig();
 
-  const headers: Record<string, string> = { Authorization: `Bearer ${secretKey}` };
-  if (body) headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${secretKey}`,
+    'Stripe-Version': apiVersion,
+  };
+  if (body) headers['Content-Type'] = 'application/json';
   // Stripe replays the first answer for a repeated key, so a double-clicked
   // button cannot leave a creator with two connected accounts.
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
 
   let res: Response;
   try {
-    res = await fetch(`${API}${path}`, { method, headers, body });
+    res = await fetch(`${API}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
   } catch (e) {
     throw new StripeError((e as Error).message || 'Could not reach Stripe.', null, 0);
   }
 
   const text = await res.text();
-  let json: { error?: { message?: string; code?: string } } = {};
+  let json: { error?: { message?: string; code?: string; type?: string } } = {};
   try {
     json = text ? JSON.parse(text) : {};
   } catch {
-    /* Stripe always returns JSON; a body that is not JSON is handled below. */
+    /* Stripe answers JSON; a body that is not JSON is handled below. */
   }
 
   if (!res.ok) {
     throw new StripeError(
       json.error?.message || `Stripe returned ${res.status}.`,
-      json.error?.code ?? null,
+      json.error?.code ?? json.error?.type ?? null,
       res.status
     );
   }
@@ -88,57 +79,126 @@ async function request<T>(
   return json as T;
 }
 
-export interface StripeAccount {
+/** Only the parts of a v2 Account that KYRO reads. */
+export interface StripeAccountV2 {
   id: string;
-  charges_enabled?: boolean;
-  payouts_enabled?: boolean;
-  details_submitted?: boolean;
-  requirements?: { currently_due?: string[] | null } | null;
+  configuration?: {
+    recipient?: {
+      capabilities?: {
+        stripe_balance?: {
+          stripe_transfers?: { status?: string | null } | null;
+        } | null;
+      } | null;
+    } | null;
+  } | null;
+  requirements?: {
+    entries?: Array<{
+      field?: string | null;
+      description?: string | null;
+      impact?: { restricts_capabilities?: unknown[] | null } | null;
+    }> | null;
+  } | null;
+}
+
+/** What KYRO needs to know, flattened out of the v2 response shape. */
+export interface PayoutReadiness {
+  accountId: string;
+  /** Stripe will accept transfers to this creator. The only gate that counts. */
+  transfersActive: boolean;
+  /** Outstanding items that are actually holding a capability back. */
+  requirementsDue: string[];
 }
 
 /**
- * An Express account for one creator.
- *
- * Only the transfers capability is requested. KYRO sends money to creators and
- * never takes payments on their behalf, so asking for card_payments would be
- * asking for permissions the product does not use.
+ * v2 returns null for most properties unless they are named in `include`, so
+ * every read asks for the three KYRO actually uses. Forgetting this is the
+ * classic v2 mistake: the call succeeds and every field comes back empty.
  */
-export async function createExpressAccount(creatorId: string, email?: string | null): Promise<StripeAccount> {
-  return request<StripeAccount>(
-    '/accounts',
+const INCLUDE = ['configuration.recipient', 'identity', 'requirements'];
+
+export function readReadiness(account: StripeAccountV2): PayoutReadiness {
+  const status = account.configuration?.recipient?.capabilities?.stripe_balance?.stripe_transfers?.status ?? null;
+
+  // Entries that do not restrict a capability are informational. Showing a
+  // creator "3 items outstanding" when none of them block payment is how you
+  // get support tickets about a working account.
+  const entries = account.requirements?.entries ?? [];
+  const requirementsDue = entries
+    .filter((e) => (e?.impact?.restricts_capabilities?.length ?? 0) > 0)
+    .map((e) => e?.field || e?.description || 'additional information')
+    .slice(0, 20);
+
+  return { accountId: account.id, transfersActive: status === 'active', requirementsDue };
+}
+
+/**
+ * A connected account for one creator.
+ *
+ * `recipient` only. Express dashboard carries a hard constraint from Stripe:
+ * if the dashboard is express, both fees_collector and losses_collector must
+ * be `application`. That is correct for KYRO regardless, because the platform
+ * absorbs disputes in this model.
+ */
+export async function createRecipientAccount(
+  creatorId: string,
+  email?: string | null,
+  displayName?: string | null
+): Promise<StripeAccountV2> {
+  return request<StripeAccountV2>(
+    '/core/accounts',
     'POST',
     {
-      type: 'express',
-      country: 'US',
-      email: email || undefined,
-      capabilities: { transfers: { requested: 'true' } },
-      business_type: 'individual',
+      contact_email: email || undefined,
+      display_name: displayName || undefined,
+      dashboard: 'express',
+      identity: { country: 'us', entity_type: 'individual' },
+      configuration: {
+        recipient: {
+          capabilities: { stripe_balance: { stripe_transfers: { requested: true } } },
+        },
+      },
+      defaults: {
+        currency: 'usd',
+        responsibilities: { fees_collector: 'application', losses_collector: 'application' },
+      },
       metadata: { kyro_creator_id: creatorId },
+      include: INCLUDE,
     },
-    `kyro-creator-account-${creatorId}`
+    `kyro-creator-account-v2-${creatorId}`
   );
 }
 
-export async function fetchAccount(accountId: string): Promise<StripeAccount> {
-  return request<StripeAccount>(`/accounts/${encodeURIComponent(accountId)}`, 'GET');
+export async function fetchAccount(accountId: string): Promise<StripeAccountV2> {
+  const query = INCLUDE.map((v, i) => `include[${i}]=${encodeURIComponent(v)}`).join('&');
+  return request<StripeAccountV2>(`/core/accounts/${encodeURIComponent(accountId)}?${query}`, 'GET');
 }
 
 /**
- * A one-time link into Stripe's hosted onboarding.
+ * A one-time link into Stripe's hosted flow.
  *
- * These expire in minutes and are single use, which is why KYRO mints one per
- * click rather than storing it. `refresh_url` is where Stripe sends someone
- * whose link went stale, so it has to start the flow again, not dead-end.
+ * `configurations` is not optional in practice: without it Stripe answers
+ * configs_must_match_to_use_account_links. `account_onboarding` collects for
+ * the first time; `account_update` is for a creator coming back to fix or
+ * change something once they are already set up.
+ *
+ * These expire in ten minutes and are single use, so KYRO mints one per click
+ * rather than storing it.
  */
 export async function createAccountLink(
   accountId: string,
   refreshUrl: string,
-  returnUrl: string
+  returnUrl: string,
+  mode: 'account_onboarding' | 'account_update' = 'account_onboarding'
 ): Promise<{ url: string }> {
-  return request<{ url: string }>('/account_links', 'POST', {
+  return request<{ url: string }>('/core/account_links', 'POST', {
     account: accountId,
-    refresh_url: refreshUrl,
-    return_url: returnUrl,
-    type: 'account_onboarding',
+    use_case: {
+      type: mode,
+      [mode]: {
+        configurations: ['recipient'],
+        return_url: returnUrl,
+        refresh_url: refreshUrl,
+      },
+    },
   });
 }

@@ -60,6 +60,12 @@ export const shopifyConfig = () => ({
  */
 export const stripeConfig = () => ({
   secretKey: required('STRIPE_SECRET_KEY'),
+  /**
+   * Accounts v2 requires a pinned version header, unlike v1 which tolerated
+   * none. Overridable because Stripe moves this string and a hardcoded one
+   * becomes a time bomb.
+   */
+  apiVersion: optional('STRIPE_API_VERSION') || '2026-09-30.endive',
   /** Where Stripe returns a creator after hosted onboarding. */
   returnUrl: optional('STRIPE_RETURN_URL') || `${appOrigin()}/?stripe=payouts`,
   refreshUrl: optional('STRIPE_REFRESH_URL') || `${appOrigin()}/?stripe=payouts-retry`,

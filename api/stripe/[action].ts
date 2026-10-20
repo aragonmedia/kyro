@@ -19,9 +19,10 @@ import { stripeConfig } from '../_lib/env.js';
 import {
   StripeError,
   createAccountLink,
-  createExpressAccount,
+  createRecipientAccount,
   fetchAccount,
-  type StripeAccount,
+  readReadiness,
+  type StripeAccountV2,
 } from '../_lib/stripe.js';
 import brandSetup from '../_lib/stripe-brand-setup.js';
 
@@ -29,6 +30,7 @@ type Db = ReturnType<typeof serviceClient>;
 
 interface CreatorRow {
   id: string;
+  handle: string | null;
   stripe_account_id: string | null;
 }
 
@@ -40,7 +42,7 @@ interface CreatorRow {
 async function currentCreator(
   sb: Db,
   req: VercelRequest
-): Promise<{ creator?: CreatorRow; email?: string | null; error?: string; status?: number }> {
+): Promise<{ creator?: CreatorRow; email?: string | null; handle?: string | null; error?: string; status?: number }> {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!token) return { error: 'Not signed in.', status: 401 };
@@ -51,25 +53,33 @@ async function currentCreator(
 
   const { data, error } = await sb
     .from('creators')
-    .select('id, stripe_account_id')
+    .select('id, handle, stripe_account_id')
     .eq('user_id', userId)
     .maybeSingle();
 
   if (error) return { error: 'Could not read your creator profile.', status: 500 };
   if (!data) return { error: 'This account does not have a creator profile.', status: 403 };
 
-  return { creator: data as CreatorRow, email: userData.user?.email ?? null };
+  const row = data as CreatorRow;
+  // Stripe surfaces display_name to the creator during onboarding, so their
+  // own handle reads better there than a UUID.
+  return { creator: row, email: userData.user?.email ?? null, handle: row.handle };
 }
 
 /** Write Stripe's answer onto the creator and hand back the shape the app uses. */
-async function recordAccount(sb: Db, creatorId: string, account: StripeAccount) {
-  const due = account.requirements?.currently_due ?? [];
+async function recordAccount(sb: Db, creatorId: string, account: StripeAccountV2) {
+  const ready = readReadiness(account);
+
   const state = {
-    stripe_account_id: account.id,
-    stripe_payouts_enabled: Boolean(account.payouts_enabled),
-    stripe_charges_enabled: Boolean(account.charges_enabled),
-    stripe_details_submitted: Boolean(account.details_submitted),
-    stripe_requirements_due: due,
+    stripe_account_id: ready.accountId,
+    stripe_payouts_enabled: ready.transfersActive,
+    // Recipient-only accounts never take payments, so this stays false by
+    // design rather than by omission.
+    stripe_charges_enabled: false,
+    // v2 has no details_submitted flag. Nothing outstanding that blocks a
+    // capability is the closest honest equivalent.
+    stripe_details_submitted: ready.requirementsDue.length === 0,
+    stripe_requirements_due: ready.requirementsDue,
     stripe_checked_at: new Date().toISOString(),
   };
 
@@ -78,10 +88,10 @@ async function recordAccount(sb: Db, creatorId: string, account: StripeAccount) 
 
   return {
     connected: true,
-    accountId: account.id,
-    payoutsEnabled: state.stripe_payouts_enabled,
+    accountId: ready.accountId,
+    payoutsEnabled: ready.transfersActive,
     detailsSubmitted: state.stripe_details_submitted,
-    requirementsDue: due,
+    requirementsDue: ready.requirementsDue,
   };
 }
 
@@ -124,8 +134,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     let accountId = creator.stripe_account_id;
+    let alreadyActive = false;
+
     if (!accountId) {
-      const created = await createExpressAccount(creator.id, who.email);
+      const created = await createRecipientAccount(creator.id, who.email, who.handle);
       accountId = created.id;
       const { error } = await sb
         .from('creators')
@@ -137,10 +149,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error('[kyro] could not store the new stripe account', error);
         return res.status(500).json({ error: 'Could not save your payout account. Nothing was charged.' });
       }
+    } else {
+      // A creator who is already payable and comes back is editing, not
+      // onboarding. Stripe shows a different flow for each.
+      const existing = await fetchAccount(accountId);
+      alreadyActive = readReadiness(existing).transfersActive;
     }
 
     const { refreshUrl, returnUrl } = stripeConfig();
-    const link = await createAccountLink(accountId, refreshUrl, returnUrl);
+    const link = await createAccountLink(
+      accountId,
+      refreshUrl,
+      returnUrl,
+      alreadyActive ? 'account_update' : 'account_onboarding'
+    );
     return res.status(200).json({ url: link.url });
   } catch (e) {
     if (e instanceof StripeError) {
