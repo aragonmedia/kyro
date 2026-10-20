@@ -27,9 +27,9 @@ import {
   Receipt, RefreshCw,
 } from 'lucide-react';
 import { PaymentMethodSheet, type PayMethod } from './PaymentMethod';
+import { payNow } from '../lib/platform';
 import { useSession } from '../lib/session';
 import {
-  authorizePaymentRun,
   getBrandBalance,
   listBrandCommissionOrders,
   listPaymentRuns,
@@ -228,10 +228,10 @@ export function BrandFinance({
     setError(null);
     setDone(null);
     setPaying(true);
-    const res = await authorizePaymentRun(brandId, method);
+    const res = await payNow(brandId);
     setPaying(false);
     if (res.error) { setError(res.error); return; }
-    setDone(`Authorised ${money(dueTotal)}.`);
+    setDone(res.message ?? `Paid ${money(dueTotal)}.`);
     await load();
   };
 

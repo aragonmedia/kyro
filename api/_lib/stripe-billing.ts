@@ -165,3 +165,120 @@ export async function readSavedMethod(sessionId: string): Promise<SavedMethod | 
     last4: detail?.last4 ?? null,
   };
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Charging a payment run
+
+   One run, one charge, one transfer per creator. The order is fixed: KYRO
+   transfers out of its own Stripe balance, so a transfer sent before the
+   brand's charge has settled would be KYRO paying the creator and hoping.
+   ───────────────────────────────────────────────────────────── */
+
+export interface ChargeResult {
+  id: string;
+  status: string;
+  chargeId: string | null;
+}
+
+interface IntentResponse {
+  id: string;
+  status: string;
+  latest_charge?: string | null;
+}
+
+/**
+ * Charge the brand for a run, off session.
+ *
+ * `off_session` is the whole point: the brand saved the method once and is not
+ * sitting in front of the screen when a run is charged, so the mandate has to
+ * carry the authorisation. A card may still come back needing authentication,
+ * which is a real answer and not an error — the caller reads `status`.
+ *
+ * The idempotency key is the run id. A retried request gets the same
+ * PaymentIntent back rather than a second charge, which is what makes it safe
+ * for a cron to retry.
+ */
+export async function chargeRun(opts: {
+  runId: string;
+  customerId: string;
+  paymentMethodId: string;
+  methodType: string;
+  amountCents: number;
+  description: string;
+}): Promise<ChargeResult> {
+  const intent = await request<IntentResponse>(
+    '/payment_intents',
+    'POST',
+    {
+      amount: opts.amountCents,
+      currency: 'usd',
+      customer: opts.customerId,
+      payment_method: opts.paymentMethodId,
+      payment_method_types: [opts.methodType === 'us_bank_account' ? 'us_bank_account' : 'card'],
+      confirm: 'true',
+      off_session: 'true',
+      description: opts.description,
+      // Ties the charge and every transfer it funds together, so Stripe's own
+      // dashboard can answer "which payout came from which charge".
+      transfer_group: `kyro-run-${opts.runId}`,
+      metadata: { kyro_payment_run_id: opts.runId },
+    },
+    `kyro-run-charge-${opts.runId}`
+  );
+
+  return { id: intent.id, status: intent.status, chargeId: intent.latest_charge ?? null };
+}
+
+/** Where a charge has got to, read from Stripe rather than from our copy. */
+export async function fetchCharge(intentId: string): Promise<ChargeResult> {
+  const intent = await request<IntentResponse>(
+    `/payment_intents/${encodeURIComponent(intentId)}`,
+    'GET'
+  );
+  return { id: intent.id, status: intent.status, chargeId: intent.latest_charge ?? null };
+}
+
+/**
+ * Send one creator their share.
+ *
+ * The idempotency key is the payout row's id, so a transfer cannot be sent
+ * twice for the same creator and run even if this is called again after a
+ * timeout where Stripe accepted the first attempt.
+ */
+export async function transferToCreator(opts: {
+  payoutId: string;
+  runId: string;
+  accountId: string;
+  amountCents: number;
+  description: string;
+}): Promise<{ id: string }> {
+  return request<{ id: string }>(
+    '/transfers',
+    'POST',
+    {
+      amount: opts.amountCents,
+      currency: 'usd',
+      destination: opts.accountId,
+      transfer_group: `kyro-run-${opts.runId}`,
+      description: opts.description,
+      metadata: { kyro_payment_run_id: opts.runId, kyro_payout_id: opts.payoutId },
+    },
+    `kyro-payout-${opts.payoutId}`
+  );
+}
+
+/**
+ * What KYRO can actually send right now, in cents.
+ *
+ * Checked before a payout pass so a short balance stops the run cleanly
+ * instead of leaving a trail of `balance_insufficient` failures on individual
+ * creators, which would look to each of them like their payout had failed.
+ */
+export async function availableBalanceCents(): Promise<number> {
+  const balance = await request<{ available?: Array<{ amount?: number; currency?: string }> }>(
+    '/balance',
+    'GET'
+  );
+  const usd = (balance.available ?? []).find((b) => b.currency === 'usd');
+  return usd?.amount ?? 0;
+}

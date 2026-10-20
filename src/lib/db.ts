@@ -3195,11 +3195,12 @@ export async function listPaymentRuns(brandId: string): Promise<Result<PaymentRu
 }
 
 /**
- * Authorise everything currently due.
+ * Authorise everything currently due, without charging anything.
  *
- * The amount is computed server side, inside the same transaction that marks
- * the earnings paid — a client cannot name its own total, and two clicks
- * cannot pay the same order twice.
+ * Not the path a brand takes. Paying goes through /api/stripe/pay, which
+ * authorises and charges in one request; this is left for an admin or a
+ * support case where a run has to be recorded by hand. Calling it marks the
+ * earnings paid, so whoever calls it owns collecting the money.
  */
 export async function authorizePaymentRun(
   brandId: string,

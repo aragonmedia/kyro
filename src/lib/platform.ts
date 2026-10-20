@@ -473,6 +473,73 @@ export async function confirmStripeMethod(
   return { saved: true, error: null };
 }
 
+export interface PaymentRunResult {
+  runId: string | null;
+  /** True when the money is on its way but has not reached creators yet. */
+  settling: boolean;
+  message: string | null;
+  error: string | null;
+}
+
+/**
+ * Pay everything currently due.
+ *
+ * One call, deliberately: the server authorises the run, charges the brand and
+ * sends the creator transfers in the same request. Splitting it would let a
+ * closed tab leave a run authorised, with the orders marked paid and nobody
+ * charged for them.
+ *
+ * A bank debit comes back `settling`: charged, clearing, creators paid when it
+ * lands. That is normal and worth saying on screen, because otherwise it reads
+ * as nothing having happened.
+ */
+export async function payNow(brandId: string): Promise<PaymentRunResult> {
+  const sb = getSupabase();
+  if (!sb) return { runId: null, settling: false, message: null, error: 'This build has no Supabase connection, so payments are disabled.' };
+
+  const { data, error } = await sb.auth.getSession();
+  const token = data?.session?.access_token;
+  if (error || !token) {
+    return { runId: null, settling: false, message: null, error: 'Your session has expired. Sign in again and retry.' };
+  }
+
+  let res: Response;
+  try {
+    res = await fetch('/api/stripe/pay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ brandId }),
+    });
+  } catch {
+    // A timed-out charge may still have gone through, so this must not invite
+    // a blind retry. The run is keyed, so a repeat cannot double-charge.
+    return {
+      runId: null,
+      settling: false,
+      message: null,
+      error: 'Lost the connection while paying. Reload and check your payment history before trying again.',
+    };
+  }
+
+  let body: {
+    runId?: string;
+    settling?: boolean;
+    message?: string;
+    error?: string;
+  } = {};
+  try { body = (await res.json()) as typeof body; } catch { body = {}; }
+
+  if (!res.ok) {
+    return { runId: body.runId ?? null, settling: false, message: null, error: body.error ?? 'Could not take that payment.' };
+  }
+  return {
+    runId: body.runId ?? null,
+    settling: Boolean(body.settling),
+    message: body.message ?? null,
+    error: null,
+  };
+}
+
 /* ─────────────────────────────────────────────────────────────
    Shopify-initiated installs
 
