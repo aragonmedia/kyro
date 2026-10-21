@@ -431,25 +431,69 @@ export interface StripeReturn {
 }
 
 /**
+ * Where a Checkout session id waits between arriving and being confirmed.
+ *
+ * Reading the URL destroys it, and the confirm needs a brand id that may not
+ * have loaded yet. Anything that remounts the dashboard in that gap - auth
+ * settling, a refresh, a stray re-render - would otherwise lose the session
+ * forever, and the brand is left looking at a page that says their card did
+ * not save when Stripe has it.
+ *
+ * sessionStorage rather than localStorage: this is one return trip in one tab,
+ * and it should not outlive the tab.
+ */
+const STRIPE_RETURN_KEY = 'kyro.stripeReturn';
+
+function parkReturn(value: StripeReturn): void {
+  try { sessionStorage.setItem(STRIPE_RETURN_KEY, JSON.stringify(value)); } catch { /* private window */ }
+}
+
+/** Called once the session has been confirmed, or has definitively failed. */
+export function clearStripeReturn(): void {
+  try { sessionStorage.removeItem(STRIPE_RETURN_KEY); } catch { /* private window */ }
+}
+
+function parkedReturn(): StripeReturn | null {
+  try {
+    const raw = sessionStorage.getItem(STRIPE_RETURN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StripeReturn;
+    if (parsed?.kind !== 'method' && parsed?.kind !== 'payouts' && parsed?.kind !== 'payouts-retry') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Read a Stripe return off the URL and strip it from the address bar, so a
  * refresh does not replay a stale confirmation.
+ *
+ * The value is parked before the URL is stripped, and survives there until
+ * something confirms it. Calling this again after the URL is gone returns the
+ * parked value rather than nothing.
  */
 export function takeStripeReturn(): StripeReturn | null {
   if (typeof window === 'undefined') return null;
 
   const params = new URLSearchParams(window.location.search);
   const stripe = params.get('stripe');
-  if (stripe !== 'method' && stripe !== 'payouts' && stripe !== 'payouts-retry') return null;
+  if (stripe !== 'method' && stripe !== 'payouts' && stripe !== 'payouts-retry') {
+    return parkedReturn();
+  }
 
   const session = params.get('session');
+  // Only Stripe issues cs_ ids. Anything else in that slot is a stale or
+  // tampered link, and is dropped rather than sent on to the server.
+  const value: StripeReturn = { kind: stripe, session: session?.startsWith('cs_') ? session : null };
+  parkReturn(value);
+
   params.delete('stripe');
   params.delete('session');
   const rest = params.toString();
   window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
 
-  // Only Stripe issues cs_ ids. Anything else in that slot is a stale or
-  // tampered link, and is dropped rather than sent on to the server.
-  return { kind: stripe, session: session?.startsWith('cs_') ? session : null };
+  return value;
 }
 
 /**

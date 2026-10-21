@@ -60,7 +60,7 @@ import { uploadSubmissionVideo, uploadCampaignCover, uploadBrandLogo } from './l
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { HELP_MD } from './lib/help';
-import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, takeShopifyInstall, claimShopifyInstall, takePendingShop, peekPendingShop, takeStripeReturn, confirmStripeMethod, type ConnectOutcome, type StripeReturn } from './lib/platform';
+import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, takeShopifyInstall, claimShopifyInstall, takePendingShop, peekPendingShop, takeStripeReturn, clearStripeReturn, confirmStripeMethod, type ConnectOutcome, type StripeReturn } from './lib/platform';
 import { EarningsCard } from './components/EarningsCard';
 import { AffiliateOrdersCard, AffiliateOrdersPage } from './components/AffiliateOrders';
 import { CoverImage, VideoTile } from './components/MediaTile';
@@ -2146,6 +2146,7 @@ function BrandDashboard({
     if (stripeReturn?.kind !== 'method' || !brandId) return;
     const session = stripeReturn.session;
     if (!session) {
+      clearStripeReturn();
       setMethodNotice({
         ok: false,
         message: 'Stripe did not say which setup that was. Nothing was charged, so start the payment method again.',
@@ -2161,7 +2162,12 @@ function BrandDashboard({
           ? { ok: true, message: 'Your payment method is on file. Nothing is charged until an order clears its return window.' }
           : { ok: false, message: res.error ?? 'Could not confirm your payment method.' }
       );
-      if (res.saved) void loadGates();
+      if (res.saved) {
+        clearStripeReturn();
+        void loadGates();
+      }
+      // A failure keeps the parked session, so a reload retries rather than
+      // telling the brand to start again when Stripe already has their card.
     })();
     return () => { live = false; };
   }, [stripeReturn, brandId, loadGates]);
