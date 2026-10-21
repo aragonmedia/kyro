@@ -527,14 +527,18 @@ export async function confirmStripeMethod(
     return { saved: false, error: 'Could not reach KYRO. Check your connection and try again.' };
   }
 
-  let body: { saved?: boolean; error?: string } = {};
+  let body: StripeFailure & { saved?: boolean } = {};
   try { body = (await res.json()) as typeof body; } catch { body = {}; }
 
-  if (!res.ok) return { saved: false, error: body.error ?? 'Could not confirm your payment method.' };
+  if (!res.ok) {
+    return { saved: false, error: stripeFailure(body, 'Could not confirm your payment method.') };
+  }
   if (!body.saved) {
     // Checkout can return before Stripe has attached the method. Nothing is
-    // broken and nothing was charged, so say so plainly and let them retry.
-    return { saved: false, error: 'Stripe has not finished that setup yet. Give it a moment and try again.' };
+    // broken and nothing was charged, so say so plainly and let them retry,
+    // with what the session actually looked like when we asked.
+    const base = 'Stripe has not finished that setup yet. Give it a moment and try again.';
+    return { saved: false, error: body.detail ? `${base} (${body.detail})` : base };
   }
   return { saved: true, error: null };
 }

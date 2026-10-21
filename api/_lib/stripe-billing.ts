@@ -179,6 +179,33 @@ export async function readSavedMethod(sessionId: string): Promise<SavedMethod | 
   };
 }
 
+/**
+ * Why a completed Checkout session yielded no payment method.
+ *
+ * Read without the expand, so it reports the raw shape. The three answers are
+ * different problems: the brand has not finished the form, Stripe has not
+ * attached the method yet, or the expand is not doing what this code assumes.
+ * Guessing between them has already cost a day.
+ */
+export async function describeEmptySession(sessionId: string): Promise<string> {
+  try {
+    const session = await request<{ status?: string; setup_intent?: unknown; mode?: string }>(
+      `/checkout/sessions/${encodeURIComponent(sessionId)}`,
+      'GET'
+    );
+    const intent = session.setup_intent;
+    const shape =
+      intent === null || intent === undefined
+        ? 'no setup intent on the session'
+        : typeof intent === 'string'
+          ? `setup intent ${intent} present but not expanded`
+          : 'setup intent expanded but carried no payment method';
+    return `session status ${session.status ?? 'unknown'}, mode ${session.mode ?? 'unknown'}, ${shape}`;
+  } catch (e) {
+    return e instanceof StripeError ? `could not re-read the session: ${e.message}` : 'could not re-read the session';
+  }
+}
+
 /* ─────────────────────────────────────────────────────────────
    Charging a payment run
 

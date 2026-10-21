@@ -29,7 +29,7 @@ import {
   type StripeAccountV2,
 } from '../_lib/stripe.js';
 import brandSetup from '../_lib/stripe-brand-setup.js';
-import { chargeRun, fetchCharge, readSavedMethod } from '../_lib/stripe-billing.js';
+import { chargeRun, describeEmptySession, fetchCharge, readSavedMethod } from '../_lib/stripe-billing.js';
 import { payOutRun } from '../_lib/payment-run.js';
 import { methodOf, processingCents } from '../../shared/processing.js';
 
@@ -157,7 +157,13 @@ async function brandMethod(req: VercelRequest, res: VercelResponse) {
   try {
     const saved = await readSavedMethod(sessionId);
     if (!saved) {
-      return res.status(200).json({ saved: false });
+      // Stripe answered, but the session carried no payment method. Say which
+      // part was missing rather than a bare false: the difference between a
+      // session that is not complete yet and one whose setup intent never
+      // expanded is the difference between waiting and a bug.
+      const why = await describeEmptySession(sessionId);
+      console.error('[kyro] checkout session had no payment method', sessionId, why);
+      return res.status(200).json({ saved: false, detail: why });
     }
 
     const update: Record<string, unknown> = {
@@ -186,7 +192,11 @@ async function brandMethod(req: VercelRequest, res: VercelResponse) {
   } catch (e) {
     if (e instanceof StripeError) {
       console.error('[kyro] stripe method read failed', e.code, e.message);
-      return res.status(502).json({ error: 'Could not confirm that with Stripe. Try again shortly.' });
+      return res.status(502).json({
+        error: 'Could not confirm that with Stripe. Try again shortly.',
+        code: e.code ?? null,
+        detail: e.message,
+      });
     }
     console.error('[kyro] stripe/method failed', e);
     return res.status(500).json({ error: 'Could not record your payment method.' });
