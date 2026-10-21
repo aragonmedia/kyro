@@ -20,6 +20,28 @@ export interface InstallStart {
   error: string | null;
 }
 
+/** What a KYRO endpoint sends back when Stripe refused the call. */
+export interface StripeFailure {
+  error?: string;
+  code?: string | null;
+  detail?: string | null;
+}
+
+/**
+ * One sentence a person can act on, plus what Stripe actually said.
+ *
+ * The code and message are Stripe's own and name the failing parameter or
+ * condition. Neither carries account or key material, and without them the
+ * only record is a Vercel runtime log that Hobby discards after an hour,
+ * which is how a wrong guess costs a whole round trip.
+ */
+function stripeFailure(body: StripeFailure, fallback: string): string {
+  const base = body.error ?? fallback;
+  const code = body.code ? ` (${body.code})` : '';
+  const detail = body.detail ? ` ${body.detail}` : '';
+  return `${base}${code}${detail}`;
+}
+
 /**
  * Ask KYRO for the Shopify authorize URL for this brand and store.
  *
@@ -382,7 +404,7 @@ export async function startStripeSetup(
     return { url: null, error: 'Could not reach KYRO. Check your connection and try again.' };
   }
 
-  let body: { url?: string; error?: string; code?: string | null } = {};
+  let body: { url?: string; error?: string; code?: string | null; detail?: string | null } = {};
   try {
     body = (await res.json()) as typeof body;
   } catch {
@@ -390,10 +412,7 @@ export async function startStripeSetup(
   }
 
   if (!res.ok || !body.url) {
-    // Stripe's own code in brackets when there is one, for the same reason as
-    // the creator side: it names the failing call without needing the logs.
-    const base = body.error ?? 'Could not start the setup.';
-    return { url: null, error: body.code ? `${base} (${body.code})` : base };
+    return { url: null, error: stripeFailure(body, 'Could not start the setup.') };
   }
   return { url: body.url, error: null };
 }
@@ -717,13 +736,9 @@ export async function startCreatorPayouts(): Promise<{ url: string | null; error
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: '{}',
     });
-    const body = (await res.json()) as { url?: string; error?: string; code?: string | null };
+    const body = (await res.json()) as StripeFailure & { url?: string };
     if (!res.ok || !body.url) {
-      // Stripe's own code, shown in brackets when there is one. It means
-      // nothing to a creator, but it is the first thing anyone debugging this
-      // asks for, and it saves a trip to logs that expire after an hour.
-      const base = body.error ?? 'Could not start payout setup.';
-      return { url: null, error: body.code ? `${base} (${body.code})` : base };
+      return { url: null, error: stripeFailure(body, 'Could not start payout setup.') };
     }
     return { url: body.url, error: null };
   } catch {

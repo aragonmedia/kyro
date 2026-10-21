@@ -493,6 +493,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(502).json({
         error: 'Stripe could not complete that right now. Try again shortly.',
         code: e.code ?? null,
+        detail: e.message,
       });
     }
     console.error('[kyro] stripe route failed', e);

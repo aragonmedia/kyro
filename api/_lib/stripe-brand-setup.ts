@@ -105,6 +105,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(502).json({
       error: 'Stripe could not start setup right now. Try again shortly.',
       code: e instanceof StripeError ? e.code ?? null : null,
+      // Stripe's own sentence. For a rejected parameter it names the
+      // parameter, which is the one fact that ends the guessing, and it
+      // carries no account or key material.
+      detail: e instanceof StripeError ? e.message : null,
     });
   }
 }
