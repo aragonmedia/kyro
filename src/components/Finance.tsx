@@ -12,9 +12,10 @@
  *   · Nothing multiplies a total by a fee rate. `platform_fee_cents` is
  *     written per earning when the order lands, so changing the fee rule
  *     later cannot retroactively rewrite what a brand was charged.
- *   · Authorising a run does not move money. It records an authorised amount
- *     and marks those earnings paid; settlement is operational until a
- *     processor is connected. The UI says so rather than implying a charge.
+ *   · Paying charges the brand and transfers each creator their share, in one
+ *     request. A card settles immediately; a bank debit is charged now and
+ *     pays creators once it clears. The UI says which, rather than implying
+ *     money has already arrived.
  *
  * A brand with nothing yet gets next steps instead of four zeros, because
  * four zeros is a dead end and the actual answer is "you have not launched a
@@ -286,6 +287,15 @@ export function BrandFinance({
 
         <div className="p-5 space-y-4">
           <div className="space-y-2">
+            {/* The sales figure is shown because the fee is a percentage of
+                it. Without it the only two numbers on screen are the fee and
+                the commission, and dividing one by the other gives roughly
+                6.6% on a 15% campaign. A brand checking what it pays should
+                not have to reverse-engineer the base. */}
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted">Attributed sales</span>
+              <span className="text-body tabular-nums">{money(balance.dueSalesCents)}</span>
+            </div>
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-muted">Creator commission</span>
               <span className="text-heading tabular-nums">{money(balance.dueCommissionCents)}</span>
@@ -379,11 +389,13 @@ export function BrandFinance({
             {dueTotal === 0 ? 'Nothing due' : `Pay ${money(dueTotal)}`}
           </button>
 
-          {/* Say what the button does, precisely. */}
+          {/* Say what the button does, precisely. It now charges, so the old
+              wording about settlement waiting on a processor is no longer
+              true and would read as a get-out clause. */}
           <p className="text-xs text-faint leading-relaxed">
-            Authorising records the amount and releases those orders to your creators. KYRO debits
-            the account on file and pays them out. Card payments arrive when the processor is
-            connected.
+            Paying charges the method on file and sends each creator their share. A card reaches
+            them the same day. A bank debit is charged now and reaches them once it clears, usually
+            within a few business days.
           </p>
         </div>
       </div>

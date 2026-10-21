@@ -3000,6 +3000,14 @@ export interface BrandBalance {
   /** Cleared and payable now. */
   dueCommissionCents: Cents;
   dueFeeCents: Cents;
+  /**
+   * The sales those orders represent, which is the base the KYRO fee is
+   * charged on: product subtotal after discounts, excluding shipping, tax and
+   * duties, net of refunds. Shown so a brand can check the 1% themselves
+   * rather than dividing the fee by the commission and getting a number six
+   * times too big.
+   */
+  dueSalesCents: Cents;
   dueOrders: number;
   dueCreators: number;
   /** Fulfilled but still inside the clearing window. */
@@ -3011,15 +3019,16 @@ export interface BrandBalance {
   /** Everything already paid out, all time. */
   paidCommissionCents: Cents;
   paidFeeCents: Cents;
+  paidSalesCents: Cents;
   /** Soonest clearing earning, so the page can say when more is due. */
   nextDueAt: string | null;
 }
 
 const emptyBalance = (): BrandBalance => ({
-  dueCommissionCents: 0, dueFeeCents: 0, dueOrders: 0, dueCreators: 0,
+  dueCommissionCents: 0, dueFeeCents: 0, dueSalesCents: 0, dueOrders: 0, dueCreators: 0,
   clearingCommissionCents: 0, clearingOrders: 0,
   pendingCommissionCents: 0, pendingOrders: 0,
-  paidCommissionCents: 0, paidFeeCents: 0,
+  paidCommissionCents: 0, paidFeeCents: 0, paidSalesCents: 0,
   nextDueAt: null,
 });
 
@@ -3029,7 +3038,7 @@ export async function getBrandBalance(brandId: string): Promise<Result<BrandBala
   try {
     const { data, error } = await sb
       .from('earnings')
-      .select('commission_cents, platform_fee_cents, state, available_at, creator_id')
+      .select('commission_cents, platform_fee_cents, commissionable_cents, state, available_at, creator_id')
       .eq('brand_id', brandId)
       .neq('state', 'reversed');
 
@@ -3042,6 +3051,7 @@ export async function getBrandBalance(brandId: string): Promise<Result<BrandBala
     for (const r of (data ?? []) as Array<{
       commission_cents: number;
       platform_fee_cents: number;
+      commissionable_cents: number | null;
       state: string;
       available_at: string | null;
       creator_id: string | null;
@@ -3049,6 +3059,7 @@ export async function getBrandBalance(brandId: string): Promise<Result<BrandBala
       if (r.state === 'available') {
         out.dueCommissionCents += r.commission_cents;
         out.dueFeeCents += r.platform_fee_cents;
+        out.dueSalesCents += r.commissionable_cents ?? 0;
         out.dueOrders += 1;
         if (r.creator_id) dueCreators.add(r.creator_id);
       } else if (r.state === 'clearing') {
@@ -3065,6 +3076,7 @@ export async function getBrandBalance(brandId: string): Promise<Result<BrandBala
       } else if (r.state === 'paid') {
         out.paidCommissionCents += r.commission_cents;
         out.paidFeeCents += r.platform_fee_cents;
+        out.paidSalesCents += r.commissionable_cents ?? 0;
       }
     }
 
