@@ -104,9 +104,13 @@ export async function createCustomer(
 /**
  * A Stripe-hosted page for entering a payment method.
  *
- * `mode: 'setup'` stores a method without charging, and `usage: off_session`
- * matters: the brand will not be present when a payment run is charged, so the
- * mandate has to permit charging without them.
+ * `mode: 'setup'` stores a method without charging. The mandate has to permit
+ * charging while the brand is away, since nobody is watching when a payment
+ * run goes through, and that is what `usage: off_session` means. It is not
+ * passed here because it is already the default on a SetupIntent, and because
+ * `setup_intent_data` has no `usage` child to pass it to: its children are
+ * description, metadata and on_behalf_of. Sending it was simply wrong, at
+ * every API version, which is why brand setup never once worked.
  *
  * `allowed_payment_method_types`, not `payment_method_types`. The latter was
  * removed in 2026-09-30.endive and now returns a 400. The new one also behaves
@@ -122,7 +126,6 @@ export async function createSetupCheckout(
     mode: 'setup',
     customer: customerId,
     allowed_payment_method_types: [method === 'ach' ? 'us_bank_account' : 'card'],
-    'setup_intent_data[usage]': 'off_session',
     success_url: successUrl,
     cancel_url: cancelUrl,
   });
