@@ -111,10 +111,20 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
                   : 'KYRO pays creators through Stripe. You enter your bank details on Stripe, never here.'}
             </p>
 
+            {/* Once Stripe says transfers are active, anything still listed is
+                something it will want later, not something holding the money
+                up. Saying "continue setup to finish" under "Stripe has
+                everything it needs" is two contradictory sentences, and the
+                creator cannot tell which one to believe. */}
             {payout?.requirementsDue?.length ? (
               <p className="text-xs text-faint mt-2">
-                Still outstanding: {payout.requirementsDue.length}{' '}
-                {payout.requirementsDue.length === 1 ? 'item' : 'items'}. Continue setup to finish.
+                {payoutsReady
+                  ? `Nothing is holding up your payouts. Stripe may ask for ${payout.requirementsDue.length} more ${
+                      payout.requirementsDue.length === 1 ? 'detail' : 'details'
+                    } later, and will email you if so.`
+                  : `Still outstanding: ${payout.requirementsDue.length} ${
+                      payout.requirementsDue.length === 1 ? 'item' : 'items'
+                    }. Continue setup to finish.`}
               </p>
             ) : null}
 
