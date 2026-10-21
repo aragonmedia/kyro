@@ -586,6 +586,32 @@ export async function confirmStripeMethod(
   return { saved: true, error: null };
 }
 
+/**
+ * A one-time link into the creator's own Stripe dashboard.
+ *
+ * Where they change the bank account their money lands in, and see what
+ * Stripe has paid out. KYRO never holds those details, which is the point.
+ */
+export async function openCreatorDashboard(): Promise<{ url: string | null; error: string | null }> {
+  const token = await creatorToken();
+  if (!token) return { url: null, error: 'Your session has expired. Sign in again and retry.' };
+
+  try {
+    const res = await fetch('/api/stripe/dashboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    });
+    const body = (await res.json()) as StripeFailure & { url?: string };
+    if (!res.ok || !body.url) {
+      return { url: null, error: stripeFailure(body, 'Could not open your Stripe dashboard.') };
+    }
+    return { url: body.url, error: null };
+  } catch {
+    return { url: null, error: 'Could not reach KYRO. Check your connection and try again.' };
+  }
+}
+
 export interface PaymentRunResult {
   runId: string | null;
   /** True when the money is on its way but has not reached creators yet. */

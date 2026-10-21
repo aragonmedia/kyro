@@ -29,7 +29,7 @@ import {
   type StripeAccountV2,
 } from '../_lib/stripe.js';
 import brandSetup from '../_lib/stripe-brand-setup.js';
-import { chargeRun, describeEmptySession, fetchCharge, readSavedMethod } from '../_lib/stripe-billing.js';
+import { chargeRun, createLoginLink, describeEmptySession, fetchCharge, readSavedMethod } from '../_lib/stripe-billing.js';
 import { payOutRun } from '../_lib/payment-run.js';
 import { methodOf, processingCents } from '../../shared/processing.js';
 
@@ -440,7 +440,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (action === 'pay') return brandPay(req, res);
   if (action === 'settle') return settleRuns(req, res);
 
-  if (action !== 'connect' && action !== 'status') {
+  if (action !== 'connect' && action !== 'status' && action !== 'dashboard') {
     return res.status(404).json({ error: 'Not found.' });
   }
 
@@ -451,6 +451,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(who.status ?? 400).json({ error: who.error });
     }
     const creator = who.creator;
+
+    // A creator managing their own payout account. Stripe hosts it; the bank
+    // details are theirs and Stripe's, and never pass through KYRO.
+    if (action === 'dashboard') {
+      if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        return res.status(405).json({ error: 'Method not allowed.' });
+      }
+      if (!creator.stripe_account_id) {
+        return res.status(400).json({ error: 'Set up payouts with Stripe first.' });
+      }
+      const link = await createLoginLink(creator.stripe_account_id);
+      return res.status(200).json({ url: link.url });
+    }
 
     if (action === 'status') {
       if (req.method !== 'GET') {

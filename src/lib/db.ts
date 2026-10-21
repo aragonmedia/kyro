@@ -2100,6 +2100,60 @@ export interface PayoutRow {
   periodEnd: string | null;
   createdAt: string;
   completedAt: string | null;
+  /** Why a transfer has not gone out, when something is holding it. */
+  note?: string | null;
+}
+
+/**
+ * Every transfer KYRO has actually sent this creator.
+ *
+ * Read from payment_run_payouts, which is the record of money that moved,
+ * rather than the legacy `payouts` table that nothing writes to any more. A
+ * creator looking at an empty history the day after being paid has every
+ * reason to think the product lost their money.
+ *
+ * `skipped` rows are shown too, and deliberately: that is a share the brand
+ * has already paid for, held because the creator had not finished Stripe
+ * onboarding. Hiding it would hide money that is owed to them.
+ */
+export async function listCreatorTransfers(creatorId: string): Promise<Result<PayoutRow[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('payment_run_payouts')
+      .select('id, amount_cents, status, stripe_transfer_id, created_at, paid_at, failure_reason')
+      .eq('creator_id', creatorId)
+      .order('created_at', { ascending: false });
+
+    if (error) return fail([], describeError(error, 'Could not load your payouts.'));
+
+    return ok(
+      (data ?? []).map((r) => {
+        const row = r as {
+          id: string;
+          amount_cents: number;
+          status: string;
+          stripe_transfer_id: string | null;
+          created_at: string;
+          paid_at: string | null;
+          failure_reason: string | null;
+        };
+        return {
+          id: row.id,
+          amountCents: row.amount_cents,
+          status: row.status,
+          periodStart: null,
+          periodEnd: null,
+          createdAt: row.created_at,
+          completedAt: row.paid_at,
+          note: row.failure_reason,
+        };
+      })
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load your payouts.'));
+  }
 }
 
 export async function listPayouts(creatorId: string): Promise<Result<PayoutRow[]>> {

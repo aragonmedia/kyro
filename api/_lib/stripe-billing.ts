@@ -180,6 +180,25 @@ export async function readSavedMethod(sessionId: string): Promise<SavedMethod | 
 }
 
 /**
+ * A one-time link into a creator's own Express dashboard.
+ *
+ * This is where a creator changes the bank account their money lands in,
+ * sees what Stripe has paid out and what is on the way, and downloads their
+ * records. KYRO deliberately owns none of that: the bank details are Stripe's
+ * to hold, and a creator changing them should never pass through here.
+ *
+ * Single use, and in a sandbox it is the only way in, since the public Express
+ * login only works for live accounts. Mint one per click and send them
+ * straight there rather than storing it.
+ */
+export async function createLoginLink(accountId: string): Promise<{ url: string }> {
+  return request<{ url: string }>(
+    `/accounts/${encodeURIComponent(accountId)}/login_links`,
+    'POST'
+  );
+}
+
+/**
  * Why a completed Checkout session yielded no payment method.
  *
  * Read without the expand, so it reports the raw shape. The three answers are

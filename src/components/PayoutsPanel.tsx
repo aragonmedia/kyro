@@ -11,8 +11,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowUpRight, CheckCircle2, ExternalLink, RefreshCw, Wallet } from 'lucide-react';
-import { getCreatorEarnings, listPayouts, type PayoutRow } from '../lib/db';
-import { fetchPayoutStatus, startCreatorPayouts, type CreatorPayoutStatus } from '../lib/platform';
+import { getCreatorEarnings, listCreatorTransfers, type PayoutRow } from '../lib/db';
+import { fetchPayoutStatus, openCreatorDashboard, startCreatorPayouts, type CreatorPayoutStatus } from '../lib/platform';
 import { useSession } from '../lib/session';
 
 const money = (cents: number) =>
@@ -28,8 +28,10 @@ const STATUS_TONE: Record<string, string> = {
   failed: 'border-pink-400/30 bg-pink-400/10 text-pink-300',
 };
 
-/** The minimum KYRO will send. Below this the transfer fee eats the payout. */
-const MIN_WITHDRAW_CENTS = 2500;
+/* There was a minimum here, from when a creator pulled their own money. A
+   payment run pays whatever a brand owes, however small, so a floor would
+   strand the remainder rather than save anyone a fee. Stripe charges nothing
+   per transfer on this model. */
 
 export function PayoutsPanel({ creatorId }: { creatorId: string }) {
   const session = useSession();
@@ -41,12 +43,13 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
   const [payout, setPayout] = useState<CreatorPayoutStatus | null>(null);
   const [starting, setStarting] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     const [earn, pay, status] = await Promise.all([
       getCreatorEarnings(creatorId, 90),
-      listPayouts(creatorId),
+      listCreatorTransfers(creatorId),
       fetchPayoutStatus(),
     ]);
     setAvailable(earn.data.availableCents);
@@ -71,20 +74,31 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
     void load();
   }, [load]);
 
+  const openDashboard = async () => {
+    setOpening(true);
+    setSetupError(null);
+    const res = await openCreatorDashboard();
+    setOpening(false);
+    if (res.url) {
+      window.location.assign(res.url);
+      return;
+    }
+    setSetupError(res.error);
+  };
+
   // Stripe decides whether this person can be paid, not KYRO. Anything stored
   // on our side is a copy of their answer and goes stale.
   const payoutsReady = Boolean(payout?.payoutsEnabled);
   const taxDone = creator?.taxFormStatus === 'complete';
-  const enough = available >= MIN_WITHDRAW_CENTS;
-  const canWithdraw = payoutsReady && taxDone && enough;
 
+  // What is holding up the money, said once. Tax first because KYRO will not
+  // send a transfer without it; Stripe readiness before that because nothing
+  // can move at all until onboarding is done.
   const blocker = !payoutsReady
     ? 'Set up payouts with Stripe first.'
     : !taxDone
       ? 'Your tax info has to be on file before KYRO can release a payout.'
-      : !enough
-        ? `You need at least ${money(MIN_WITHDRAW_CENTS)} available to withdraw.`
-        : null;
+      : null;
 
   return (
     <div className="space-y-6">
@@ -145,35 +159,49 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
         </div>
       </div>
 
-      {/* Withdraw */}
+      {/* Earned and waiting.
+
+          Not "available to withdraw". A creator cannot pull this money: it
+          moves when the brand pays their run, and KYRO sends it to Stripe in
+          that same moment. The old Withdraw button promised an action that
+          did not exist and was wired to nothing, which is worse than no
+          button at all. What a creator actually wants from here is their own
+          Stripe dashboard, to change where the money lands. */}
       <div className="bg-surface border border-line rounded-2xl p-5 md:p-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <Wallet size={16} className="text-body" />
-              <p className="text-sm font-semibold text-muted">Available to withdraw</p>
+              <p className="text-sm font-semibold text-muted">Earned, waiting on the brand</p>
             </div>
             <p className="text-4xl font-bold text-heading mt-1">
               {loading ? '—' : money(available)}
             </p>
-            {payoutsReady && (
-              <p className="text-xs text-faint mt-1">To your Stripe payout account</p>
-            )}
+            <p className="text-xs text-faint mt-1">
+              {payoutsReady
+                ? 'Cleared orders. KYRO sends this to Stripe the moment the brand pays, and Stripe moves it to your bank.'
+                : 'Cleared orders, ready to be sent once your payout account is set up.'}
+            </p>
           </div>
 
-          <div className="space-y-1.5">
-            <button
-              type="button"
-              disabled={!canWithdraw}
-              title={blocker ?? undefined}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ArrowUpRight size={16} />
-              Withdraw
-            </button>
-            {blocker && <p className="text-xs text-faint max-w-[16rem]">{blocker}</p>}
-          </div>
+          {payoutsReady && (
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => void openDashboard()}
+                disabled={opening}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {opening ? <RefreshCw size={16} className="animate-spin" /> : <ArrowUpRight size={16} />}
+                Manage on Stripe
+              </button>
+              <p className="text-xs text-faint max-w-[16rem]">
+                Change your bank account, and see what Stripe has paid you.
+              </p>
+            </div>
+          )}
         </div>
+        {blocker && <p className="text-xs text-faint mt-3">{blocker}</p>}
       </div>
 
       {/* History */}
@@ -199,7 +227,7 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
             <Wallet size={28} className="mx-auto text-faint mb-3" />
             <p className="text-sm text-muted">No payouts yet.</p>
             <p className="text-xs text-faint mt-1">
-              Once you withdraw, every transfer shows up here with its period and status.
+              Every transfer KYRO sends you shows up here the moment a brand pays for your orders.
             </p>
           </div>
         )}
