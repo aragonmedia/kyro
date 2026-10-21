@@ -714,8 +714,14 @@ export async function startCreatorPayouts(): Promise<{ url: string | null; error
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: '{}',
     });
-    const body = (await res.json()) as { url?: string; error?: string };
-    if (!res.ok || !body.url) return { url: null, error: body.error ?? 'Could not start payout setup.' };
+    const body = (await res.json()) as { url?: string; error?: string; code?: string | null };
+    if (!res.ok || !body.url) {
+      // Stripe's own code, shown in brackets when there is one. It means
+      // nothing to a creator, but it is the first thing anyone debugging this
+      // asks for, and it saves a trip to logs that expire after an hour.
+      const base = body.error ?? 'Could not start payout setup.';
+      return { url: null, error: body.code ? `${base} (${body.code})` : base };
+    }
     return { url: body.url, error: null };
   } catch {
     return { url: null, error: 'Could not reach KYRO. Check your connection and try again.' };

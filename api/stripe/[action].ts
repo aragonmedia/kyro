@@ -487,7 +487,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (e) {
     if (e instanceof StripeError) {
       console.error('[kyro] stripe error', e.code, e.message);
-      return res.status(502).json({ error: 'Stripe could not complete that right now. Try again shortly.' });
+      // The code travels with the message. A creator cannot act on it, but it
+      // is the difference between "try again shortly" sending us to the logs
+      // and telling us which call broke, and Hobby keeps logs for an hour.
+      return res.status(502).json({
+        error: 'Stripe could not complete that right now. Try again shortly.',
+        code: e.code ?? null,
+      });
     }
     console.error('[kyro] stripe route failed', e);
     return res.status(500).json({ error: 'Something went wrong setting up payouts.' });

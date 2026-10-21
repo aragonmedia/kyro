@@ -176,10 +176,13 @@ export async function fetchAccount(accountId: string): Promise<StripeAccountV2> 
 /**
  * A one-time link into Stripe's hosted flow.
  *
- * `configurations` is not optional in practice: without it Stripe answers
- * configs_must_match_to_use_account_links. `account_onboarding` collects for
- * the first time; `account_update` is for a creator coming back to fix or
- * change something once they are already set up.
+ * No `configurations` here. Earlier API versions required it and refused the
+ * call without it; the 2026-09-30.endive release removed the parameter and now
+ * refuses the call *with* it, working out which configurations need onboarding
+ * on its own. Sending it is what made every payout setup fail.
+ *
+ * `account_onboarding` collects for the first time; `account_update` is for a
+ * creator coming back to fix or change something once they are set up.
  *
  * These expire in ten minutes and are single use, so KYRO mints one per click
  * rather than storing it.
@@ -195,7 +198,6 @@ export async function createAccountLink(
     use_case: {
       type: mode,
       [mode]: {
-        configurations: ['recipient'],
         return_url: returnUrl,
         refresh_url: refreshUrl,
       },
