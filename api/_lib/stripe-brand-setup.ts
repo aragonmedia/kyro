@@ -19,6 +19,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { serviceClient } from './supabase.js';
 import { appOrigin } from './env.js';
 import { createCustomer, createSetupCheckout } from './stripe-billing.js';
+import { StripeError } from './stripe.js';
 
 type Method = 'ach' | 'card';
 
@@ -98,6 +99,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ url: session.url });
   } catch (e) {
     console.error('[kyro] stripe/setup failed', e);
-    return res.status(502).json({ error: 'Stripe could not start setup right now. Try again shortly.' });
+    // The code goes back with the message, as it does on the creator side. A
+    // brand cannot act on it, but it names the failing call without a trip to
+    // logs that Vercel drops after an hour.
+    return res.status(502).json({
+      error: 'Stripe could not start setup right now. Try again shortly.',
+      code: e instanceof StripeError ? e.code ?? null : null,
+    });
   }
 }

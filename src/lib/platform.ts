@@ -382,7 +382,7 @@ export async function startStripeSetup(
     return { url: null, error: 'Could not reach KYRO. Check your connection and try again.' };
   }
 
-  let body: { url?: string; error?: string } = {};
+  let body: { url?: string; error?: string; code?: string | null } = {};
   try {
     body = (await res.json()) as typeof body;
   } catch {
@@ -390,7 +390,10 @@ export async function startStripeSetup(
   }
 
   if (!res.ok || !body.url) {
-    return { url: null, error: body.error ?? 'Could not start the setup.' };
+    // Stripe's own code in brackets when there is one, for the same reason as
+    // the creator side: it names the failing call without needing the logs.
+    const base = body.error ?? 'Could not start the setup.';
+    return { url: null, error: body.code ? `${base} (${body.code})` : base };
   }
   return { url: body.url, error: null };
 }

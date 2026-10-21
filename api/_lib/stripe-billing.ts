@@ -44,11 +44,17 @@ async function request<T>(
   params?: Record<string, unknown>,
   idempotencyKey?: string
 ): Promise<T> {
-  const { secretKey } = stripeConfig();
+  const { secretKey, apiVersion } = stripeConfig();
   const body = method === 'POST' && params ? encode(params).join('&') : undefined;
   const query = method === 'GET' && params ? `?${encode(params).join('&')}` : '';
 
-  const headers: Record<string, string> = { Authorization: `Bearer ${secretKey}` };
+  // Pinned, like the v2 client. Without this header v1 follows whatever
+  // version the Stripe account happens to default to, which means a dashboard
+  // setting nobody here can see decides whether this code works.
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${secretKey}`,
+    'Stripe-Version': apiVersion,
+  };
   if (body) headers['Content-Type'] = 'application/x-www-form-urlencoded';
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
 
@@ -101,6 +107,10 @@ export async function createCustomer(
  * `mode: 'setup'` stores a method without charging, and `usage: off_session`
  * matters: the brand will not be present when a payment run is charged, so the
  * mandate has to permit charging without them.
+ *
+ * `allowed_payment_method_types`, not `payment_method_types`. The latter was
+ * removed in 2026-09-30.endive and now returns a 400. The new one also behaves
+ * better: an incompatible type is filtered out rather than failing the call.
  */
 export async function createSetupCheckout(
   customerId: string,
@@ -111,7 +121,7 @@ export async function createSetupCheckout(
   return request<{ url: string | null }>('/checkout/sessions', 'POST', {
     mode: 'setup',
     customer: customerId,
-    payment_method_types: [method === 'ach' ? 'us_bank_account' : 'card'],
+    allowed_payment_method_types: [method === 'ach' ? 'us_bank_account' : 'card'],
     'setup_intent_data[usage]': 'off_session',
     success_url: successUrl,
     cancel_url: cancelUrl,
@@ -214,7 +224,7 @@ export async function chargeRun(opts: {
       currency: 'usd',
       customer: opts.customerId,
       payment_method: opts.paymentMethodId,
-      payment_method_types: [opts.methodType === 'us_bank_account' ? 'us_bank_account' : 'card'],
+      allowed_payment_method_types: [opts.methodType === 'us_bank_account' ? 'us_bank_account' : 'card'],
       confirm: 'true',
       off_session: 'true',
       description: opts.description,
