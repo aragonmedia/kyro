@@ -1,15 +1,19 @@
 <!--
   DRAFT — NOT YET REVIEWED BY COUNSEL. Do not publish as-is.
   Placeholders filled: Kyvo LLC, itskyro.com, contact@itskyro.com
-  131 Continental Drive, Suite 305, Newark, DE 19713 Delaware August 31, 2026
+  131 Continental Drive, Suite 305, Newark, DE 19713 Delaware October 21, 2026
   Mirrors docs/KYRO_MODEL.md. If you change one, change both.
-  Have counsel review §7 (billing), §9 (license), §11 (termination and remedies)
-  and the overall funds-flow structure before going live with real money.
+  Have counsel review §7 (billing), §8 (KYRO Fee and Processing Cost pass-through),
+  §9 (license), §11 (termination and remedies) and the overall funds-flow structure
+  before going live with real money.
+  2026-10-21: §7 and §8 changed. Processing Cost is now passed through to the Brand
+  rather than absorbed. This is a change to what a Brand pays, so the effective date and
+  CAMPAIGN_AGREEMENT_VERSION moved together and signatures are recorded per version.
 -->
 
 # KYRO — Terms of Service
 
-**Effective date:** August 31, 2026
+**Effective date:** October 21, 2026
 
 These Terms govern your use of KYRO, operated by Kyvo LLC ("KYRO," "we," "us"). By
 creating an account you agree to them. If you are agreeing on behalf of a company, you
@@ -52,6 +56,9 @@ per account unless we agree otherwise in writing.
 - **Creator Commission** — the percentage or amount the Brand sets for a Campaign, applied
   to Commissionable Value (or to ad spend or a flat fee, where the Campaign says so).
 - **KYRO Fee** — 1%, as described in §8.
+- **Processing Cost** — the fee the payment processor charges to take a payment by the
+  method you chose. It is added to the amount charged and paid to the processor in full.
+  KYRO retains no part of it and adds no margin to it.
 
 ---
 
@@ -89,10 +96,13 @@ amounts are settled.
 
 ### 7. Billing and payment authorization
 
-You authorize KYRO to charge amounts you owe to the payment methods on file:
+You authorize KYRO to charge amounts you owe to the payment methods on file. You may pay
+by **bank account (ACH)** or by **payment card**, and you choose which when you add a
+method. The two cost different amounts to process; see §8.
 
-- **Bank account (ACH)** for Creator Commission and KYRO Fees.
-- **Payment card** for the security deposit.
+Payment details are entered on the processor's own pages and are never collected by KYRO.
+KYRO stores only the processor's reference and enough to identify the method to you, such
+as the last four digits.
 
 We will charge when your accrued unbilled balance reaches **30% of your deposit**, or
 **monthly**, whichever comes first. Your accrued balance is visible in your dashboard at
@@ -108,10 +118,23 @@ whether or not you continue the Campaign.
 ### 8. KYRO Fee
 
 KYRO charges **1% of Attributed Sales**. Campaigns pay Creators on sales commission, so
-there is one base and it is never stacked.
+there is one base. The KYRO Fee is the only amount KYRO charges you and the only amount
+KYRO keeps. There is no subscription, no seat fee, no listing fee and no success fee on
+top of it.
 
 **The KYRO Fee is charged to you, not to the Creator.** It is billed alongside Creator
 Commission on the same cycle, and nothing is deducted from what a Creator earns.
+
+**Processing Cost is passed through at cost.** Taking a payment costs money, and the
+amount depends on the method you choose. That cost is added to the amount charged and
+paid to the processor in full. KYRO retains no part of it and adds no margin to it, which
+is why it appears as its own line rather than inside the KYRO Fee.
+
+Paying by bank account costs materially less to process than paying by card. The exact
+amount for your chosen method is shown in your dashboard, itemised, **before** you
+authorize a payment, and it is recorded against the payment afterwards. If the processor
+changes its rates, the change applies to payments made after that date and never
+retroactively to a payment already authorized.
 
 **30-day free trial for Brands that install from the Shopify App Store.** If you first came
 to KYRO by installing it from the Shopify App Store, no KYRO Fee is charged on orders placed

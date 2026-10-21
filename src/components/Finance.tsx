@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { PaymentMethodSheet, type PayMethod } from './PaymentMethod';
 import { payNow } from '../lib/platform';
+import { processingCents } from '../../shared/processing';
 import { useSession } from '../lib/session';
 import {
   getBrandBalance,
@@ -219,7 +220,18 @@ export function BrandFinance({
    */
   const feeOnShopify = sessionBrand?.billingOrigin === 'shopify_app_store';
 
-  const dueTotal = (balance?.dueCommissionCents ?? 0) + (feeOnShopify ? 0 : (balance?.dueFeeCents ?? 0));
+  const dueNet = (balance?.dueCommissionCents ?? 0) + (feeOnShopify ? 0 : (balance?.dueFeeCents ?? 0));
+  /**
+   * The processor's cost on this charge, shown before the brand authorises it.
+   *
+   * Passed through at cost, so KYRO's 1% is 1% whichever method they pick.
+   * Keyed to the method on file rather than the tile they last tapped, because
+   * that is what will actually be charged.
+   */
+  const dueProcessing = paymentMethodType
+    ? processingCents(dueNet, paymentMethodType === 'us_bank_account' ? 'us_bank_account' : 'card')
+    : 0;
+  const dueTotal = dueNet + dueProcessing;
   const nothingEver =
     balance !== null &&
     balance.dueOrders === 0 && balance.clearingOrders === 0 &&
@@ -309,6 +321,17 @@ export function BrandFinance({
               </span>
               <span className={`tabular-nums ${feeOnShopify ? 'text-faint' : 'text-heading'}`}>{money(balance.dueFeeCents)}</span>
             </div>
+            {/* Shown only once a method is on file, because the amount depends
+                on which one. Its own line because KYRO keeps none of it. */}
+            {dueProcessing > 0 && (
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted">
+                  {paymentMethodType === 'us_bank_account' ? 'Bank processing' : 'Card processing'}
+                  <span className="text-faint"> · paid to Stripe, not to KYRO</span>
+                </span>
+                <span className="text-heading tabular-nums">{money(dueProcessing)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3 pt-2 border-t border-line">
               <span className="font-semibold text-heading">{feeOnShopify ? 'Total to pay creators' : 'Total to pay'}</span>
               <span className="text-xl font-bold text-heading tabular-nums">{money(dueTotal)}</span>
@@ -395,7 +418,8 @@ export function BrandFinance({
           <p className="text-xs text-faint leading-relaxed">
             Paying charges the method on file and sends each creator their share. A card reaches
             them the same day. A bank debit is charged now and reaches them once it clears, usually
-            within a few business days.
+            within a few business days. Processing is passed through at what Stripe charges, so
+            paying by bank costs you less.
           </p>
         </div>
       </div>

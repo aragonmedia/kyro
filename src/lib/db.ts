@@ -872,7 +872,7 @@ export interface OnboardingStatus {
 }
 
 /** The Campaign Agreement version a signature is recorded against. */
-export const CAMPAIGN_AGREEMENT_VERSION = '2026-08-31';
+export const CAMPAIGN_AGREEMENT_VERSION = '2026-10-21';
 
 function toConnection(row: {
   id: string;
@@ -1065,16 +1065,22 @@ export async function getBrandUnbilled(brandId: string): Promise<Result<BrandUnb
 
 export async function getLatestAgreement(
   brandId: string,
-  docType = 'campaign_agreement'
+  docType = 'campaign_agreement',
+  version: string = CAMPAIGN_AGREEMENT_VERSION
 ): Promise<Result<string | null>> {
   const sb = client();
   if (!sb) return ok(null);
   try {
+    // Filtered by version, not just doc type. A signature is agreement to the
+    // text that was on screen when it was given, so a brand who signed the
+    // August terms has not agreed to the October ones. Without this filter a
+    // fee change would silently inherit every existing signature.
     const { data, error } = await sb
       .from('agreements')
       .select('signed_at')
       .eq('brand_id', brandId)
       .eq('doc_type', docType)
+      .eq('version', version)
       .order('signed_at', { ascending: false })
       .limit(1)
       .maybeSingle();

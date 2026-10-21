@@ -1403,12 +1403,13 @@ function OnboardingGates({
             <li className="flex gap-2"><span className="text-purple-300">·</span>Creator commission on orders their videos drove</li>
             <li className="flex gap-2"><span className="text-purple-300">·</span>
               <span>
-                Plus KYRO's 1% of attributed sales. Nothing stacked on top
+                Plus KYRO's 1% of attributed sales, and nothing else
                 {session.brand?.feeWaivedUntil && Date.parse(session.brand.feeWaivedUntil) > Date.now() && (
                   <span className="text-emerald-300"> · free for your first 30 days</span>
                 )}
               </span>
             </li>
+            <li className="flex gap-2"><span className="text-purple-300">·</span>Stripe's processing cost, passed through at cost. Bank debits cost a fraction of a card</li>
             <li className="flex gap-2"><span className="text-purple-300">·</span>Charged only after an order clears its return window</li>
           </ul>
           <div className="grid sm:grid-cols-2 gap-2">

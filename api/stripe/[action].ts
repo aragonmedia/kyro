@@ -31,6 +31,7 @@ import {
 import brandSetup from '../_lib/stripe-brand-setup.js';
 import { chargeRun, fetchCharge, readSavedMethod } from '../_lib/stripe-billing.js';
 import { payOutRun } from '../_lib/payment-run.js';
+import { methodOf, processingCents } from '../../shared/processing.js';
 
 type Db = ReturnType<typeof serviceClient>;
 
@@ -256,8 +257,13 @@ async function brandPay(req: VercelRequest, res: VercelResponse) {
     .eq('id', runId as string)
     .single();
 
-  const amount = Number(run?.total_cents ?? 0);
-  if (amount <= 0) {
+  // What KYRO must keep: creator commission plus the KYRO fee. The processor
+  // takes its cut of whatever is run through it, so the charge is grossed up
+  // and that addition is passed to the processor in full.
+  const net = Number(run?.total_cents ?? 0);
+  const processing = processingCents(net, methodOf(methodType));
+  const amount = net + processing;
+  if (net <= 0) {
     await sb.rpc('fail_payment_run', {
       p_run_id: runId as string,
       p_reason: 'The run came to nothing, so no charge was made.',
@@ -287,6 +293,7 @@ async function brandPay(req: VercelRequest, res: VercelResponse) {
     .update({
       stripe_payment_intent_id: charge.id,
       stripe_charge_id: charge.chargeId,
+      processing_fee_cents: processing,
       status: 'processing',
     })
     .eq('id', runId as string);
@@ -310,6 +317,7 @@ async function brandPay(req: VercelRequest, res: VercelResponse) {
       charged: true,
       settling: true,
       amountCents: amount,
+      processingCents: processing,
       message: 'Your bank payment is on its way. Creators are paid as soon as it clears, usually within a few business days.',
     });
   }
@@ -321,6 +329,7 @@ async function brandPay(req: VercelRequest, res: VercelResponse) {
     charged: true,
     settling: !settled,
     amountCents: amount,
+    processingCents: processing,
     paid: payout.paid,
     skipped: payout.skipped,
     pending: payout.pending,

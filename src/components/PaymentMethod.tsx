@@ -29,7 +29,7 @@ const COPY: Record<PayMethod, { title: string; icon: typeof Banknote; lines: str
       'Stripe verifies the account with two small deposits, or instantly if your bank supports it.',
       'Debits take one to three business days to settle.',
     ],
-    cost: 'Cheapest to process, so this is what KYRO recommends.',
+    cost: 'Stripe charges 0.8% to process a bank debit, capped at $5. That is added to your payment and passed to Stripe in full. It is the cheaper of the two, which is why KYRO recommends it.',
   },
   card: {
     title: 'Card',
@@ -39,7 +39,7 @@ const COPY: Record<PayMethod, { title: string; icon: typeof Banknote; lines: str
       'Funds are available to creators immediately rather than after a bank transfer clears.',
       'Card details are entered on Stripe, never on KYRO.',
     ],
-    cost: 'Costs more to process than a bank debit. KYRO absorbs the difference rather than adding a surcharge.',
+    cost: 'Stripe charges 2.9% plus 30c to process a card. That is added to your payment and passed to Stripe in full, and you see the amount before you approve a run. Paying by bank costs a fraction as much.',
   },
 };
 
