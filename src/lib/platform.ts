@@ -15,6 +15,57 @@
 
 import { getSupabase } from './supabase';
 
+/* ─────────────────────────────────────────────────────────────
+   The query string, as it was when the page loaded
+
+   Every redirect back into KYRO carries its answer in the query string, and
+   every one of them is read by a component. That is a race the components
+   lose. App.tsx restores a Supabase session asynchronously, and when it
+   succeeds it calls history.pushState with a bare path to move a signed-in
+   visitor off the marketing page. That rewrite happens before the dashboard
+   mounts, so by the time anything calls a take* function below, the answer
+   has already been thrown away. No error, no banner, nothing: the brand's
+   card is saved at Stripe and KYRO never hears about it.
+
+   This module is imported before React renders, so capturing the search here
+   captures it before any navigation can touch it. Each take* reads from this
+   snapshot and deletes what it consumed, so a remount cannot replay a banner
+   the user has already seen.
+   ───────────────────────────────────────────────────────────── */
+
+const bootParams = new URLSearchParams(
+  typeof window === 'undefined' ? '' : window.location.search
+);
+
+/** What arrived on this page load, minus anything already consumed. */
+function boot(): URLSearchParams {
+  return bootParams;
+}
+
+/** Forget a parameter once it has been acted on. */
+function consume(...keys: string[]): void {
+  for (const key of keys) bootParams.delete(key);
+}
+
+/**
+ * Strip the consumed parameters from the address bar too, so a refresh does
+ * not look like it should replay anything. Best effort: if App.tsx has already
+ * navigated, there is nothing left to strip and that is fine.
+ */
+function tidyUrl(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const current = new URLSearchParams(window.location.search);
+    for (const key of ['meta', 'shopify', 'shop', 'reason', 'claim', 'stripe', 'session']) {
+      if (!bootParams.has(key)) current.delete(key);
+    }
+    const rest = current.toString();
+    window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
+  } catch {
+    /* noop */
+  }
+}
+
 export interface InstallStart {
   url: string | null;
   error: string | null;
@@ -214,14 +265,12 @@ const SHOPIFY_REASONS: Record<string, string> = {
 export function takeConnectionOutcome(): ConnectOutcome | null {
   if (typeof window === 'undefined') return null;
 
-  const params = new URLSearchParams(window.location.search);
+  const params = boot();
   const meta = params.get('meta');
   if (meta) {
     const reason = params.get('reason') || '';
-    params.delete('meta');
-    params.delete('reason');
-    const rest = params.toString();
-    window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
+    consume('meta', 'reason');
+    tidyUrl();
     if (meta === 'choose-account') {
       return {
         provider: 'meta',
@@ -244,11 +293,8 @@ export function takeConnectionOutcome(): ConnectOutcome | null {
   const shop = params.get('shop') || undefined;
   const reason = params.get('reason') || '';
 
-  params.delete('shopify');
-  params.delete('shop');
-  params.delete('reason');
-  const query = params.toString();
-  window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
+  consume('shopify', 'shop', 'reason');
+  tidyUrl();
 
   if (shopify === 'connected') {
     return {
@@ -476,7 +522,7 @@ function parkedReturn(): StripeReturn | null {
 export function takeStripeReturn(): StripeReturn | null {
   if (typeof window === 'undefined') return null;
 
-  const params = new URLSearchParams(window.location.search);
+  const params = boot();
   const stripe = params.get('stripe');
   if (stripe !== 'method' && stripe !== 'payouts' && stripe !== 'payouts-retry') {
     return parkedReturn();
@@ -487,11 +533,8 @@ export function takeStripeReturn(): StripeReturn | null {
   // tampered link, and is dropped rather than sent on to the server.
   const value: StripeReturn = { kind: stripe, session: session?.startsWith('cs_') ? session : null };
   parkReturn(value);
-
-  params.delete('stripe');
-  params.delete('session');
-  const rest = params.toString();
-  window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
+  consume('stripe', 'session');
+  tidyUrl();
 
   return value;
 }
@@ -647,15 +690,12 @@ function readPending(): PendingShop | null {
  */
 export function takeShopifyInstall(): string | null {
   if (typeof window === 'undefined') return null;
-  const params = new URLSearchParams(window.location.search);
+  const params = boot();
   if (params.get('shopify') !== 'installed') return null;
   const shop = params.get('shop');
   const claim = params.get('claim');
-  try {
-    window.history.replaceState({}, '', window.location.pathname);
-  } catch {
-    /* noop */
-  }
+  consume('shopify', 'shop', 'claim');
+  tidyUrl();
   if (!shop || !claim) return null;
   try {
     localStorage.setItem(PENDING_SHOP_KEY, JSON.stringify({ shop, claim }));
