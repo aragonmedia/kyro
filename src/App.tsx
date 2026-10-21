@@ -60,7 +60,7 @@ import { uploadSubmissionVideo, uploadCampaignCover, uploadBrandLogo } from './l
 import type { CommissionType } from './lib/types';
 import { PRIVACY_POLICY_MD, TERMS_OF_SERVICE_MD } from './lib/legal';
 import { HELP_MD } from './lib/help';
-import { saveBankAccount, startShopifyInstall, takeConnectionOutcome, takeShopifyInstall, claimShopifyInstall, takePendingShop, peekPendingShop, takeStripeReturn, clearStripeReturn, confirmStripeMethod, type ConnectOutcome, type StripeReturn } from './lib/platform';
+import { startShopifyInstall, takeConnectionOutcome, takeShopifyInstall, claimShopifyInstall, takePendingShop, peekPendingShop, takeStripeReturn, clearStripeReturn, confirmStripeMethod, type ConnectOutcome, type StripeReturn } from './lib/platform';
 import { EarningsCard } from './components/EarningsCard';
 import { AffiliateOrdersCard, AffiliateOrdersPage } from './components/AffiliateOrders';
 import { CoverImage, VideoTile } from './components/MediaTile';
@@ -4626,21 +4626,23 @@ function SubmitVideoModal({
 /* ─────────────────────────────────────────────────────────────
    CREATOR — PAYOUT ACCOUNT AND TAX FORM
    ───────────────────────────────────────────────────────────── */
+/**
+ * Tax details, and nothing else.
+ *
+ * This card used to collect a bank account too. It no longer does, and must
+ * not again: the account money actually lands in is the one the creator gave
+ * Stripe during onboarding, and a second one typed into KYRO went to a table
+ * no transfer has ever read. Two places to set a bank account, one of which
+ * silently does nothing, is how a creator ends up certain they were paid to
+ * the wrong account. Changing it belongs on Stripe, behind Manage on Stripe
+ * in the Payouts panel.
+ *
+ * Tax details stay here because they are KYRO's obligation, not Stripe's:
+ * KYRO issues the 1099-NEC.
+ */
 function PayoutAccountCard() {
   const session = useSession();
   const creator = session.creator;
-
-  const [editing, setEditing] = useState(false);
-  const [method, setMethod] = useState<'ach' | 'wire'>('ach');
-  const [holder, setHolder] = useState('');
-  const [bank, setBank] = useState('');
-  const [routing, setRouting] = useState('');
-  const [account, setAccount] = useState('');
-  const [confirmAccount, setConfirmAccount] = useState('');
-  const [swift, setSwift] = useState('');
-  const [bankAddress, setBankAddress] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const [taxEditing, setTaxEditing] = useState(false);
   const [legalName, setLegalName] = useState('');
@@ -4650,37 +4652,7 @@ function PayoutAccountCard() {
   const [taxSaving, setTaxSaving] = useState(false);
   const [taxError, setTaxError] = useState<string | null>(null);
 
-  /** Wipe the numbers out of component state the moment we are done with them. */
-  const clearSecrets = () => {
-    setRouting(''); setAccount(''); setConfirmAccount(''); setSwift('');
-  };
-
   if (!creator) return null;
-
-  const save = async () => {
-    setError(null);
-    if (account !== confirmAccount) {
-      setError('The two account numbers do not match.');
-      return;
-    }
-    setSaving(true);
-    const res = await saveBankAccount({
-      method,
-      accountHolder: holder,
-      bankName: bank,
-      routingNumber: routing,
-      accountNumber: account,
-      swiftCode: method === 'wire' ? swift : undefined,
-      bankAddress: method === 'wire' ? bankAddress : undefined,
-    });
-    setSaving(false);
-    if (res.error) { setError(res.error); return; }
-    clearSecrets();
-    await session.refresh();
-    setEditing(false);
-  };
-
-  const cancel = () => { clearSecrets(); setEditing(false); setError(null); };
 
   const submitTax = async () => {
     setTaxError(null);
@@ -4695,142 +4667,11 @@ function PayoutAccountCard() {
   };
 
   const taxDone = creator.taxFormStatus === 'complete';
-  const onFile = Boolean(creator.payoutBankLast4);
 
   const field = "w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500";
 
   return (
-    <div className="grid md:grid-cols-2 gap-5">
-      {/* Payout account */}
-      <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Wallet size={16} className="text-body" />
-            <h3 className="font-semibold text-heading">Payout account</h3>
-          </div>
-          {!editing && (
-            <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-purple-400 hover:text-purple-300">
-              {onFile ? 'Change' : 'Add account'}
-            </button>
-          )}
-        </div>
-
-        {!editing && (
-          onFile ? (
-            <div className="space-y-1">
-              <p className="text-lg font-semibold text-heading tabular-nums">•••• •••• •••• {creator.payoutBankLast4}</p>
-              <p className="text-sm text-muted">
-                {creator.payoutBankName || 'Bank account'}
-                {creator.payoutMethod ? ` · ${creator.payoutMethod === 'wire' ? 'Wire' : 'ACH'}` : ''}
-              </p>
-              {creator.payoutUpdatedAt && (
-                <p className="text-xs text-faint">Updated {new Date(creator.payoutUpdatedAt).toLocaleDateString()}</p>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted">No payout account on file. Add one so KYRO knows where to send your earnings.</p>
-          )
-        )}
-
-        {editing && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg w-fit">
-              {(['ach', 'wire'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMethod(m)}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded transition ${m === method ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}
-                >
-                  {m === 'ach' ? 'ACH' : 'Wire'}
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Name on the account</label>
-              <input value={holder} onChange={(e) => setHolder(e.target.value)} placeholder="Full legal name" className={field} autoComplete="off" />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Bank name</label>
-              <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder="Chase" className={field} autoComplete="off" />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">
-                {method === 'ach' ? 'Routing number (9 digits)' : 'Routing / sort code'}
-              </label>
-              <input
-                value={routing}
-                onChange={(e) => setRouting(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                inputMode="numeric"
-                autoComplete="off"
-                className={`${field} tabular-nums`}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Account number</label>
-              <input
-                type="password"
-                value={account}
-                onChange={(e) => setAccount(e.target.value.replace(/\D/g, '').slice(0, 17))}
-                inputMode="numeric"
-                autoComplete="off"
-                className={`${field} tabular-nums`}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Confirm account number</label>
-              <input
-                value={confirmAccount}
-                onChange={(e) => setConfirmAccount(e.target.value.replace(/\D/g, '').slice(0, 17))}
-                inputMode="numeric"
-                autoComplete="off"
-                className={`${field} tabular-nums`}
-              />
-              <p className="text-xs text-faint">Typed twice because a wrong digit sends your money to a stranger.</p>
-            </div>
-
-            {method === 'wire' && (
-              <>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted">SWIFT / BIC (optional)</label>
-                  <input value={swift} onChange={(e) => setSwift(e.target.value.toUpperCase().slice(0, 11))} autoComplete="off" className={field} />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted">Bank address (optional)</label>
-                  <input value={bankAddress} onChange={(e) => setBankAddress(e.target.value)} autoComplete="off" className={field} />
-                </div>
-              </>
-            )}
-
-            {error && <p className="text-xs text-pink-300">{error}</p>}
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={saving || !holder || !routing || !account || !confirmAccount}
-                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
-              >
-                {saving && <RefreshCw size={14} className="animate-spin" />}
-                Save account
-              </button>
-              <button type="button" onClick={cancel} className="px-4 py-2 rounded-lg border border-line text-sm text-muted hover:text-heading">
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        <p className="text-xs text-faint leading-relaxed">
-          Your account number is encrypted before it is stored and is never sent back to your browser. Only the last four digits are shown, here or anywhere else in KYRO.
-        </p>
-      </div>
-
+    <div className="grid gap-5 md:max-w-xl">
       {/* 1099 tax info */}
       <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
         <div className="flex items-center gap-2">
@@ -4855,7 +4696,7 @@ function PayoutAccountCard() {
         {!taxEditing && (
           <>
             <p className="text-sm text-muted leading-relaxed">
-              Earn $600 or more in a calendar year and KYRO issues you a 1099-NEC. To do that we need your tax details on file first, which is why the withdraw button stays locked until this is done.
+              Earn $600 or more in a calendar year and KYRO issues you a 1099-NEC. We need your tax details on file before any money is sent to you.
             </p>
             {creator.taxLegalName && (
               <p className="text-xs text-faint">On file for {creator.taxLegalName}{creator.taxCountry ? ` · ${creator.taxCountry}` : ''}</p>
@@ -4892,7 +4733,7 @@ function PayoutAccountCard() {
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted">Full legal name</label>
               <input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="As it appears on your tax return" className={field} />
-              <p className="text-xs text-faint">This has to match the name on your payout account before money can move.</p>
+              <p className="text-xs text-faint">This has to match the name on the payout account you gave Stripe.</p>
             </div>
 
             <div className="space-y-1.5">
@@ -4924,7 +4765,7 @@ function PayoutAccountCard() {
 
             <div className="p-3 rounded-xl border border-line bg-surface-2">
               <p className="text-xs text-muted leading-relaxed">
-                KYRO does not ask for your Social Security or EIN number and has nowhere to put one. The payout provider collects it directly on the form itself, which is the last step before your first withdrawal.
+                KYRO does not ask for your Social Security or EIN number and has nowhere to put one. Stripe collects it directly during payout setup.
               </p>
             </div>
 
@@ -5869,26 +5710,16 @@ function CreatorPaymentSummary() {
   const creator = session.creator;
   if (!creator) return <p className="text-sm text-muted">No creator profile on this account yet.</p>;
 
-  const bank = creator.payoutBankLast4;
   const taxDone = creator.taxFormStatus === 'complete';
 
   return (
     <div className="space-y-3">
+      {/* No bank digits here. The account that matters is the one Stripe
+          holds, and the last four of a stale row KYRO kept would be the wrong
+          number shown with total confidence. */}
       <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-1">
         <p className="text-xs text-faint">Payout account</p>
-        {bank ? (
-          <>
-            <p className="text-sm font-semibold text-heading tabular-nums">
-              ···· ···· ···· {bank}
-            </p>
-            <p className="text-xs text-muted">
-              {creator.payoutBankName || 'Bank account'}
-              {creator.payoutMethod ? ` · ${creator.payoutMethod === 'wire' ? 'Wire' : 'ACH'}` : ''}
-            </p>
-          </>
-        ) : (
-          <p className="text-sm text-muted">Nothing on file yet.</p>
-        )}
+        <p className="text-sm text-muted">Held by Stripe. Change it from Manage on Stripe, on the Payouts tab.</p>
       </div>
 
       <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-1">
@@ -5904,7 +5735,7 @@ function CreatorPaymentSummary() {
       </div>
 
       <p className="text-xs text-faint">
-        Change either of these on the Payouts tab of your dashboard, where the full forms live.
+        Tax info is changed on the Payouts tab. Your bank account is changed on Stripe.
       </p>
     </div>
   );
