@@ -197,7 +197,7 @@ export function EarningsCard({ creatorId }: { creatorId: string }) {
             hint={
               data?.nextClearsAt
                 ? `Next clears ${dayLabel(data.nextClearsAt.slice(0, 10))}`
-                : 'Ready to withdraw'
+                : 'Owed by the brand'
             }
           />
           <BalanceStat

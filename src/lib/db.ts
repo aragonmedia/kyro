@@ -809,13 +809,19 @@ export interface BrandConnection {
   connectedAt: string;
 }
 
+/**
+ * What KYRO needs to bill a brand, which is a payment method and nothing else.
+ *
+ * The deposit, billing trigger and accrual cap that used to live here are gone.
+ * They described the model in the old Terms: hold $2,500, charge against it when
+ * the accrued balance crossed 30%. No code ever enforced any of it, and §6 of the
+ * Terms now says plainly that no deposit is taken. The columns remain in the
+ * database so historical rows are untouched; nothing in the app reads them, and
+ * nothing should start.
+ */
 export interface BrandBilling {
   brandId: string;
-  depositCents: Cents;
-  depositStatus: 'none' | 'held' | 'released';
   achMandateRef: string | null;
-  billingTriggerBps: number;
-  accrualCapCents: Cents;
   completedCampaigns: number;
   state: 'active' | 'paused' | 'suspended';
   /**
@@ -872,7 +878,7 @@ export interface OnboardingStatus {
 }
 
 /** The Campaign Agreement version a signature is recorded against. */
-export const CAMPAIGN_AGREEMENT_VERSION = '2026-10-21';
+export const CAMPAIGN_AGREEMENT_VERSION = '2026-10-23';
 
 function toConnection(row: {
   id: string;
@@ -1022,11 +1028,7 @@ export async function ensureBrandBilling(brandId: string): Promise<Result<BrandB
     const r = row as Record<string, unknown>;
     return ok({
       brandId: r.brand_id as string,
-      depositCents: (r.deposit_cents as number) ?? 0,
-      depositStatus: (r.deposit_status as BrandBilling['depositStatus']) ?? 'none',
       achMandateRef: (r.ach_mandate_ref as string | null) ?? null,
-      billingTriggerBps: (r.billing_trigger_bps as number) ?? 3000,
-      accrualCapCents: (r.accrual_cap_cents as number) ?? 0,
       completedCampaigns: (r.completed_campaigns as number) ?? 0,
       state: (r.state as BrandBilling['state']) ?? 'active',
       stripePaymentMethodId: (r.stripe_payment_method_id as string | null) ?? null,

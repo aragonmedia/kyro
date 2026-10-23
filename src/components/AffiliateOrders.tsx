@@ -36,7 +36,7 @@ const fullDate = (iso: string) =>
 const STATE_COPY: Record<string, { label: string; tone: string }> = {
   pending: { label: 'Pending', tone: 'border-line bg-surface-2 text-muted' },
   clearing: { label: 'Clearing', tone: 'border-amber-400/30 bg-amber-400/10 text-amber-300' },
-  available: { label: 'Ready to withdraw', tone: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300' },
+  available: { label: 'Owed by the brand', tone: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300' },
   paid: { label: 'Paid out', tone: 'border-line bg-surface-2 text-muted' },
   reversed: { label: 'Reversed', tone: 'border-pink-400/30 bg-pink-400/10 text-pink-300' },
 };
@@ -114,7 +114,7 @@ const STATUSES: Array<{ key: StatusKey; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
   { key: 'clearing', label: 'Clearing' },
-  { key: 'available', label: 'Ready to withdraw' },
+  { key: 'available', label: 'Owed by the brand' },
   { key: 'paid', label: 'Paid out' },
 ];
 

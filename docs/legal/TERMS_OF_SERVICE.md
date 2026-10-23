@@ -1,7 +1,7 @@
 <!--
   DRAFT — NOT YET REVIEWED BY COUNSEL. Do not publish as-is.
   Placeholders filled: Kyvo LLC, itskyro.com, contact@itskyro.com
-  131 Continental Drive, Suite 305, Newark, DE 19713 Delaware October 21, 2026
+  131 Continental Drive, Suite 305, Newark, DE 19713 Delaware October 23, 2026
   Mirrors docs/KYRO_MODEL.md. If you change one, change both.
   Have counsel review §7 (billing), §8 (KYRO Fee and Processing Cost pass-through),
   §9 (license), §11 (termination and remedies) and the overall funds-flow structure
@@ -9,11 +9,20 @@
   2026-10-21: §7 and §8 changed. Processing Cost is now passed through to the Brand
   rather than absorbed. This is a change to what a Brand pays, so the effective date and
   CAMPAIGN_AGREEMENT_VERSION moved together and signatures are recorded per version.
+  2026-10-23: the billing model was rewritten to match the product. §6 no longer requires
+  a $2,500 security deposit, because none is taken. §7 is on-demand: the Brand authorizes
+  each Payment Run, KYRO never charges on a schedule, and a Due Date is defined so that
+  "overdue" means something. §9(e) and §11 make the video licence the remedy for
+  non-payment rather than an automatic Campaign pause, which the product does not do.
+  §14 and §15 stop promising a withdrawal and a minimum that no longer exist, and say
+  plainly that KYRO holds no creator money and advances none.
+  Counsel should look hardest at §7 (due date and interest), §9(e) (automatic licence
+  termination and reinstatement) and §15 (what KYRO does and does not hold for a Creator).
 -->
 
 # KYRO — Terms of Service
 
-**Effective date:** October 21, 2026
+**Effective date:** October 23, 2026
 
 These Terms govern your use of KYRO, operated by Kyvo LLC ("KYRO," "we," "us"). By
 creating an account you agree to them. If you are agreeing on behalf of a company, you
@@ -56,6 +65,11 @@ per account unless we agree otherwise in writing.
 - **Creator Commission** — the percentage or amount the Brand sets for a Campaign, applied
   to Commissionable Value (or to ad spend or a flat fee, where the Campaign says so).
 - **KYRO Fee** — 1%, as described in §8.
+- **Payment Run** — one authorised payment covering every Attributed Order that has
+  reached Available and not yet been paid for. One charge to the Brand, one transfer to
+  each Creator it covers.
+- **Due Date** — the date Creator Commission on an Attributed Order becomes payable, being
+  30 days after that Order reaches Available.
 - **Processing Cost** — the fee the payment processor charges to take a payment by the
   method you chose. It is added to the amount charged and paid to the processor in full.
   KYRO retains no part of it and adds no margin to it.
@@ -86,34 +100,48 @@ approve or reject each Submission. You are responsible for your own approval dec
 including whether an Approved Video complies with advertising law and platform policy in
 the markets where you run it.
 
-### 6. Security deposit
+### 6. No deposit and no prepayment
 
-You will maintain a refundable security deposit of $2,500 (or another amount we agree in
-writing). It is collateral for amounts you owe under these Terms, not prepayment for any
-particular Campaign. We may apply it to overdue amounts. If we do, you will restore it on
-request. We return the unused balance within 30 days after your account is closed and all
-amounts are settled.
+**KYRO does not hold a deposit and does not take money before orders exist.** There is no
+security deposit, no prepaid balance, no media budget held by KYRO, and nothing to fund
+before a Campaign can open.
+
+You pay for Creator Commission on Attributed Orders that have already cleared their return
+window, plus the KYRO Fee on those same orders, and nothing else. A Campaign that drives
+no attributed orders costs you nothing beyond the advertising Meta bills you directly.
+
+An earlier version of these Terms required a refundable security deposit of $2,500 and
+billed against it. That is no longer how KYRO works and no deposit is or will be collected
+under these Terms.
 
 ### 7. Billing and payment authorization
 
-You authorize KYRO to charge amounts you owe to the payment methods on file. You may pay
-by **bank account (ACH)** or by **payment card**, and you choose which when you add a
-method. The two cost different amounts to process; see §8.
+**You decide when to pay, and you authorize the charge when you do.** KYRO does not charge
+your payment method on a schedule and does not charge it without you authorizing that
+Payment Run. Your dashboard shows what has cleared and is payable at all times.
+
+You authorize KYRO to charge the payment method on file for the full amount of a Payment
+Run you authorize: Creator Commission, the KYRO Fee, and the Processing Cost under §8. You
+may pay by **bank account (ACH)** or by **payment card**, and you choose which when you add
+a method. The two cost different amounts to process; see §8.
 
 Payment details are entered on the processor's own pages and are never collected by KYRO.
 KYRO stores only the processor's reference and enough to identify the method to you, such
 as the last four digits.
 
-We will charge when your accrued unbilled balance reaches **30% of your deposit**, or
-**monthly**, whichever comes first. Your accrued balance is visible in your dashboard at
-all times before you are billed.
+**When payment is due.** Creator Commission on an Attributed Order becomes payable on its
+Due Date, being 30 days after that Order reaches Available. Authorizing a Payment Run
+earlier is encouraged and always available to you. An amount still unpaid after its Due
+Date is overdue, and §9(e) and §11 apply to it.
 
-If a charge fails, or your accrued unbilled balance exceeds your deposit, **your Campaigns
-pause automatically** until the balance is settled. Amounts unpaid after 10 days accrue
-interest at 1.5% per month or the maximum the law allows, whichever is lower.
+Amounts overdue accrue interest at 1.5% per month or the maximum the law allows, whichever
+is lower, and you are liable for the reasonable costs of collecting them, including
+attorneys' fees.
 
-You remain liable for Creator Commission accrued on Attributed Orders before a pause,
-whether or not you continue the Campaign.
+**KYRO does not advance money to Creators.** KYRO transfers to a Creator only what it has
+collected from you for that Creator's Attributed Orders. Until you authorize a Payment Run,
+the Creator who earned that commission has not been paid, and the licence you hold in their
+video is conditional on your paying it.
 
 ### 8. KYRO Fee
 
@@ -160,7 +188,12 @@ including to an agency, without our written consent.
 **(d) Limited in time.** The Campaign term plus 30 days, unless extended in writing.
 
 **(e) Conditioned on payment.** The licence is granted on the condition that you pay
-amounts owed when due. It terminates automatically under §11 if you do not.
+Creator Commission on the Attributed Orders that video drove, by the Due Date in §7.
+**If an amount is overdue, the licence in every Approved Video covered by it terminates
+automatically**, without notice and without any step by KYRO or the Creator. Running the
+video after that is unlicensed use of the Creator's copyrighted work, and §11 applies.
+Paying the overdue amount reinstates the licence from the date of payment; it does not
+licence the period in between.
 
 **(f) Limited in modification.** You may crop, trim, caption and format the video as
 required by the ad placement. You may not create other derivative works, and you may not
@@ -183,9 +216,9 @@ is unlawful, infringing or in breach of Meta's or Shopify's policies.
 
 ### 11. Suspension, termination and remedies
 
-We may suspend or terminate your access, pause Campaigns, and revoke partnership
-permissions if you breach these Terms, if payment fails and is not cured within 10 days,
-or if you disconnect a Connected Account.
+We may suspend or terminate your access and revoke partnership permissions if you breach
+these Terms, if an amount is overdue under §7, or if you disconnect a Connected Account.
+We are not obliged to do any of this, and not doing it is not a waiver.
 
 **On termination or expiry of a licence you must stop running the Approved Video
 immediately, and in any event within 24 hours, and delete your copies.** Continued use
@@ -194,7 +227,8 @@ and KYRO may pursue all remedies available for it.
 
 If you do not pay, you are liable for the unpaid amounts, interest under §7, and the
 reasonable costs of collection **including attorneys' fees**. Nothing here limits our
-right to seek injunctive relief for unlicensed use.
+right, or the Creator's, to seek injunctive relief and damages for unlicensed use of a
+video whose licence terminated under §9(e).
 
 Termination does not relieve you of amounts accrued before it.
 
@@ -230,11 +264,11 @@ Brands for Approved Videos run out their stated term.
 Commission accrues on Attributed Orders at the rate the Campaign states, applied to
 Commissionable Value. Your earnings move through four states:
 
-| State | When | Withdrawable |
+| State | When | Payable to you |
 |---|---|---|
 | **Pending** | The order is placed | No |
 | **Clearing** | The order is fulfilled | No |
-| **Available** | 30 days after fulfilment | **Yes** |
+| **Available** | 30 days after fulfilment | **Yes, once the Brand pays** |
 | **Reversed** | The order is refunded or charged back | Removed |
 
 Pending and Clearing amounts are **estimates of orders that have not yet cleared**. They
@@ -245,14 +279,29 @@ explicitly.
 If a reversal occurs after an amount has been paid to you, we may offset it against future
 earnings.
 
+**Available means the Brand owes it, not that KYRO is holding it.** KYRO does not hold your
+money and does not pay you out of its own funds. An Available amount is commission the
+Brand owes and has not yet paid. It reaches you when they authorize a Payment Run, which
+they may do at any time and must do by the Due Date in §7. If a Brand does not pay, the
+licence they hold in your video terminates automatically under §9(e) and their continued
+use of it is copyright infringement you can act on.
+
 ### 15. Payouts and tax
 
-Withdraw Available balances at any time above the stated minimum. Payouts are made through
-our payment provider and you will need to complete their onboarding.
+**You do not withdraw, and there is no minimum.** When a Brand authorizes a Payment Run,
+KYRO transfers your share to your own account with our payment provider in that same
+moment. The provider then deposits it in the bank account you gave them, on their payout
+schedule. There is no button for you to press and no threshold to reach.
 
-**Before your first payout you must provide a completed W-9 (US persons) or W-8BEN
-(non-US persons).** We report payouts as required, including 1099-NEC where applicable.
-Taxes on your earnings are yours to handle.
+**Your bank details are held by the payment provider, not by KYRO.** You enter them during
+their onboarding and change them in their dashboard, reachable from your Payouts page.
+KYRO does not collect, store or have any way to change the account your money lands in.
+
+**Before anything is transferred to you, you must provide a completed W-9 (US persons) or
+W-8BEN (non-US persons), and complete the provider's onboarding.** Until both are done your
+share of a Payment Run is held against that run and transferred as soon as you finish; it
+is recorded and it is not lost. We report payouts as required, including 1099-NEC where
+applicable. Taxes on your earnings are yours to handle.
 
 ### 16. Prohibited conduct
 

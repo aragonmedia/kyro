@@ -459,7 +459,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () =>
             {[
               { num: '01', id: 'creators', title: 'Creators join brands', desc: 'Creators discover brands they love and join their creator program in one tap.', icon: Heart },
               { num: '02', id: 'brands', title: 'Brands launch on Meta', desc: 'Approved creator videos run as whitelisted Meta ads — at scale, in minutes.', icon: Zap },
-              { num: '03', id: 'earn', title: 'Performance pays out', desc: 'Real-time analytics track every order. Payouts run on auto-pilot via Trolley.', icon: DollarSign },
+              { num: '03', id: 'earn', title: 'Performance pays out', desc: 'Real-time analytics track every order. Creators are paid through Stripe the moment a brand settles.', icon: DollarSign },
             ].map((s) => (
               <div key={s.num} id={s.id} className="relative overflow-hidden rounded-3xl border border-line bg-surface p-8 space-y-4">
                 <div className="flex items-center justify-between">
@@ -490,7 +490,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () =>
               { icon: Cpu, title: 'AI angle & persona tagging', desc: 'Every submission auto-tagged by angle, persona, and creative DNA.', color: 'text-pink-500' },
               { icon: Bell, title: 'Creator earning notifications', desc: 'Creators get notified the moment a sale hits their account.', color: 'text-purple-500' },
               { icon: MessageSquare, title: 'Built-in chats & channels', desc: 'Talk to creators 1:1 or in channels — no Slack, no email threads.', color: 'text-blue-500' },
-              { icon: Wallet, title: 'Auto payouts & smart contracts', desc: 'Commission rules execute automatically — paid via Trolley.', color: 'text-emerald-500' },
+              { icon: Wallet, title: 'Auto payouts & smart contracts', desc: 'Commission rules execute automatically, and creators are paid through Stripe.', color: 'text-emerald-500' },
               { icon: Target, title: 'Spot and scale winners', desc: 'Surface the winning ads instantly and double down.', color: 'text-pink-500' },
             ].map((f, i) => (
               <div key={i} className="p-6 rounded-2xl border border-line bg-surface hover:-translate-y-0.5 transition">
@@ -1133,7 +1133,7 @@ function RolePicker({
             </button>
           ))}
         </div>
-        <p className="text-center text-xs text-faint mt-10">Demo environment — real Supabase auth, Meta integration, Square + Trolley payments wire in V1.</p>
+        <p className="text-center text-xs text-faint mt-10">Demo environment — real Supabase auth, Meta integration and Stripe payments.</p>
       </div>
     </div>
   );
@@ -3528,9 +3528,10 @@ function MySubmissionCard({
  * Open a campaign to creators.
  *
  * Replaces the old "fund the pool to launch" prompt, which described a model
- * KYRO deliberately does not use: brands are billed after the fact against a
- * deposit, so there is no pool to prefund. Without this control nothing ever
- * moved out of draft, which is why the creator campaign picker was empty.
+ * KYRO deliberately does not use: there is no deposit and no prefunding, and a
+ * brand pays for cleared orders after the fact (Terms §6). Without this control
+ * nothing ever moved out of draft, which is why the creator campaign picker was
+ * empty.
  */
 function ActivateCampaignRow({
   campaignId,
@@ -5380,7 +5381,7 @@ function AboutPage({ onBack, onSignIn, onGetStarted }: { onBack: () => void; onS
             {[
               { num: '01', title: 'Brand creates a campaign', desc: 'Brands publish a brief, fund a campaign pool via Square, and define commission rules.' },
               { num: '02', title: 'Creators submit videos', desc: 'Approved creators upload short-form video, which becomes a distinct whitelisted ad on Meta.' },
-              { num: '03', title: 'Performance pays out', desc: 'Real-time Meta Ads Insights track per-creator performance. Trolley auto-deposits payouts.' },
+              { num: '03', title: 'Performance pays out', desc: 'Real-time Meta Ads Insights track per-creator performance. Stripe deposits each payout straight to the creator.' },
             ].map((s) => (
               <div key={s.num} className="p-6 bg-surface border border-line rounded-2xl space-y-3">
                 <span className="text-3xl font-bold bg-gradient-kyro bg-clip-text text-transparent">{s.num}</span>

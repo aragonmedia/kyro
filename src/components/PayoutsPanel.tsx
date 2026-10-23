@@ -1,12 +1,12 @@
 /**
- * Withdrawing, and the history of withdrawals.
+ * What a creator has earned, and every transfer KYRO has sent them.
  *
- * Shaped like TikTok Shop's affiliate balance: a withdrawable figure with the
- * action right beside it, and the record of past payouts underneath.
- *
- * The Withdraw button is genuinely disabled rather than decorative, and the
- * card says which condition is blocking it. A creator staring at a greyed
- * button with no explanation assumes the product is broken.
+ * There is no withdrawing here and there used to be. A creator cannot pull
+ * this money: it moves when the Brand authorizes a Payment Run, and KYRO
+ * transfers their share to Stripe in that same moment (Terms §15). So the
+ * figure says what it is waiting on, the history shows what actually moved,
+ * and the only action is a link into the creator's own Stripe dashboard,
+ * where their bank account lives.
  */
 
 import { useCallback, useEffect, useState } from 'react';
