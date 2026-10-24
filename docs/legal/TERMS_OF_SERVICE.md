@@ -1,23 +1,23 @@
 <!--
-  DRAFT — NOT YET REVIEWED BY COUNSEL. Do not publish as-is.
-  Placeholders filled: Kyvo LLC, itskyro.com, contact@itskyro.com
-  131 Continental Drive, Suite 305, Newark, DE 19713 Delaware October 23, 2026
+  REVIEWED BY COUNSEL 2026-10-24, approved as it stands, no changes returned.
+  This is the live text. Before changing a word of it again: a change to what
+  anyone pays or is owed needs counsel to see it, needs the effective date and
+  CAMPAIGN_AGREEMENT_VERSION in src/lib/db.ts moved together, and will ask every
+  Brand to accept again, because getLatestAgreement matches on version.
+
+  Kyvo LLC, itskyro.com, contact@itskyro.com
+  131 Continental Drive, Suite 305, Newark, DE 19713 Delaware
   Mirrors docs/KYRO_MODEL.md. If you change one, change both.
-  Have counsel review §7 (billing), §8 (KYRO Fee and Processing Cost pass-through),
-  §9 (license), §11 (termination and remedies) and the overall funds-flow structure
-  before going live with real money.
-  2026-10-21: §7 and §8 changed. Processing Cost is now passed through to the Brand
-  rather than absorbed. This is a change to what a Brand pays, so the effective date and
-  CAMPAIGN_AGREEMENT_VERSION moved together and signatures are recorded per version.
-  2026-10-23: the billing model was rewritten to match the product. §6 no longer requires
-  a $2,500 security deposit, because none is taken. §7 is on-demand: the Brand authorizes
-  each Payment Run, KYRO never charges on a schedule, and a Due Date is defined so that
-  "overdue" means something. §9(e) and §11 make the video licence the remedy for
-  non-payment rather than an automatic Campaign pause, which the product does not do.
-  §14 and §15 stop promising a withdrawal and a minimum that no longer exist, and say
-  plainly that KYRO holds no creator money and advances none.
-  Counsel should look hardest at §7 (due date and interest), §9(e) (automatic licence
-  termination and reinstatement) and §15 (what KYRO does and does not hold for a Creator).
+
+  History of material changes:
+  2026-08-31: first version. Deposit-and-accrual billing.
+  2026-10-21: Processing Cost passed through to the Brand rather than absorbed,
+  so KYRO's 1% is 1% whichever method a Brand pays with (§7, §8).
+  2026-10-23: billing rewritten to match the product. No deposit (§6). On-demand
+  Payment Runs with a 30-day Due Date (§7). Automatic licence termination on an
+  overdue amount, rather than a Campaign pause the product never performed
+  (§9(e), §11). No creator withdrawals and no minimum, and KYRO holds no creator
+  money and advances none (§14, §15).
 -->
 
 # KYRO — Terms of Service
