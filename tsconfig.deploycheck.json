@@ -1,0 +1,29 @@
+// Type-checks api/ and shared/ the way the DEPLOY does, not the way we wish.
+//
+// tsconfig.api.json sets "strict": true. Vercel's node builder does not use it:
+// the root tsconfig.json is a solution file, and until this was written it did
+// not even reference the api project. So api code was compiled under default
+// settings, where strictNullChecks is off, `ok: true` widens to boolean, a
+// discriminated union stops discriminating, and narrowing silently stops
+// working. Four type errors in every production deploy log that a strict local
+// check could never see.
+//
+// Run this alongside the strict one. Code has to pass both, because the strict
+// pass is what we want to be true and this is what the deployment actually does.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force"
+  },
+  "include": ["api", "shared"]
+}

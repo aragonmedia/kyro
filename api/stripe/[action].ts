@@ -108,11 +108,28 @@ async function recordAccount(sb: Db, creatorId: string, account: StripeAccountV2
  * A brand id in a request is a suggestion. This turns it into a fact, or
  * refuses, and every brand-side route goes through it.
  */
+interface Ownership {
+  ok: boolean;
+  /** Only meaningful when ok is false. */
+  status: number;
+  error: string | null;
+}
+
+/*
+ * One shape, not a discriminated union.
+ *
+ * This returned `{ ok: true } | { ok: false; status; error }`, which narrows
+ * correctly under tsconfig.api.json and does not narrow at all under the
+ * defaults Vercel's builder falls back to: without strictNullChecks the
+ * literals widen to boolean, `ok` stops being a discriminant, and reading
+ * `.status` is an error. Four of them, in every production deploy log.
+ * A single shape compiles the same way under either.
+ */
 async function ownedBrand(
   sb: Db,
   req: VercelRequest,
   brandId: string
-): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+): Promise<Ownership> {
   const auth = req.headers.authorization || '';
   const jwt = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!jwt) return { ok: false, status: 401, error: 'Not signed in.' };
@@ -130,7 +147,7 @@ async function ownedBrand(
   if (!brand || brand.owner_user_id !== userId) {
     return { ok: false, status: 403, error: 'That brand is not yours.' };
   }
-  return { ok: true };
+  return { ok: true, status: 200, error: null };
 }
 
 /**
