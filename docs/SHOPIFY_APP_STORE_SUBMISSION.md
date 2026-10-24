@@ -37,12 +37,24 @@ If the three compliance webhook URLs are **not** in the active version, tell me.
 only be set by deploying `shopify.app.toml`. I can run that deploy from here, and all you'd
 do is approve one Shopify login link.
 
-## 3. App Pricing (Dev Dashboard → KYRO → App Pricing)
+## 3. App Pricing (Partner Dashboard, inside the listing editor)
 
 This is the step the last review failed on. The listing advertised $1 a month while no
 subscribable plan existed, so the reviewer could not approve a charge. The plan below is
 the one `api/cron/usage.ts` already reports against, so the handle and the price have to
 match it exactly.
+
+There is no page called "App Pricing" and searching the Partner Dashboard for it returns
+nothing. Plans live inside the listing editor, which is also where the listing's pricing
+text lives, so both halves of this fix are done in the same place:
+
+> [App distribution](https://partners.shopify.com/current/apps) → **KYRO** → **Distribution**
+> → beside **Shopify App Store listing**, **Manage listing** → under **Published languages**,
+> **Edit** the English locale → under **Pricing content**, **Manage**
+
+From that page: **Settings → Pricing method** opts the app into Shopify App Pricing,
+**Public plans → Add** creates the plan and its billing model, and the plan's **Display
+name** and **Top features** are what a merchant actually reads on the listing.
 
 Choose **Shopify App Pricing** (managed pricing), not the Billing API. KYRO creates no
 charge itself: the merchant approves the plan on Shopify's own pricing page, and migration
@@ -65,6 +77,14 @@ they can see it rather than buried in code.
 `api/_lib/shopify-usage.ts`. A different handle makes every usage event fail silently,
 because Shopify answers 202 as soon as it accepts the request and discards the event
 afterwards.
+
+Shopify's own constraints on this, worth knowing before the form argues back: usage
+charges are billed monthly only, a plan carries at most 5 usage meters and 6 tiers each,
+usage caps are not supported, and prices are USD only. If the form will not accept a
+30-day free trial alongside a $0 recurring price, drop the Shopify trial rather than
+fighting it. `0022_app_store_fee_trial.sql` already waives the fee on orders landing inside
+the trial, so KYRO reports no usage during it and the merchant is charged nothing either
+way. Only the listing text then has to stop promising a trial.
 
 After saving the plan, approve it once on the dev store at
 `https://admin.shopify.com/store/<store>/charges/<app handle>/pricing_plans`, the same URL
