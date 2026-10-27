@@ -42,6 +42,12 @@ export interface Brand {
   approvalStatus: 'pending' | 'approved' | 'rejected';
   /** Collected by the setup wizard. */
   websiteUrl?: string;
+  /**
+   * Optional, and for KYRO's own use only: a failed payment, a broken
+   * connection, an amount about to go overdue. Never marketing, never shared
+   * with creators or other brands.
+   */
+  contactPhone?: string;
   description?: string;
   businessType?: string;
   currency: string;

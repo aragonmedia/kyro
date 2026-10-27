@@ -71,6 +71,11 @@ export interface AdminBrandRow {
   /** What the brand pays with, e.g. "Visa ····4242". Null when nothing is on file. */
   paymentMethod: string | null;
   agreementSignedAt: string | null;
+  /** The owner's registered address, for reaching them. Null if unclaimed. */
+  ownerEmail: string | null;
+  ownerName: string | null;
+  /** Operational only. Never a marketing channel; see migration 0033. */
+  contactPhone: string | null;
   campaigns: number;
   creators: number;
   orders: number;
@@ -87,6 +92,8 @@ export interface AdminCreatorRow {
   id: string;
   name: string;
   handle: string | null;
+  /** Registered address, for reaching them about a held payout. */
+  email: string | null;
   campaigns: number;
   submissions: number;
   used: number;
@@ -155,6 +162,7 @@ const EMPTY: AdminOverview = {
    schema change that drops something unused cannot break this file. */
 interface BrandRaw {
   id: string; name: string; handle: string | null; logo_url: string | null;
+  owner_user_id: string | null; contact_phone: string | null;
   billing_origin: string | null; shopify_plan_status: string | null; created_at: string;
 }
 interface ConnRaw { brand_id: string; provider: string; status: string }
@@ -232,7 +240,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
       campaignRes, creatorRes, profileRes, submissionRes,
       earningRes, runRes, payoutRes, orderRes,
     ] = await Promise.all([
-      sb.from('brands').select('id, name, handle, logo_url, billing_origin, shopify_plan_status, created_at'),
+      sb.from('brands').select('id, name, handle, logo_url, owner_user_id, contact_phone, billing_origin, shopify_plan_status, created_at'),
       sb.from('brand_connections').select('brand_id, provider, status'),
       sb.from('brand_billing').select('brand_id, stripe_method_type, stripe_method_brand, stripe_method_last4'),
       sb.from('agreements').select('brand_id, signed_at').order('signed_at', { ascending: false }),
@@ -378,6 +386,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
       const conn = connByBrand.get(b.id) ?? { shopify: false, meta: false };
       const method = describeMethod(billingByBrand.get(b.id));
       const origin = b.billing_origin ?? 'direct';
+      const owner = b.owner_user_id ? profileById.get(b.owner_user_id) : undefined;
 
       /* Can this brand actually be charged for what it owes? A direct brand
          needs a payment method on file. An App Store brand is billed by
@@ -399,6 +408,9 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         metaConnected: conn.meta,
         paymentMethod: method,
         agreementSignedAt: agreementByBrand.get(b.id) ?? null,
+        ownerEmail: owner?.email ?? null,
+        ownerName: owner?.full_name ?? null,
+        contactPhone: b.contact_phone,
         campaigns: campaignsPerBrand.get(b.id) ?? 0,
         creators: creatorsPerBrand.get(b.id)?.size ?? 0,
         orders: ordersPerBrand.get(b.id) ?? 0,
@@ -430,6 +442,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         id: c.id,
         name: profile?.full_name || profile?.email || c.handle || 'Unnamed creator',
         handle: c.handle,
+        email: profile?.email ?? null,
         campaigns: campaignsPerCreator.get(c.id)?.size ?? 0,
         submissions: subsPerCreator.get(c.id) ?? 0,
         used: usedPerCreator.get(c.id) ?? 0,

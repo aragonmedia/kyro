@@ -3038,13 +3038,18 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
       {/* Two by two on a phone, one compact row from sm up. Each cell carries
           its own border at phone width so it reads as four things; on desktop
           the outer card comes back and the cells sit inside it. */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-1 sm:p-1 sm:bg-surface sm:border sm:border-line sm:rounded-xl sm:w-fit">
+      {/* Stacked on a phone, one row per section, so each is a full-width
+          target with its name in full. The two-column grid it replaced put
+          five items into 2+2+1 and left a stray tile on its own line, and
+          abbreviated every label to fit. From sm up they collapse back into
+          the inline strip, where horizontal space is not the constraint. */}
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 sm:gap-1 sm:p-1 sm:bg-surface sm:border sm:border-line sm:rounded-xl sm:w-fit">
         {[
-          { id: 'submissions', short: 'Videos', label: 'My Submissions', icon: FileVideo },
-          { id: 'analytics', short: 'Stats', label: 'Analytics', icon: BarChart3 },
-          { id: 'browse', short: 'Browse', label: 'Browse', icon: Search },
-          { id: 'chat', short: 'Chat', label: 'Chat', icon: MessagesSquare },
-          { id: 'payouts', short: 'Payouts', label: 'Payouts', icon: Wallet },
+          { id: 'submissions', label: 'Videos', icon: FileVideo },
+          { id: 'analytics', label: 'Stats', icon: BarChart3 },
+          { id: 'browse', label: 'Browse', icon: Search },
+          { id: 'chat', label: 'Chat', icon: MessagesSquare },
+          { id: 'payouts', label: 'Payouts', icon: Wallet },
         ].map((t) => (
           <button
             key={t.id}
@@ -3056,8 +3061,7 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
             }`}
           >
             <t.icon size={16} className="flex-shrink-0" />
-            <span className="sm:hidden truncate">{t.short}</span>
-            <span className="hidden sm:inline">{t.label}</span>
+            <span className="truncate">{t.label}</span>
             {t.id === 'chat' && unread > 0 && (
               <span
                 className={`ml-auto sm:ml-0 flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
@@ -5613,6 +5617,7 @@ function BrandProfilePanel({ brandId, onSaved }: { brandId: string; onSaved: () 
   const { brand } = useSession();
   const [name, setName] = useState(brand?.name ?? '');
   const [website, setWebsite] = useState(brand?.websiteUrl ?? '');
+  const [phone, setPhone] = useState(brand?.contactPhone ?? '');
   const [description, setDescription] = useState(brand?.description ?? '');
   const [currency, setCurrency] = useState(brand?.currency ?? 'USD');
   const [businessType, setBusinessType] = useState(brand?.businessType ?? '');
@@ -5647,7 +5652,7 @@ function BrandProfilePanel({ brandId, onSaved }: { brandId: string; onSaved: () 
     }
 
     const res = await completeBrandSetup(brandId, {
-      name, websiteUrl: website, businessType, description, currency, logoUrl,
+      name, websiteUrl: website, contactPhone: phone, businessType, description, currency, logoUrl,
     });
     setSaving(false);
     if (res.error) { setError(res.error); return; }
@@ -5714,6 +5719,28 @@ function BrandProfilePanel({ brandId, onSaved }: { brandId: string; onSaved: () 
               autoCorrect="off"
               className={field}
             />
+          </div>
+          {/* Not something creators see. It sits in this panel because this is
+              where a brand edits its own details, but the hint says plainly
+              who it is for and what it will never be used for. */}
+          <div className="space-y-1.5 sm:col-span-2">
+            <label htmlFor="bp-phone" className="text-xs font-semibold text-muted">
+              Phone <span className="text-faint font-normal">(optional, not shown to creators)</span>
+            </label>
+            <input
+              id="bp-phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+1 555 123 4567"
+              autoComplete="tel"
+              className={field}
+            />
+            <p className="text-[11px] text-faint leading-relaxed">
+              So KYRO can reach you about your own account, like a failed payment or a
+              disconnected store. No marketing calls or texts, and never shared with creators or
+              other brands.
+            </p>
           </div>
         </div>
 

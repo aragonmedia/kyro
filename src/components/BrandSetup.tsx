@@ -71,6 +71,7 @@ export function BrandSetupWizard({
   const [step, setStep] = useState(1);
 
   const [website, setWebsite] = useState('');
+  const [phone, setPhone] = useState('');
   const [businessType, setBusinessType] = useState('');
 
   const [name, setName] = useState(brandName);
@@ -113,6 +114,7 @@ export function BrandSetupWizard({
     const res = await completeBrandSetup(brandId, {
       name: name.trim(),
       websiteUrl: website,
+      contactPhone: phone,
       businessType,
       description,
       currency,
@@ -186,6 +188,29 @@ export function BrandSetupWizard({
                   autoCorrect="off"
                   className={field}
                 />
+              </div>
+
+              {/* Optional, and the copy says exactly what it is for. A phone
+                  field with no explanation reads as the start of sales calls,
+                  which is the opposite of why it is here. */}
+              <div className="space-y-1.5">
+                <label htmlFor="setup-phone" className="text-xs font-semibold text-muted">
+                  Phone <span className="text-faint font-normal">(optional)</span>
+                </label>
+                <input
+                  id="setup-phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+1 555 123 4567"
+                  autoComplete="tel"
+                  className={field}
+                />
+                <p className="text-[11px] text-faint leading-relaxed">
+                  Only so KYRO can reach you about your own account, like a failed payment or a
+                  disconnected store. No marketing calls or texts, and never shared with creators
+                  or other brands.
+                </p>
               </div>
 
               <div className="space-y-2">

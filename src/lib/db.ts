@@ -116,6 +116,7 @@ export interface BrandRow {
   website_url: string | null;
   description: string | null;
   business_type: string | null;
+  contact_phone: string | null;
   currency: string | null;
   setup_complete: boolean | null;
   billing_origin?: string | null;
@@ -197,6 +198,7 @@ export function toBrand(row: BrandRow): Brand {
     websiteUrl: row.website_url ?? undefined,
     description: row.description ?? undefined,
     businessType: row.business_type ?? undefined,
+    contactPhone: row.contact_phone ?? undefined,
     currency: row.currency ?? 'USD',
     // Brands created before 0015 have no column value at all. Treating the
     // absence as "done" keeps an existing account out of the wizard.
@@ -2570,6 +2572,8 @@ export interface BrandSetupInput {
   websiteUrl?: string;
   businessType?: string;
   description?: string;
+  /** Optional. KYRO's own operational channel, never marketing. */
+  contactPhone?: string;
   currency?: string;
   logoUrl?: string | null;
 }
@@ -2603,6 +2607,7 @@ export async function completeBrandSetup(
         name,
         website_url: site || null,
         business_type: input.businessType || null,
+        contact_phone: (input.contactPhone ?? '').trim() || null,
         description: (input.description ?? '').trim() || null,
         currency: input.currency || 'USD',
         ...(input.logoUrl ? { logo_url: input.logoUrl } : {}),

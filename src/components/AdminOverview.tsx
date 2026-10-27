@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  AlertTriangle, Building2, CheckCircle2, Clock, RefreshCw,
+  AlertTriangle, Building2, CheckCircle2, Clock, Mail, Phone, RefreshCw,
   TrendingUp, Users, Video, Wallet,
 } from 'lucide-react';
 import {
@@ -79,6 +79,46 @@ function Tile({
   );
 }
 
+/**
+ * A prefilled draft in whatever mail client they use.
+ *
+ * Deliberately a mailto rather than anything that sends on its own: an admin
+ * should read what goes to a brand before it goes, and nothing here has the
+ * standing to write in KYRO's voice unsupervised.
+ */
+function MailButton({ to, subject, label = 'Email' }: { to: string | null; subject: string; label?: string }) {
+  if (!to) {
+    return (
+      <span className="text-[11px] text-faint whitespace-nowrap" title="No registered address on this account">
+        No email on file
+      </span>
+    );
+  }
+  return (
+    <a
+      href={`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-2 border border-line text-xs font-semibold text-body hover:text-heading whitespace-nowrap"
+      title={to}
+    >
+      <Mail size={13} /> {label}
+    </a>
+  );
+}
+
+/** Only rendered when a brand gave one. Operational use, never marketing. */
+function CallButton({ phone }: { phone: string | null }) {
+  if (!phone) return null;
+  return (
+    <a
+      href={`tel:${phone.replace(/[^0-9+]/g, '')}`}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-2 border border-line text-xs font-semibold text-body hover:text-heading whitespace-nowrap"
+      title={phone}
+    >
+      <Phone size={13} /> Call
+    </a>
+  );
+}
+
 function Panel({
   title, note, right, children,
 }: {
@@ -98,12 +138,29 @@ function Panel({
   );
 }
 
-/** Attributed sales by month. One series, so no legend: the title names it. */
-function MonthsChart({ months }: { months: Overview['months'] }) {
+/**
+ * One measure at a time, by month.
+ *
+ * Attributed sales and KYRO's fee are the same series two orders of magnitude
+ * apart, because the fee is 1% of the sales. Drawing both would need either a
+ * second y-axis, which makes the relationship between the two lines a
+ * coincidence of scaling rather than a fact, or a revenue series one pixel
+ * tall. So they share a chart and take turns, and only one is ever plotted.
+ */
+type Measure = 'sales' | 'revenue';
+
+const MEASURES: Array<{ key: Measure; label: string; note: string }> = [
+  { key: 'sales', label: 'Attributed sales', note: 'What creator content drove, month by month.' },
+  { key: 'revenue', label: 'KYRO revenue', note: "Your 1% of those sales, month by month." },
+];
+
+function MonthsChart({ months, measure }: { months: Overview['months']; measure: Measure }) {
   if (months.length === 0) {
     return <p className="p-10 text-center text-sm text-muted">No attributed sales yet.</p>;
   }
-  const max = Math.max(...months.map((m) => m.attributedSalesCents), 1);
+  const valueOf = (m: Overview['months'][number]) =>
+    measure === 'revenue' ? m.feeCents : m.attributedSalesCents;
+  const max = Math.max(...months.map(valueOf), 1);
 
   return (
     <div className="p-5">
@@ -115,12 +172,12 @@ function MonthsChart({ months }: { months: Overview['months'] }) {
                   chart stays readable at twelve months and still answers
                   "what exactly was March". */}
               <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[11px] font-semibold text-heading opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap tabular-nums">
-                {money(m.attributedSalesCents)}
+                {money(valueOf(m))}
               </span>
               <div
                 className="w-full bg-gradient-kyro rounded-t group-hover:opacity-80 transition-opacity"
-                style={{ height: `${Math.max((m.attributedSalesCents / max) * 100, 2)}%` }}
-                title={`${monthLabel(m.month)}: ${moneyExact(m.attributedSalesCents)} across ${m.orders} orders`}
+                style={{ height: `${Math.max((valueOf(m) / max) * 100, 2)}%` }}
+                title={`${monthLabel(m.month)}: ${moneyExact(valueOf(m))} across ${m.orders} orders`}
               />
             </div>
             <span className="text-[11px] text-faint whitespace-nowrap">{monthLabel(m.month)}</span>
@@ -305,7 +362,15 @@ function Attention({ data }: { data: Overview }) {
                   {b.billingOrigin === 'shopify_app_store'
                     ? 'Billed through Shopify, but no approved subscription for this store.'
                     : 'No payment method on file.'}
+                  {b.ownerName ? ` Owner: ${b.ownerName}.` : ''}
                 </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <MailButton
+                  to={b.ownerEmail}
+                  subject={`KYRO: a payment method is needed for ${b.name}`}
+                />
+                <CallButton phone={b.contactPhone} />
               </div>
             </div>
           ))}
@@ -316,6 +381,10 @@ function Attention({ data }: { data: Overview }) {
                 <p className="text-sm font-semibold text-heading">{c.name} has {moneyExact(c.earnedCents)} earned and payouts held</p>
                 <p className="text-xs text-muted">{c.heldReason}.</p>
               </div>
+              <MailButton
+                to={c.email}
+                subject={`KYRO: finish your payout setup to release ${moneyExact(c.earnedCents)}`}
+              />
             </div>
           ))}
           {unsigned.map((b) => (
@@ -323,7 +392,17 @@ function Attention({ data }: { data: Overview }) {
               <AlertTriangle size={16} className="text-warn flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-heading">{b.name} is running campaigns with no signed agreement</p>
-                <p className="text-xs text-muted">Attributed {money(b.attributedSalesCents)} so far.</p>
+                <p className="text-xs text-muted">
+                  Attributed {money(b.attributedSalesCents)} so far.
+                  {b.ownerName ? ` Owner: ${b.ownerName}.` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <MailButton
+                  to={b.ownerEmail}
+                  subject={`KYRO: agreement outstanding for ${b.name}`}
+                />
+                <CallButton phone={b.contactPhone} />
               </div>
             </div>
           ))}
@@ -337,6 +416,7 @@ export function AdminOverview() {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [measure, setMeasure] = useState<Measure>('sales');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -414,8 +494,27 @@ export function AdminOverview() {
 
       <Attention data={data} />
 
-      <Panel title="Attributed sales by month" note="What creator content drove, month by month. Hover a bar for the exact figure.">
-        <MonthsChart months={data.months} />
+      <Panel
+        title={MEASURES.find((m) => m.key === measure)?.label ?? 'By month'}
+        note={`${MEASURES.find((m) => m.key === measure)?.note ?? ''} Hover a bar for the exact figure.`}
+        right={
+          <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg">
+            {MEASURES.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => setMeasure(m.key)}
+                className={`text-xs font-semibold px-3 py-1.5 rounded transition ${
+                  m.key === measure ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        }
+      >
+        <MonthsChart months={data.months} measure={measure} />
       </Panel>
 
       <Panel title="Brands" note="Every brand on KYRO, their connections, how they are billed, and what they owe.">
