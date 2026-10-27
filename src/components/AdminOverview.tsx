@@ -44,9 +44,9 @@ const day = (iso: string | null) =>
    identical on purpose: a held payout should not be amber in one place and
    pink in another. Every one of them ships with a word, never colour alone. */
 const TONE = {
-  good: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300',
-  warn: 'border-amber-400/30 bg-amber-400/10 text-amber-300',
-  bad: 'border-pink-400/30 bg-pink-400/10 text-pink-300',
+  good: 'border-good/30 bg-good-soft text-good',
+  warn: 'border-warn/30 bg-warn-soft text-warn',
+  bad: 'border-bad/30 bg-bad-soft text-bad',
   idle: 'border-line bg-surface-2 text-muted',
 };
 
@@ -180,7 +180,7 @@ function BrandsTable({ rows }: { rows: AdminBrandRow[] }) {
               <td className="p-4 text-right tabular-nums text-body">{money(b.feeCents)}</td>
               <td className="p-4 text-right tabular-nums">
                 {b.owedCents > 0 ? (
-                  <span className={b.billable ? 'text-heading font-semibold' : 'text-pink-300 font-semibold'}>
+                  <span className={b.billable ? 'text-heading font-semibold' : 'text-bad font-semibold'}>
                     {money(b.owedCents)}
                   </span>
                 ) : (
@@ -291,14 +291,14 @@ function Attention({ data }: { data: Overview }) {
     <Panel title="Needs attention" note="Money that cannot move, and brands running without a signature.">
       {nothing ? (
         <div className="p-10 text-center">
-          <CheckCircle2 size={28} className="mx-auto text-emerald-400 mb-3" />
+          <CheckCircle2 size={28} className="mx-auto text-good mb-3" />
           <p className="text-sm text-muted">Nothing is stuck.</p>
         </div>
       ) : (
         <div className="divide-y divide-line">
           {unbillable.map((b) => (
             <div key={`u-${b.id}`} className="p-4 flex flex-wrap items-center gap-3">
-              <AlertTriangle size={16} className="text-pink-400 flex-shrink-0" />
+              <AlertTriangle size={16} className="text-bad flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-heading">{b.name} owes {moneyExact(b.owedCents)} and cannot be charged</p>
                 <p className="text-xs text-muted">
@@ -311,7 +311,7 @@ function Attention({ data }: { data: Overview }) {
           ))}
           {held.map((c) => (
             <div key={`h-${c.id}`} className="p-4 flex flex-wrap items-center gap-3">
-              <Clock size={16} className="text-amber-400 flex-shrink-0" />
+              <Clock size={16} className="text-warn flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-heading">{c.name} has {moneyExact(c.earnedCents)} earned and payouts held</p>
                 <p className="text-xs text-muted">{c.heldReason}.</p>
@@ -320,7 +320,7 @@ function Attention({ data }: { data: Overview }) {
           ))}
           {unsigned.map((b) => (
             <div key={`s-${b.id}`} className="p-4 flex flex-wrap items-center gap-3">
-              <AlertTriangle size={16} className="text-amber-400 flex-shrink-0" />
+              <AlertTriangle size={16} className="text-warn flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-heading">{b.name} is running campaigns with no signed agreement</p>
                 <p className="text-xs text-muted">Attributed {money(b.attributedSalesCents)} so far.</p>
@@ -355,7 +355,7 @@ export function AdminOverview() {
   if (!data) {
     return (
       <div className="p-16 text-center">
-        <AlertTriangle size={28} className="mx-auto text-pink-400 mb-3" />
+        <AlertTriangle size={28} className="mx-auto text-bad mb-3" />
         <p className="text-sm text-muted">{error ?? 'Could not load the overview.'}</p>
       </div>
     );
@@ -386,8 +386,8 @@ export function AdminOverview() {
       </div>
 
       {error && (
-        <div className="p-3 rounded-lg border border-pink-400/30 bg-pink-400/10">
-          <p className="text-xs text-pink-200">{error}</p>
+        <div className="p-3 rounded-lg border border-bad/30 bg-bad-soft">
+          <p className="text-xs text-bad">{error}</p>
         </div>
       )}
 

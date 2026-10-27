@@ -1,9 +1,9 @@
 import {
-  Menu, X, ArrowRight, Star, TrendingUp, Zap, DollarSign, CheckCircle, Briefcase, Camera,
-  Shield, ChevronRight, Plus, Upload, Eye, Users, Wallet, FileVideo, AlertCircle, Activity,
-  Bell, LogOut, Filter, Search, Target, RefreshCw, MessageSquare, Globe, Mail, Trophy,
-  ShieldCheck, Cpu, Layers, Heart, ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3,
-  ArrowDownRight, ImagePlus, MessagesSquare, Settings as SettingsIcon, CreditCard, Banknote
+  Menu, X, ArrowRight, Star, Zap, DollarSign, CheckCircle, Briefcase, Camera, Shield,
+  ChevronRight, Plus, Upload, Eye, Users, Wallet, FileVideo, AlertCircle, Bell, LogOut, Filter,
+  Search, Target, RefreshCw, MessageSquare, Globe, Mail, Trophy, ShieldCheck, Cpu, Layers,
+  Heart, ChevronLeft, Sun, Moon, EyeOff, BarChart3, ArrowDownRight, ImagePlus, MessagesSquare,
+  Settings as SettingsIcon, CreditCard, Banknote
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { mockApi } from './lib/api';
@@ -64,6 +64,7 @@ import { CoverImage, VideoTile } from './components/MediaTile';
 import { CampaignCoverControl } from './components/CampaignCover';
 import { SubmissionDetailModal } from './components/SubmissionDetail';
 import { AdminOverview } from './components/AdminOverview';
+import { CreatorAnalytics } from './components/CreatorAnalytics';
 import { PayoutsPanel } from './components/PayoutsPanel';
 import { ChatPanel, useUnreadTotal } from './components/Chat';
 import { BrandMark, CampaignDetailModal } from './components/CampaignDetail';
@@ -158,115 +159,7 @@ const BRANDS = {
 
 type BrandId = keyof typeof BRANDS;
 
-const SEED_CAMPAIGNS = [
-  {
-    id: 'c1',
-    name: 'Bold Buns — Summer Drop',
-    brandId: 'boldbuns' as BrandId,
-    status: 'live',
-    pool: 25000,
-    spent: 14820,
-    creators: 12,
-    submissions: 18,
-    roas: 3.4,
-    impressions: 482000,
-    conversions: 1240,
-    cover: 'https://images.pexels.com/photos/1552242/pexels-photo-1552242.jpeg?auto=compress&cs=tinysrgb&w=600',
-  },
-  {
-    id: 'c2',
-    name: 'Fuel — Recovery Launch',
-    brandId: 'fuel' as BrandId,
-    status: 'live',
-    pool: 18000,
-    spent: 7200,
-    creators: 8,
-    submissions: 11,
-    roas: 2.9,
-    impressions: 248000,
-    conversions: 612,
-    cover: 'https://images.pexels.com/photos/4498151/pexels-photo-4498151.jpeg?auto=compress&cs=tinysrgb&w=600',
-  },
-  {
-    id: 'c3',
-    name: 'Jaje Health — Hero Tonic',
-    brandId: 'jaje' as BrandId,
-    status: 'live',
-    pool: 32000,
-    spent: 9410,
-    creators: 14,
-    submissions: 22,
-    roas: 4.1,
-    impressions: 612000,
-    conversions: 1840,
-    cover: 'https://images.pexels.com/photos/1638280/pexels-photo-1638280.jpeg?auto=compress&cs=tinysrgb&w=600',
-  },
-  {
-    id: 'c4',
-    name: 'Lebanta — Capsule Collection',
-    brandId: 'lebanta' as BrandId,
-    status: 'pending_fund',
-    pool: 0,
-    spent: 0,
-    creators: 0,
-    submissions: 0,
-    roas: 0,
-    impressions: 0,
-    conversions: 0,
-    cover: 'https://images.pexels.com/photos/1078973/pexels-photo-1078973.jpeg?auto=compress&cs=tinysrgb&w=600',
-  },
-];
 
-const SEED_CREATORS = {
-  maya: {
-    id: 'maya',
-    name: 'Maya Chen',
-    handle: '@mayachen',
-    avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=200',
-    bio: 'Wellness + lifestyle creator. Tea, movement, and quiet mornings. I love brands that put care into the everyday.',
-    location: 'Vancouver, BC',
-    social: { instagram: '280K', tiktok: '420K', youtube: '38K' },
-    stats: { campaigns: 14, totalEarned: 24820, avgRoasForBrands: 3.7, ordersDriven: 1840 },
-    niche: ['Wellness', 'Lifestyle', 'Movement'],
-    sampleWork: [
-      'https://images.pexels.com/photos/2294353/pexels-photo-2294353.jpeg?auto=compress&cs=tinysrgb&w=300',
-      'https://images.pexels.com/photos/1239288/pexels-photo-1239288.jpeg?auto=compress&cs=tinysrgb&w=300',
-      'https://images.pexels.com/photos/2294353/pexels-photo-2294353.jpeg?auto=compress&cs=tinysrgb&w=300',
-    ],
-  },
-  sasha: {
-    id: 'sasha',
-    name: 'Sasha Novak',
-    handle: '@sashanovak',
-    avatar: 'https://images.pexels.com/photos/1130626/pexels-photo-1130626.jpeg?auto=compress&cs=tinysrgb&w=200',
-    bio: 'Streetwear, sneakers, and the culture around them. I build videos brands actually want to scale.',
-    location: 'Toronto, ON',
-    social: { instagram: '510K', tiktok: '880K', youtube: '120K' },
-    stats: { campaigns: 22, totalEarned: 48200, avgRoasForBrands: 4.2, ordersDriven: 3120 },
-    niche: ['Streetwear', 'Apparel', 'Culture'],
-    sampleWork: [
-      'https://images.pexels.com/photos/1183266/pexels-photo-1183266.jpeg?auto=compress&cs=tinysrgb&w=300',
-      'https://images.pexels.com/photos/2294353/pexels-photo-2294353.jpeg?auto=compress&cs=tinysrgb&w=300',
-      'https://images.pexels.com/photos/1239288/pexels-photo-1239288.jpeg?auto=compress&cs=tinysrgb&w=300',
-    ],
-  },
-  priya: {
-    id: 'priya',
-    name: 'Priya Sharma',
-    handle: '@priya.s',
-    avatar: 'https://images.pexels.com/photos/1181690/pexels-photo-1181690.jpeg?auto=compress&cs=tinysrgb&w=200',
-    bio: 'Skincare, science, and demystifying what actually works. Long-form storytelling for product-led brands.',
-    location: 'Brooklyn, NY',
-    social: { instagram: '140K', tiktok: '210K', youtube: '88K' },
-    stats: { campaigns: 9, totalEarned: 16200, avgRoasForBrands: 3.2, ordersDriven: 940 },
-    niche: ['Skincare', 'Wellness', 'Education'],
-    sampleWork: [
-      'https://images.pexels.com/photos/1239288/pexels-photo-1239288.jpeg?auto=compress&cs=tinysrgb&w=300',
-      'https://images.pexels.com/photos/2294353/pexels-photo-2294353.jpeg?auto=compress&cs=tinysrgb&w=300',
-      'https://images.pexels.com/photos/1183266/pexels-photo-1183266.jpeg?auto=compress&cs=tinysrgb&w=300',
-    ],
-  },
-};
 
 
 
@@ -1130,7 +1023,7 @@ function RolePicker({
 /* ─────────────────────────────────────────────────────────────
    APP SHELL
    ───────────────────────────────────────────────────────────── */
-function AppShell({ role, onSwitch, onSignOut, onSettings, showDemoSwitch = true, children }: { role: Role; onSwitch: (r: Role) => void; onSignOut: () => void; onSettings: () => void; showDemoSwitch?: boolean; children: React.ReactNode }) {
+function AppShell({ role, onSignOut, onSettings, children }: { role: Role; onSignOut: () => void; onSettings: () => void; children: React.ReactNode }) {
   const roleLabels: Record<Role, string> = { brand: 'Brand', creator: 'Creator', admin: 'Admin' };
   const roleIcons: Record<Role, typeof Briefcase> = { brand: Briefcase, creator: Camera, admin: Shield };
   const Icon = roleIcons[role];
@@ -1150,16 +1043,6 @@ function AppShell({ role, onSwitch, onSignOut, onSettings, showDemoSwitch = true
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {showDemoSwitch && (
-                <div className="hidden md:flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg">
-                  <span className="text-xs text-faint px-2">Demo as:</span>
-                  {(['brand', 'creator', 'admin'] as Role[]).map(r => (
-                    <button key={r} onClick={() => onSwitch(r)} className={`text-xs font-semibold px-2.5 py-1 rounded transition ${r === role ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}>
-                      {roleLabels[r]}
-                    </button>
-                  ))}
-                </div>
-              )}
               <NotificationsBell />
               <SupportWidget context={`${roleLabels[role]} portal`} />
               <button onClick={onSettings} className="p-2 text-muted hover:text-heading transition" title="Account">
@@ -1614,25 +1497,6 @@ interface CampaignCard {
   roas: number | null;
 }
 
-function seedCampaignCards(): CampaignCard[] {
-  return SEED_CAMPAIGNS.map((c) => ({
-    id: c.id,
-    name: c.name,
-    status: c.status,
-    brandName: BRANDS[c.brandId].name,
-    seedBrandId: c.brandId,
-    logoUrl: null,
-    brandId: null,
-    cover: c.cover,
-    poolDollars: c.pool,
-    spentDollars: c.spent,
-    creators: c.creators,
-    submissions: c.submissions,
-    orders: c.conversions,
-    impressions: c.impressions,
-    roas: c.roas || null,
-  }));
-}
 
 function dbCampaignCards(rows: CampaignWithStats[], brandName: string, logoUrl: string | null): CampaignCard[] {
   return rows.map((c) => ({
@@ -2165,7 +2029,7 @@ function BrandDashboard({
 
   const allCards = brand && configured
     ? dbCampaignCards(rows, brand.name, brand.logoUrl || null)
-    : seedCampaignCards();
+    : [];
 
   // KPIs describe the whole account, so they are computed from every campaign.
   // Only the list below is filtered, otherwise typing in the search box would
@@ -2181,7 +2045,11 @@ function BrandDashboard({
   const totalSubs = allCards.reduce((s, c) => s + c.submissions, 0);
 
   const busy = loading || workspaceLoading;
-  const isEmpty = liveMode && !busy && !loadError && cards.length === 0;
+  // No longer gated on liveMode. Campaigns used to fall back to seeded demo
+  // data when there was no brand, so an account without one was never empty,
+  // only fictional. With the seeds gone, an empty list has to say so rather
+  // than render nothing at all.
+  const isEmpty = !busy && !loadError && cards.length === 0;
   // Campaigns can only launch once the gates in docs/KYRO_MODEL.md §4 pass.
   // Onboarding no longer blocks CREATING a campaign, only opening one to
   // creators. A brand should be able to write the brief while they are still
@@ -3109,7 +2977,7 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
   const [openSub, setOpenSub] = useState<MySubmission | null>(null);
   const [mine, setMine] = useState<MySubmission[]>([]);
   const [accepted, setAccepted] = useState<OpenCampaign[]>([]);
-  const [tab, setTab] = useState<'submissions' | 'browse' | 'chat' | 'payouts'>('submissions');
+  const [tab, setTab] = useState<'submissions' | 'analytics' | 'browse' | 'chat' | 'payouts'>('submissions');
   const [section, setSection] = useState<'uploaded' | 'in_use' | 'not_used' | 'campaigns'>('in_use');
   const [chatThreadId, setChatThreadId] = useState<string | null>(null);
   const unread = useUnreadTotal();
@@ -3170,9 +3038,10 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
       {/* Two by two on a phone, one compact row from sm up. Each cell carries
           its own border at phone width so it reads as four things; on desktop
           the outer card comes back and the cells sit inside it. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-1 sm:p-1 sm:bg-surface sm:border sm:border-line sm:rounded-xl sm:w-fit">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-1 sm:p-1 sm:bg-surface sm:border sm:border-line sm:rounded-xl sm:w-fit">
         {[
           { id: 'submissions', short: 'Videos', label: 'My Submissions', icon: FileVideo },
+          { id: 'analytics', short: 'Stats', label: 'Analytics', icon: BarChart3 },
           { id: 'browse', short: 'Browse', label: 'Browse', icon: Search },
           { id: 'chat', short: 'Chat', label: 'Chat', icon: MessagesSquare },
           { id: 'payouts', short: 'Payouts', label: 'Payouts', icon: Wallet },
@@ -3298,6 +3167,10 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
             </>
           )}
         </div>
+      )}
+
+      {tab === 'analytics' && creatorId && (
+        <CreatorAnalytics creatorId={creatorId} submissions={mine} />
       )}
 
       {tab === 'browse' && creatorId && (
@@ -4769,125 +4642,6 @@ function PayoutAccountCard() {
 
 
 
-/* ─────────────────────────────────────────────────────────────
-   BRAND PUBLIC PROFILE
-   ───────────────────────────────────────────────────────────── */
-function BrandPublicProfile({ brandId, onBack }: { brandId: BrandId; onBack: () => void }) {
-  const b = BRANDS[brandId];
-  const campaigns = SEED_CAMPAIGNS.filter(c => c.brandId === brandId);
-  return (
-    <div className="min-h-screen bg-app">
-      <div className="sticky top-0 z-40 backdrop-blur-md bg-app/80 border-b border-line px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto h-16 flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-heading transition">
-            <ChevronLeft size={20} /> Back
-          </button>
-          <div className="flex items-center gap-2">
-            <KyroLogo size={28} />
-            <span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
-          </div>
-          <button
-            type="button"
-            disabled
-            title="Public profile links arrive with the brand profile build. There is no shareable URL yet."
-            className="flex items-center gap-2 px-3 py-1.5 text-muted text-sm opacity-50 cursor-not-allowed"
-          >
-            <Share2 size={14} /> Share
-          </button>
-        </div>
-      </div>
-
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
-        {/* Hero */}
-        <div className={`relative overflow-hidden rounded-3xl border border-line bg-gradient-to-br ${b.accent} p-8 md:p-12`}>
-          <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start">
-            <BrandLogo brandId={brandId} size={120} />
-            <div className="flex-1 space-y-3">
-              <div>
-                <h1 className="text-4xl md:text-5xl font-bold text-heading">{b.name}</h1>
-                <p className="text-lg text-body mt-1">{b.tagline}</p>
-              </div>
-              <span className="inline-block px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-heading">{b.category}</span>
-            </div>
-            <button
-              type="button"
-              disabled
-              title="Applying to a brand arrives with the creator side of KYRO."
-              className="px-5 py-2.5 bg-white text-slate-900 rounded-lg font-semibold whitespace-nowrap opacity-50 cursor-not-allowed"
-            >
-              Apply to work with us
-            </button>
-          </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Active Campaigns', value: campaigns.filter(c => c.status === 'live').length.toString(), icon: Activity, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-            { label: 'Creators Engaged', value: campaigns.reduce((s, c) => s + c.creators, 0).toString(), icon: Users, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-            { label: 'Lifetime Spend', value: fmt(campaigns.reduce((s, c) => s + c.spent, 0)), icon: DollarSign, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-            { label: 'Avg ROAS', value: `${(campaigns.filter(c => c.roas > 0).reduce((s, c) => s + c.roas, 0) / Math.max(campaigns.filter(c => c.roas > 0).length, 1)).toFixed(1)}x`, icon: TrendingUp, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
-          ].map((s, i) => (
-            <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
-              <s.icon size={20} className={s.color} />
-              <p className="text-xs text-muted mt-3 mb-1">{s.label}</p>
-              <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Active campaigns */}
-        <div>
-          <h2 className="text-2xl font-bold text-heading mb-5">Open Campaigns</h2>
-          <div className="grid md:grid-cols-2 gap-5">
-            {campaigns.map((c) => (
-              <div key={c.id} className="bg-surface border border-line rounded-2xl overflow-hidden hover:border-line transition">
-                <img src={c.cover} alt={c.name} className="w-full h-40 object-cover" />
-                <div className="p-5 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-lg font-bold text-heading">{c.name}</h3>
-                    <StatusPill status={c.status} />
-                  </div>
-                  {c.status === 'live' && (
-                    <div className="grid grid-cols-3 gap-3 text-sm">
-                      <div><p className="text-xs text-faint">Creators</p><p className="font-bold text-heading">{c.creators}</p></div>
-                      <div><p className="text-xs text-faint">Conversions</p><p className="font-bold text-emerald-400">{c.conversions.toLocaleString()}</p></div>
-                      <div><p className="text-xs text-faint">ROAS</p><p className="font-bold text-purple-400">{c.roas}x</p></div>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    disabled
-                    title="Applying to a campaign arrives with the creator side of KYRO."
-                    className="w-full px-4 py-2 bg-gradient-kyro rounded-lg text-white text-sm font-semibold opacity-50 cursor-not-allowed"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Creator roster */}
-        <div>
-          <h2 className="text-2xl font-bold text-heading mb-5">Creators in {b.name}'s roster</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {Object.values(SEED_CREATORS).map((c) => (
-              <div key={c.id} className="flex items-center gap-3 p-4 bg-surface border border-line rounded-2xl hover:border-line transition">
-                <img src={c.avatar} alt={c.name} className="w-12 h-12 rounded-full object-cover" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-heading font-semibold truncate">{c.name}</p>
-                  <p className="text-xs text-muted truncate">{c.handle}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ─────────────────────────────────────────────────────────────
    ABOUT KYRO PAGE
@@ -5542,7 +5296,6 @@ type View =
   | 'onboard'
   | 'app'
   | 'about'
-  | 'brand-profile'
   | 'affiliate-orders'
   | 'invite'
   | 'settings';
@@ -5594,7 +5347,6 @@ function App() {
   const [role, setRole] = useState<Role>(initial.admin ? 'admin' : 'brand');
   // The public brand page is still reachable by route; nothing inside the app
   // links to it now that the creator dashboard reads from the database.
-  const [profileBrandId] = useState<BrandId>('boldbuns');
   const [restored, setRestored] = useState(false);
 
   // Keep in sync with browser back/forward
@@ -5803,7 +5555,6 @@ function App() {
     />
   );
   if (view === 'about') return <AboutPage onBack={goLanding} onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} />;
-  if (view === 'brand-profile') return <BrandPublicProfile brandId={profileBrandId} onBack={() => setView('app')} />;
   if (view === 'settings') {
     return (
       <AccountSettings
@@ -5829,12 +5580,8 @@ function App() {
     return <BootScreen />;
   }
 
-  // The "Demo as" switcher is for exploring the demo. A real signed-in brand or
-  // creator shouldn't be able to flip into someone else's portal; admins keep it.
-  const showDemoSwitch = !session.configured || !session.userId || session.role === 'admin';
-
   return (
-    <AppShell role={role} onSwitch={setRole} onSignOut={() => void doSignOut()} onSettings={() => setView('settings')} showDemoSwitch={showDemoSwitch}>
+    <AppShell role={role} onSignOut={() => void doSignOut()} onSettings={() => setView('settings')}>
       {role === 'brand' && (
         <BrandDashboard
           pendingShop={pendingShop}

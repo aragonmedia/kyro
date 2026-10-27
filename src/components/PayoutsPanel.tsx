@@ -22,10 +22,10 @@ const day = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 const STATUS_TONE: Record<string, string> = {
-  paid: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300',
-  processing: 'border-amber-400/30 bg-amber-400/10 text-amber-300',
+  paid: 'border-good/30 bg-good-soft text-good',
+  processing: 'border-warn/30 bg-warn-soft text-warn',
   pending: 'border-line bg-surface-2 text-muted',
-  failed: 'border-pink-400/30 bg-pink-400/10 text-pink-300',
+  failed: 'border-bad/30 bg-bad-soft text-bad',
 };
 
 /* There was a minimum here, from when a creator pulled their own money. A
@@ -109,7 +109,7 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               {payoutsReady ? (
-                <CheckCircle2 size={16} className="text-emerald-400" />
+                <CheckCircle2 size={16} className="text-good" />
               ) : (
                 <Wallet size={16} className="text-body" />
               )}
@@ -142,7 +142,7 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
               </p>
             ) : null}
 
-            {setupError && <p className="text-xs text-pink-300 mt-2">{setupError}</p>}
+            {setupError && <p className="text-xs text-bad mt-2">{setupError}</p>}
           </div>
 
           {!payoutsReady && (

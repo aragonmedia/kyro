@@ -14,6 +14,12 @@ export default {
         body: 'rgb(var(--body) / <alpha-value>)',
         muted: 'rgb(var(--muted) / <alpha-value>)',
         faint: 'rgb(var(--faint) / <alpha-value>)',
+        good: 'rgb(var(--good) / <alpha-value>)',
+        'good-soft': 'rgb(var(--good-soft) / <alpha-value>)',
+        warn: 'rgb(var(--warn) / <alpha-value>)',
+        'warn-soft': 'rgb(var(--warn-soft) / <alpha-value>)',
+        bad: 'rgb(var(--bad) / <alpha-value>)',
+        'bad-soft': 'rgb(var(--bad-soft) / <alpha-value>)',
         kyro: {
           50: '#f8f6ff',
           100: '#f0ebff',

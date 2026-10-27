@@ -18,6 +18,16 @@
   --body: 203 213 225;    /* slate-300 */
   --muted: 148 163 184;   /* slate-400 */
   --faint: 100 116 139;   /* slate-500 */
+
+  /* Status. Four reserved meanings, never used as "series 4". Each ships as a
+     foreground and a fill so a badge is one pair of tokens rather than a guess
+     at an alpha, and each pair clears 4.5:1 against its own fill. */
+  --good: 110 231 183;      /* emerald-300 */
+  --good-soft: 16 44 34;
+  --warn: 252 211 77;       /* amber-300  */
+  --warn-soft: 48 36 12;
+  --bad: 249 168 212;       /* pink-300   */
+  --bad-soft: 56 20 38;
 }
 
 .light {
@@ -29,6 +39,16 @@
   --body: 51 55 66;
   --muted: 90 96 110;
   --faint: 140 146 158;
+
+  /* The same four meanings, stepped for white rather than flipped. A light
+     theme is chosen, not derived: emerald-300 on white is unreadable, so the
+     light steps are the 700s over their own 100s. */
+  --good: 4 120 87;         /* emerald-700 */
+  --good-soft: 209 250 229; /* emerald-100 */
+  --warn: 180 83 9;         /* amber-700   */
+  --warn-soft: 254 243 199; /* amber-100   */
+  --bad: 190 24 93;         /* pink-700    */
+  --bad-soft: 252 231 243;  /* pink-100    */
 }
 
 @layer base {
