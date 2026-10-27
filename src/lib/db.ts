@@ -227,7 +227,6 @@ export function toCreator(row: CreatorRow): Creator {
         ? { youtube: { handle: row.youtube_handle, subscribers: row.youtube_subscribers ?? 0 } }
         : {}),
     },
-    trolleyRecipientId: row.trolley_recipient_id ?? undefined,
     taxFormStatus: row.tax_form_status,
     taxFormSubmittedAt: row.tax_form_submitted_at ?? undefined,
     taxLegalName: row.tax_legal_name ?? undefined,

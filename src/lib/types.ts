@@ -66,7 +66,6 @@ export interface Creator {
     tiktok?: { handle: string; followers: number };
     youtube?: { handle: string; subscribers: number };
   };
-  trolleyRecipientId?: string;  // populated when Trolley onboarding done
   taxFormStatus: 'not_collected' | 'pending' | 'complete';
   taxFormSubmittedAt?: string;
   taxLegalName?: string;
@@ -134,9 +133,11 @@ export interface Submission {
 export interface LedgerEntry {
   id: string;
   type:
-    | 'pool_credit'              // brand funded pool (Square)
+    // 'pool_credit' is historical. KYRO stopped funding campaign pools when
+    // the deposit model was dropped; rows may still exist from before that.
+    | 'pool_credit'
     | 'earnings_accrual'         // creator earned from a submission's ad
-    | 'payout_debit'             // Trolley paid a creator
+    | 'payout_debit'             // a creator was paid
     | 'refund'
     | 'adjustment';
   creatorId?: string;
@@ -145,7 +146,7 @@ export interface LedgerEntry {
   submissionId?: string;
   amountCents: Cents;            // positive = credit, negative = debit
   balanceAfterCents: Cents;      // running balance after this entry
-  refExternalId?: string;        // Square invoice id, Trolley batch id, etc.
+  refExternalId?: string;        // the processor's own reference, e.g. a Stripe transfer id
   notes?: string;
   createdAt: string;
 }
@@ -153,7 +154,7 @@ export interface LedgerEntry {
 export interface Payout {
   id: string;
   creatorId: string;
-  trolleyBatchId: string;
+  providerBatchId: string;       // Stripe transfer id
   amountCents: Cents;
   status: PayoutStatus;
   periodStart: string;

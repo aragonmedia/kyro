@@ -1,12 +1,9 @@
 import {
-  Menu, X, ArrowRight, Star, TrendingUp, Zap, DollarSign,
-  CheckCircle, Briefcase, Camera, Shield, ChevronRight,
-  Plus, Upload, Eye, Users, Wallet, FileVideo, AlertCircle, Activity,
-  Sparkles, Bell, LogOut, Filter, Search, Award, Target,
-  ArrowUpRight, RefreshCw, MessageSquare, Globe, Mail, Trophy, Hash,
-  Instagram, Youtube, ShieldCheck, Cpu, Layers, Heart,
-  ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3, PieChart, Calendar, ArrowDownRight, ImagePlus,
-  MessagesSquare, Settings as SettingsIcon, CreditCard, Banknote
+  Menu, X, ArrowRight, Star, TrendingUp, Zap, DollarSign, CheckCircle, Briefcase, Camera,
+  Shield, ChevronRight, Plus, Upload, Eye, Users, Wallet, FileVideo, AlertCircle, Activity,
+  Bell, LogOut, Filter, Search, Target, RefreshCw, MessageSquare, Globe, Mail, Trophy,
+  ShieldCheck, Cpu, Layers, Heart, ChevronLeft, Share2, Sun, Moon, EyeOff, BarChart3,
+  ArrowDownRight, ImagePlus, MessagesSquare, Settings as SettingsIcon, CreditCard, Banknote
 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { mockApi } from './lib/api';
@@ -66,6 +63,7 @@ import { AffiliateOrdersCard, AffiliateOrdersPage } from './components/Affiliate
 import { CoverImage, VideoTile } from './components/MediaTile';
 import { CampaignCoverControl } from './components/CampaignCover';
 import { SubmissionDetailModal } from './components/SubmissionDetail';
+import { AdminOverview } from './components/AdminOverview';
 import { PayoutsPanel } from './components/PayoutsPanel';
 import { ChatPanel, useUnreadTotal } from './components/Chat';
 import { BrandMark, CampaignDetailModal } from './components/CampaignDetail';
@@ -270,18 +268,8 @@ const SEED_CREATORS = {
   },
 };
 
-type CreatorId = keyof typeof SEED_CREATORS;
 
-const SEED_LEADERBOARD = [
-  { creatorId: 'sasha' as CreatorId, orders: 445, ads: 4, views: 11800, brandId: 'boldbuns' as BrandId },
-  { creatorId: 'maya' as CreatorId, orders: 430, ads: 4, views: 21400, brandId: 'jaje' as BrandId },
-  { creatorId: 'priya' as CreatorId, orders: 422, ads: 1, views: 40100, brandId: 'fuel' as BrandId },
-];
 
-const SEED_CURATION = [
-  { id: 'cu1', campaign: 'Bold Buns — Summer Drop', creatorId: 'sasha' as CreatorId, match: 94 },
-  { id: 'cu2', campaign: 'Fuel — Recovery Launch', creatorId: 'priya' as CreatorId, match: 91 },
-];
 
 const testimonials = [
   { quote: "Kyro completely changed how we run influencer marketing. Our ROAS tripled in the first month.", name: "Jordan Lee", role: "Head of Growth, Bold Buns", avatar: "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=80&h=80&dpr=2", stars: 5 },
@@ -1195,20 +1183,6 @@ function stripAt(handle: string): string {
   return handle.replace(/^@+/, '').trim();
 }
 
-/** A social handle that actually opens the profile, in a new tab. */
-function SocialLink({ href, icon: Icon, label }: { href: string; icon: typeof Instagram; label: string }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer noopener"
-      className="flex items-center gap-2 text-muted hover:text-heading transition"
-    >
-      <Icon size={18} />
-      <span className="text-sm font-semibold">{label}</span>
-    </a>
-  );
-}
 
 /**
  * Notifications.
@@ -4793,429 +4767,7 @@ function PayoutAccountCard() {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   ADMIN — ANALYTICS COMMAND CENTER
-   ───────────────────────────────────────────────────────────── */
-const ADMIN_MONTHS = [
-  { m: 'Jan', rev: 18200, spend: 41000 },
-  { m: 'Feb', rev: 22400, spend: 52000 },
-  { m: 'Mar', rev: 26800, spend: 61000 },
-  { m: 'Apr', rev: 24100, spend: 58000 },
-  { m: 'May', rev: 31430, spend: 74000 },
-  { m: 'Jun', rev: 38900, spend: 92000 },
-];
 
-const ADMIN_BRAND_PERF = [
-  { brandId: 'boldbuns' as BrandId, revenue: 12400, spend: 34200, roas: 3.4, orders: 1240 },
-  { brandId: 'jaje' as BrandId, revenue: 10800, spend: 28600, roas: 4.1, orders: 1840 },
-  { brandId: 'fuel' as BrandId, revenue: 7600, spend: 21800, roas: 2.9, orders: 612 },
-  { brandId: 'ns' as BrandId, revenue: 5200, spend: 14200, roas: 3.1, orders: 480 },
-  { brandId: 'lebanta' as BrandId, revenue: 2900, spend: 8100, roas: 2.4, orders: 210 },
-];
-
-function KpiCard({ label, value, delta, up = true, icon: Icon }: { label: string; value: string; delta: string; up?: boolean; icon: typeof Trophy }) {
-  return (
-    <div className="p-5 rounded-2xl border border-line bg-surface">
-      <div className="flex items-center justify-between mb-3">
-        <div className="w-9 h-9 rounded-lg bg-surface-2 border border-line flex items-center justify-center"><Icon size={16} className="text-purple-500" /></div>
-        <span className={`flex items-center gap-1 text-xs font-semibold ${up ? 'text-emerald-500' : 'text-pink-500'}`}>
-          {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{delta}
-        </span>
-      </div>
-      <p className="text-xs text-muted mb-1">{label}</p>
-      <p className="text-2xl font-bold text-heading">{value}</p>
-    </div>
-  );
-}
-
-function RevSpendChart() {
-  const max = Math.max(...ADMIN_MONTHS.flatMap((d) => [d.rev, d.spend]));
-  return (
-    <div>
-      <div className="flex items-end gap-4 h-52">
-        {ADMIN_MONTHS.map((d) => (
-          <div key={d.m} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
-            <div className="w-full flex items-end justify-center gap-1.5 h-full">
-              <div className="w-1/2 max-w-[18px] rounded-t bg-line" style={{ height: `${(d.spend / max) * 100}%` }} title={`Spend ${fmt(d.spend)}`}></div>
-              <div className="w-1/2 max-w-[18px] rounded-t bg-gradient-kyro" style={{ height: `${(d.rev / max) * 100}%` }} title={`Revenue ${fmt(d.rev)}`}></div>
-            </div>
-            <span className="text-[11px] text-faint">{d.m}</span>
-          </div>
-        ))}
-      </div>
-      <div className="flex items-center gap-5 mt-4 text-xs">
-        <span className="flex items-center gap-1.5 text-muted"><span className="w-3 h-3 rounded-sm bg-gradient-kyro"></span> Platform revenue</span>
-        <span className="flex items-center gap-1.5 text-muted"><span className="w-3 h-3 rounded-sm bg-line"></span> Ad spend managed</span>
-      </div>
-    </div>
-  );
-}
-
-function AdminDashboard({ onViewCreator }: { onViewCreator: (id: CreatorId) => void }) {
-  // Curation cards the operator has passed on this session.
-  const [skipped, setSkipped] = useState<string[]>([]);
-  // Brand Performance ordering. Spend descending is the useful default.
-  const [perfSort, setPerfSort] = useState<'spend' | 'name'>('spend');
-  const totalRevenue = ADMIN_MONTHS.reduce((s, m) => s + m.rev, 0);
-  const totalSpend = ADMIN_MONTHS.reduce((s, m) => s + m.spend, 0);
-  const totalOrders = ADMIN_BRAND_PERF.reduce((s, b) => s + b.orders, 0);
-  const blendedRoas = (ADMIN_BRAND_PERF.reduce((s, b) => s + b.roas, 0) / ADMIN_BRAND_PERF.length).toFixed(1);
-  const maxBrandSpend = Math.max(...ADMIN_BRAND_PERF.map((b) => b.spend));
-  const totalCollected = 75000;
-  const totalAccrued = 31430;
-  const totalPaidOut = 24890;
-  return (
-    <div className="max-w-7xl mx-auto space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-heading">Admin Analytics</h1>
-          <p className="text-muted mt-1">Platform-wide performance, revenue, and reconciliation.</p>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-2 bg-surface border border-line rounded-lg text-sm text-muted">
-          <Calendar size={14} /> Last 6 months
-        </div>
-      </div>
-
-      {/* KPI row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Platform Revenue" value={fmt(totalRevenue)} delta="+24%" up icon={DollarSign} />
-        <KpiCard label="Ad Spend Managed" value={fmt(totalSpend)} delta="+18%" up icon={TrendingUp} />
-        <KpiCard label="Orders Driven" value={totalOrders.toLocaleString()} delta="+31%" up icon={Target} />
-        <KpiCard label="Blended ROAS" value={`${blendedRoas}x`} delta="+0.3x" up icon={BarChart3} />
-      </div>
-
-      {/* Trend + breakdown */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-surface border border-line rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold text-heading">Revenue vs Ad Spend</h2>
-            <span className="text-xs text-faint">Monthly</span>
-          </div>
-          <RevSpendChart />
-        </div>
-        <div className="bg-surface border border-line rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold text-heading flex items-center gap-2"><PieChart size={16} className="text-purple-500" /> Spend by Brand</h2>
-          </div>
-          <div className="space-y-4">
-            {ADMIN_BRAND_PERF.map((b) => {
-              const brand = BRANDS[b.brandId];
-              return (
-                <div key={b.brandId} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2 text-body font-medium"><BrandLogo brandId={b.brandId} size={20} /> {brand.name}</span>
-                    <span className="text-faint">{fmt(b.spend)}</span>
-                  </div>
-                  <div className="h-2 bg-surface-2 rounded-full overflow-hidden"><div className="h-full bg-gradient-kyro rounded-full" style={{ width: `${(b.spend / maxBrandSpend) * 100}%` }}></div></div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Brand performance table */}
-      <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-        <div className="p-5 border-b border-line flex items-center justify-between">
-          <h2 className="text-lg font-bold text-heading">Brand Performance</h2>
-          <button
-            type="button"
-            onClick={() => setPerfSort((cur) => (cur === 'spend' ? 'name' : 'spend'))}
-            className="text-xs text-muted hover:text-heading flex items-center gap-1"
-            title="Change how this table is ordered"
-          >
-            <Filter size={12} /> Sorted by {perfSort === 'spend' ? 'spend' : 'name'}
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[640px]">
-            <thead>
-              <tr className="text-left text-faint border-b border-line">
-                <th className="p-4 font-semibold">Brand</th>
-                <th className="p-4 font-semibold">Revenue</th>
-                <th className="p-4 font-semibold">Spend</th>
-                <th className="p-4 font-semibold">Orders</th>
-                <th className="p-4 font-semibold">ROAS</th>
-                <th className="p-4 font-semibold">Spend share</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {[...ADMIN_BRAND_PERF]
-                .sort((a, b) =>
-                  perfSort === 'spend'
-                    ? b.spend - a.spend
-                    : BRANDS[a.brandId].name.localeCompare(BRANDS[b.brandId].name)
-                )
-                .map((b) => {
-                const brand = BRANDS[b.brandId];
-                return (
-                  <tr key={b.brandId} className="hover:bg-surface-2 transition">
-                    <td className="p-4"><span className="flex items-center gap-3 font-semibold text-heading"><BrandLogo brandId={b.brandId} size={28} /> {brand.name}</span></td>
-                    <td className="p-4 font-semibold text-emerald-500">{fmt(b.revenue)}</td>
-                    <td className="p-4 text-body">{fmt(b.spend)}</td>
-                    <td className="p-4 text-body">{b.orders.toLocaleString()}</td>
-                    <td className="p-4"><span className={`font-semibold ${b.roas >= 3 ? 'text-emerald-500' : 'text-amber-500'}`}>{b.roas}x</span></td>
-                    <td className="p-4 w-40"><div className="h-1.5 bg-surface-2 rounded-full overflow-hidden"><div className="h-full bg-gradient-kyro rounded-full" style={{ width: `${(b.spend / maxBrandSpend) * 100}%` }}></div></div></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Top creators + platform health */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-line flex items-center justify-between">
-            <h2 className="text-lg font-bold text-heading flex items-center gap-2"><Trophy size={16} className="text-amber-500" /> Top Creators</h2>
-            <span className="text-xs text-faint">by orders</span>
-          </div>
-          <div className="divide-y divide-line">
-            {SEED_LEADERBOARD.map((l, i) => {
-              const c = SEED_CREATORS[l.creatorId];
-              return (
-                <button key={l.creatorId} onClick={() => onViewCreator(l.creatorId)} className="w-full p-4 flex items-center gap-4 hover:bg-surface-2 transition text-left">
-                  <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-kyro text-white font-bold text-xs">{i + 1}</div>
-                  <img src={c.avatar} alt={c.name} className="w-9 h-9 rounded-full object-cover" />
-                  <div className="flex-1 min-w-0"><p className="font-semibold text-heading truncate">{c.name}</p><p className="text-xs text-muted">{c.handle}</p></div>
-                  <div className="text-right"><p className="text-sm font-bold text-emerald-500">{l.orders}</p><p className="text-[11px] text-faint">orders</p></div>
-                  <ChevronRight size={16} className="text-faint" />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="bg-surface border border-line rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-heading flex items-center gap-2"><Activity size={16} className="text-purple-500" /> Platform Health</h2>
-            <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-xs font-semibold text-emerald-500">All systems go</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: 'Active Brands', value: '14', sub: '3 pending' },
-              { label: 'Active Creators', value: '247', sub: '+18 this week' },
-              { label: 'Live Campaigns', value: '8', sub: 'across brands' },
-              { label: 'Avg Approval Time', value: '4.2h', sub: 'submission to live' },
-            ].map((s) => (
-              <div key={s.label} className="p-4 rounded-xl bg-surface-2 border border-line">
-                <p className="text-xs text-muted mb-1">{s.label}</p>
-                <p className="text-xl font-bold text-heading">{s.value}</p>
-                <p className="text-[11px] text-faint mt-0.5">{s.sub}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Reconciliation */}
-      <div className="bg-surface border border-line rounded-2xl p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-heading flex items-center gap-2"><Sparkles size={18} className="text-emerald-500" /> Reconciliation — Today</h2>
-            <p className="text-sm text-muted mt-0.5">Three-way diff: Square credits, Trolley debits, Kyro ledger.</p>
-          </div>
-          <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full"><span className="text-xs font-semibold text-emerald-500">All green</span></div>
-        </div>
-        <div className="grid md:grid-cols-3 gap-4">
-          {[
-            { icon: DollarSign, label: 'Collected (Square)', value: fmt(totalCollected) },
-            { icon: Activity, label: 'Earnings Accrued', value: fmt(totalAccrued) },
-            { icon: Wallet, label: 'Paid Out (Trolley)', value: fmt(totalPaidOut) },
-          ].map((r) => (
-            <div key={r.label} className="p-5 rounded-xl bg-surface-2 border border-line">
-              <div className="flex items-center gap-2 mb-2"><r.icon size={16} className="text-purple-500" /><p className="text-xs font-semibold text-muted uppercase tracking-wider">{r.label}</p></div>
-              <p className="text-2xl font-bold text-heading">{r.value}</p>
-            </div>
-          ))}
-        </div>
-        <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
-          <CheckCircle size={18} className="text-emerald-500" />
-          <p className="text-sm text-body">Ledger balanced. Pool float: <span className="font-bold text-heading">{fmt(totalCollected - totalAccrued)}</span> available across all campaigns.</p>
-        </div>
-      </div>
-
-      {/* Pool health + curation */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-line flex items-center justify-between">
-            <h2 className="text-lg font-bold text-heading">Pool Health</h2>
-            <span className="text-xs text-faint">{SEED_CAMPAIGNS.filter((c) => c.pool > 0).length} campaigns</span>
-          </div>
-          <div className="divide-y divide-line">
-            {SEED_CAMPAIGNS.filter((c) => c.pool > 0).map((c) => {
-              const pct = Math.round((c.spent / c.pool) * 100);
-              const lowPool = pct > 70;
-              return (
-                <div key={c.id} className="p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <BrandLogo brandId={c.brandId} size={28} />
-                    <div className="flex-1"><p className="text-sm font-semibold text-heading">{c.name}</p><p className="text-xs text-faint">{fmt(c.spent)} of {fmt(c.pool)}</p></div>
-                    {lowPool ? <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-xs font-semibold text-amber-500">Top up soon</span> : <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-xs font-semibold text-emerald-500">Healthy</span>}
-                  </div>
-                  <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden"><div className={`h-full ${lowPool ? 'bg-amber-500' : 'bg-gradient-kyro'} rounded-full`} style={{ width: `${pct}%` }}></div></div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-line flex items-center justify-between">
-            <h2 className="text-lg font-bold text-heading">Curation Queue</h2>
-            <span className="text-xs text-faint">{SEED_CURATION.length} pending</span>
-          </div>
-          <div className="divide-y divide-line">
-            {SEED_CURATION.filter((cu) => !skipped.includes(cu.id)).map((cu) => {
-              const c = SEED_CREATORS[cu.creatorId];
-              return (
-                <div key={cu.id} className="p-4 space-y-3">
-                  <button onClick={() => onViewCreator(cu.creatorId)} className="w-full flex items-center gap-3 text-left hover:opacity-80 transition">
-                    <img src={c.avatar} alt={c.name} className="w-10 h-10 rounded-full object-cover" />
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1"><p className="text-sm font-semibold text-heading">{c.name}</p><span className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 rounded-full text-xs font-semibold text-purple-500">{cu.match}% match</span></div>
-                      <p className="text-xs text-muted">{c.social.instagram} IG · {c.niche.join(' · ')}</p>
-                      <p className="text-xs text-faint mt-0.5">For: {cu.campaign}</p>
-                    </div>
-                  </button>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      disabled
-                      title="Proposing a match writes to the applications table, which is not built yet."
-                      className="flex-1 px-3 py-1.5 bg-gradient-kyro rounded-lg text-white text-xs font-semibold opacity-50 cursor-not-allowed"
-                    >
-                      Propose Match
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSkipped((cur) => [...cur, cu.id])}
-                      className="px-3 py-1.5 border border-line rounded-lg text-body text-xs font-semibold hover:bg-surface-2"
-                    >
-                      Skip
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   CREATOR PUBLIC PROFILE
-   ───────────────────────────────────────────────────────────── */
-function CreatorPublicProfile({ creatorId, onBack }: { creatorId: CreatorId; onBack: () => void }) {
-  const c = SEED_CREATORS[creatorId];
-  return (
-    <div className="min-h-screen bg-app">
-      <div className="sticky top-0 z-40 backdrop-blur-md bg-app/80 border-b border-line px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto h-16 flex items-center justify-between">
-          <button onClick={onBack} className="flex items-center gap-2 text-muted hover:text-heading transition">
-            <ChevronLeft size={20} /> Back
-          </button>
-          <div className="flex items-center gap-2">
-            <KyroLogo size={28} />
-            <span className="text-lg font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
-          </div>
-          <button
-            type="button"
-            disabled
-            title="Public profile links arrive with the creator profile build. There is no shareable URL yet."
-            className="flex items-center gap-2 px-3 py-1.5 text-muted text-sm opacity-50 cursor-not-allowed"
-          >
-            <Share2 size={14} /> Share
-          </button>
-        </div>
-      </div>
-
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
-        {/* Hero */}
-        <div className="relative overflow-hidden rounded-3xl border border-line bg-surface p-8 md:p-12">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/15 rounded-full blur-3xl translate-x-1/3 -translate-y-1/3 pointer-events-none"></div>
-          <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start">
-            <img src={c.avatar} alt={c.name} className="w-32 h-32 rounded-full object-cover ring-4 ring-line" />
-            <div className="flex-1 space-y-3">
-              <div>
-                <h1 className="text-4xl md:text-5xl font-bold text-heading">{c.name}</h1>
-                <p className="text-lg text-muted mt-1">{c.handle}</p>
-              </div>
-              <p className="text-body leading-relaxed max-w-2xl">{c.bio}</p>
-              <div className="flex flex-wrap items-center gap-3 pt-2">
-                <span className="flex items-center gap-1.5 text-sm text-muted"><Globe size={14} /> {c.location}</span>
-                {c.niche.map((n) => (
-                  <span key={n} className="px-2.5 py-0.5 bg-purple-400/10 border border-purple-400/20 rounded-full text-xs font-semibold text-purple-300">{n}</span>
-                ))}
-              </div>
-              <div className="flex gap-4 pt-3">
-                <SocialLink href={`https://instagram.com/${stripAt(c.social.instagram)}`} icon={Instagram} label={c.social.instagram} />
-                <SocialLink href={`https://tiktok.com/@${stripAt(c.social.tiktok)}`} icon={Hash} label={c.social.tiktok} />
-                <SocialLink href={`https://youtube.com/@${stripAt(c.social.youtube)}`} icon={Youtube} label={c.social.youtube} />
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled
-              title="Creator invitations arrive with the creator side of KYRO. Until then, creators apply to your campaigns."
-              className="px-5 py-2.5 bg-gradient-kyro rounded-lg text-white font-semibold whitespace-nowrap opacity-50 cursor-not-allowed"
-            >
-              Invite to Campaign
-            </button>
-          </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Campaigns Completed', value: c.stats.campaigns.toString(), icon: Award, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
-            { label: 'Total Earnings', value: fmt(c.stats.totalEarned), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-            { label: 'Avg ROAS for Brands', value: `${c.stats.avgRoasForBrands}x`, icon: TrendingUp, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
-            { label: 'Orders Driven', value: c.stats.ordersDriven.toLocaleString(), icon: Target, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
-          ].map((s, i) => (
-            <div key={i} className={`p-5 rounded-2xl border ${s.bg}`}>
-              <s.icon size={20} className={s.color} />
-              <p className="text-xs text-muted mt-3 mb-1">{s.label}</p>
-              <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Sample work */}
-        <div>
-          <h2 className="text-2xl font-bold text-heading mb-5">Sample Work</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {c.sampleWork.map((src, i) => (
-              <div key={i} className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-surface border border-line group cursor-pointer">
-                <img src={src} alt={`Sample ${i + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent opacity-0 group-hover:opacity-100 transition" />
-                <div className="absolute bottom-3 left-3 right-3 opacity-0 group-hover:opacity-100 transition">
-                  <p className="text-xs text-body">For brand campaign</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Past brand collaborations */}
-        <div>
-          <h2 className="text-2xl font-bold text-heading mb-5">Brands worked with</h2>
-          <div className="flex flex-wrap gap-3">
-            {Object.values(BRANDS).slice(0, 4).map((b) => (
-              <div key={b.id} className="flex items-center gap-2 px-3 py-2 bg-surface border border-line rounded-lg">
-                <BrandLogo brandId={b.id as BrandId} size={24} />
-                <span className="text-sm text-heading font-medium">{b.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ─────────────────────────────────────────────────────────────
    BRAND PUBLIC PROFILE
@@ -5990,7 +5542,6 @@ type View =
   | 'onboard'
   | 'app'
   | 'about'
-  | 'creator-profile'
   | 'brand-profile'
   | 'affiliate-orders'
   | 'invite'
@@ -6041,7 +5592,6 @@ function App() {
   const [view, setView] = useState<View>(initial.view);
   const [adminEntry, setAdminEntry] = useState(initial.admin);
   const [role, setRole] = useState<Role>(initial.admin ? 'admin' : 'brand');
-  const [profileCreatorId, setProfileCreatorId] = useState<CreatorId>('maya');
   // The public brand page is still reachable by route; nothing inside the app
   // links to it now that the creator dashboard reads from the database.
   const [profileBrandId] = useState<BrandId>('boldbuns');
@@ -6253,7 +5803,6 @@ function App() {
     />
   );
   if (view === 'about') return <AboutPage onBack={goLanding} onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} />;
-  if (view === 'creator-profile') return <CreatorPublicProfile creatorId={profileCreatorId} onBack={() => setView('app')} />;
   if (view === 'brand-profile') return <BrandPublicProfile brandId={profileBrandId} onBack={() => setView('app')} />;
   if (view === 'settings') {
     return (
@@ -6298,7 +5847,7 @@ function App() {
       {role === 'creator' && (
         <CreatorDashboard onViewOrders={() => { setView('affiliate-orders'); nav('/orders'); }} />
       )}
-      {role === 'admin' && <AdminDashboard onViewCreator={(id) => { setProfileCreatorId(id); setView('creator-profile'); }} />}
+      {role === 'admin' && <AdminOverview />}
     </AppShell>
   );
 }

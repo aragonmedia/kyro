@@ -18,14 +18,12 @@ import type {
   Application,
   Payout,
   IntakePath,
-  Cents,
 } from './types';
 
 /* ─────────────────────────────────────────────────────────────
    Event logger — visible in browser console during demo
    ───────────────────────────────────────────────────────────── */
 function event(name: string, payload?: unknown) {
-  // eslint-disable-next-line no-console
   console.log(`[kyro:event] ${name}`, payload ?? '');
 }
 
@@ -49,11 +47,6 @@ export const mockApi = {
   createCampaign: async (campaign: Partial<Campaign>) => {
     event('campaign.create', campaign);
     return { success: true, id: 'demo-campaign-' + Date.now() };
-  },
-  fundCampaign: async (campaignId: string) => {
-    event('campaign.fund_via_square', { campaignId });
-    // V1: open Square Hosted Invoice or in-app card flow
-    return { success: true, squareInvoiceId: 'inv_demo' };
   },
   pauseCampaign: async (campaignId: string) => {
     event('campaign.pause', { campaignId });
@@ -118,12 +111,6 @@ export const mockApi = {
     const url = meta.buildOAuthUrl(`${window.location.origin}/api/meta/callback`, 'demo-state');
     // V1: window.location.href = url;
     console.log('Would redirect to:', url);
-  },
-
-  /* ─── Payouts (Trolley) ───────────────────────────── */
-  schedulePayout: async (creatorId: string, amountCents: Cents) => {
-    event('payout.schedule', { creatorId, amountCents });
-    return { success: true, trolleyBatchId: 'btch_demo_' + Date.now() };
   },
 
   /* ─── Sharing ─────────────────────────────────────── */
