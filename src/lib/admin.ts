@@ -111,6 +111,10 @@ export interface AdminCreatorRow {
   used: number;
   orders: number;
   earnedCents: number;
+  /** Cleared, unpaid, payable now. */
+  owedCents: number;
+  /** Earned but still clearing, so not yet payable. */
+  pendingCents: number;
   paidCents: number;
   /** Stripe says transfers can land. Without this a payout is held. */
   payoutsReady: boolean;
@@ -360,8 +364,11 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
     const campaignById = new Map(campaigns.map((c) => [c.id, c]));
 
     // ── Per-brand rollups ────────────────────────────────────────────
-    type Agg = { sales: number; commission: number; fee: number; owed: number; orders: Set<string> };
-    const blank = (): Agg => ({ sales: 0, commission: 0, fee: 0, owed: 0, orders: new Set() });
+    type Agg = {
+      sales: number; commission: number; fee: number;
+      owed: number; pending: number; orders: Set<string>;
+    };
+    const blank = (): Agg => ({ sales: 0, commission: 0, fee: 0, owed: 0, pending: 0, orders: new Set() });
 
     const byBrand = new Map<string, Agg>();
     const byCampaign = new Map<string, Agg>();
@@ -377,8 +384,13 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         a.sales += e.commissionable_cents;
         a.commission += e.commission_cents;
         a.fee += e.platform_fee_cents;
-        // Available means cleared and payable, and not yet paid for.
+        /* The states are pending, clearing, available, reversed and paid.
+           Reversed is already gone. Available is cleared and waiting on a
+           brand to pay it; pending and clearing are not payable yet; paid is
+           counted from the transfers instead, which is the only record that
+           the money actually moved. */
         if (e.state === 'available') a.owed += e.commission_cents;
+        else if (e.state === 'pending' || e.state === 'clearing') a.pending += e.commission_cents;
         a.orders.add(e.order_id);
         m.set(key, a);
       };
@@ -529,6 +541,8 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         used: usedPerCreator.get(c.id) ?? 0,
         orders: agg.orders.size,
         earnedCents: agg.commission,
+        owedCents: agg.owed,
+        pendingCents: agg.pending,
         paidCents: paidPerCreator.get(c.id) ?? 0,
         payoutsReady,
         taxComplete,

@@ -6,9 +6,16 @@
  * stops being an overview and becomes a scroll. Overview answers "how is the
  * platform doing"; the other four answer "tell me about this one thing".
  *
- * Every row that names a brand or a creator opens that brand or creator.
- * A list you cannot drill into makes you go and find the record somewhere
- * else, which in practice means the database.
+ * Every list is the same table: search it, narrow it with as many filters as
+ * the question needs, sort any column, switch columns off, save the whole
+ * arrangement as a view you come back to, select rows and act on them, and
+ * take what is left to a spreadsheet. Those controls live in TableView and
+ * DataTable; what each section contributes is a set of columns and a set of
+ * things worth filtering by.
+ *
+ * Every row that names a brand, a creator or a campaign opens it. A list you
+ * cannot drill into makes you go and find the record somewhere else, which in
+ * practice means the database.
  *
  * All of it reads through supabase-js under the caller's own session.
  * `public.is_admin()` is in the row-level security on every table this
@@ -19,7 +26,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, Building2, CheckCircle2, Clock, DollarSign, Download,
+  AlertTriangle, ArrowLeft, Building2, CheckCircle2, Clock, DollarSign,
   Layers, RefreshCw, TrendingUp, Users, Video, Wallet,
 } from 'lucide-react';
 import {
@@ -29,8 +36,9 @@ import {
 } from '../../lib/admin';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import { RevenueChart } from './RevenueChart';
-import { useTableView, type Filter } from './TableView';
-import { CallButton, EmptyRow, ExportButton, Field, MailButton, Panel, Pill, TH, Tile } from './shared';
+import { DataTable, SimpleTable } from './DataTable';
+import { useCrmTable, type Column, type FilterField } from './TableView';
+import { CallButton, EmptyRow, ExportButton, Field, MailButton, Panel, Pill, Tile } from './shared';
 import { count, day, money, moneyExact, monthLabel, pct, stamp, usd } from './format';
 
 type Page = 'overview' | 'brands' | 'creators' | 'campaigns' | 'finance';
@@ -44,46 +52,582 @@ const NAV: Array<{ id: Page; label: string; icon: typeof Users }> = [
 ];
 
 /* ─────────────────────────────────────────────────────────────
-   What each list can be narrowed by.
-
-   Every chip answers a question an admin actually has, phrased as the state
-   it finds rather than as a column name: "Payouts held", not
-   "payouts_ready = false". They live at module scope because they close over
-   nothing, which keeps the memo inside useTableView from recomputing on
-   every render.
+   Small shared helpers
    ───────────────────────────────────────────────────────────── */
 
-const BRAND_FILTERS: Filter<AdminBrandRow>[] = [
-  { label: 'Owes money', match: (b) => b.owedCents > 0 },
-  { label: 'Cannot be charged', match: (b) => !b.billable },
-  { label: 'No agreement', match: (b) => !b.agreementSignedAt },
-  { label: 'Shopify billing', match: (b) => b.billingOrigin === 'shopify_app_store' },
-  { label: 'No sales yet', match: (b) => b.attributedSalesCents === 0 },
+const distinct = (values: Array<string | null | undefined>): string[] =>
+  [...new Set(values.filter((v): v is string => Boolean(v)))].sort((a, b) => a.localeCompare(b));
+
+const DAY_MS = 86_400_000;
+const JOINED = ['Last 30 days', 'Last 90 days', 'Last 12 months'] as const;
+
+const joinedWithin = (iso: string, label: string): boolean => {
+  const days = label === 'Last 30 days' ? 30 : label === 'Last 90 days' ? 90 : 365;
+  return Date.now() - new Date(iso).getTime() <= days * DAY_MS;
+};
+
+/** A static value list, for fields whose options are states rather than data. */
+const fixed = (values: readonly string[]) => () => [...values];
+
+/* ─────────────────────────────────────────────────────────────
+   What each list can be narrowed by.
+
+   Every option answers a question an admin actually has, phrased as the state
+   it finds rather than as a column name: "Payouts held", not
+   "payouts_ready = false". Values inside one field are OR'd and the fields
+   themselves are AND'd, so "State: owes money" plus "Connections: Shopify
+   missing" is one question, asked once.
+   ───────────────────────────────────────────────────────────── */
+
+const BRAND_STATES = [
+  'Owes money', 'Cannot be charged', 'No agreement', 'No sales yet', 'Has sales',
+] as const;
+
+const BRAND_FIELDS: FilterField<AdminBrandRow>[] = [
+  {
+    id: 'state',
+    label: 'State',
+    values: fixed(BRAND_STATES),
+    match: (b, v) =>
+      v === 'Owes money' ? b.owedCents > 0
+        : v === 'Cannot be charged' ? !b.billable
+          : v === 'No agreement' ? !b.agreementSignedAt
+            : v === 'No sales yet' ? b.attributedSalesCents === 0
+              : b.attributedSalesCents > 0,
+  },
+  {
+    id: 'billing',
+    label: 'Billed through',
+    values: fixed(['Stripe', 'Shopify']),
+    match: (b, v) => (v === 'Shopify') === (b.billingOrigin === 'shopify_app_store'),
+  },
+  {
+    id: 'connections',
+    label: 'Connections',
+    values: fixed(['Shopify connected', 'Shopify missing', 'Meta connected', 'Meta missing']),
+    match: (b, v) =>
+      v === 'Shopify connected' ? b.shopifyConnected
+        : v === 'Shopify missing' ? !b.shopifyConnected
+          : v === 'Meta connected' ? b.metaConnected
+            : !b.metaConnected,
+  },
+  {
+    id: 'businessType',
+    label: 'Business type',
+    values: (rows) => distinct(rows.map((b) => b.businessType)),
+    match: (b, v) => b.businessType === v,
+  },
+  {
+    id: 'joined',
+    label: 'Joined',
+    values: fixed(JOINED),
+    match: (b, v) => joinedWithin(b.createdAt, v),
+  },
 ];
 
-const CREATOR_FILTERS: Filter<AdminCreatorRow>[] = [
-  { label: 'Payable', match: (c) => !c.heldReason },
-  { label: 'Payouts held', match: (c) => !!c.heldReason },
-  { label: 'Stripe not set up', match: (c) => !c.payoutsReady },
-  { label: 'Tax incomplete', match: (c) => !c.taxComplete },
-  { label: 'Earning', match: (c) => c.earnedCents > 0 },
-  { label: 'No videos yet', match: (c) => c.submissions === 0 },
+const CREATOR_STATES = [
+  'Payable', 'Payouts held', 'Stripe not set up', 'Tax incomplete', 'Earning', 'No videos yet',
+] as const;
+
+const CREATOR_FIELDS: FilterField<AdminCreatorRow>[] = [
+  {
+    id: 'state',
+    label: 'State',
+    values: fixed(CREATOR_STATES),
+    match: (c, v) =>
+      v === 'Payable' ? !c.heldReason
+        : v === 'Payouts held' ? Boolean(c.heldReason)
+          : v === 'Stripe not set up' ? !c.payoutsReady
+            : v === 'Tax incomplete' ? !c.taxComplete
+              : v === 'Earning' ? c.earnedCents > 0
+                : c.submissions === 0,
+  },
+  {
+    id: 'platform',
+    label: 'Platform',
+    values: (rows) => distinct(rows.flatMap((c) => c.socials.map((s) => s.network))),
+    match: (c, v) => c.socials.some((s) => s.network === v),
+  },
+  {
+    id: 'niche',
+    label: 'Niche',
+    values: (rows) => distinct(rows.flatMap((c) => c.niche)),
+    match: (c, v) => c.niche.includes(v),
+  },
+  {
+    id: 'location',
+    label: 'Location',
+    values: (rows) => distinct(rows.map((c) => c.location)),
+    match: (c, v) => c.location === v,
+  },
+  {
+    id: 'joined',
+    label: 'Joined',
+    values: fixed(JOINED),
+    match: (c, v) => joinedWithin(c.createdAt, v),
+  },
 ];
 
-const CAMPAIGN_FILTERS: Filter<AdminCampaignRow>[] = [
-  { label: 'Live', match: (c) => c.status === 'live' },
-  { label: 'Draft', match: (c) => c.status === 'draft' },
-  { label: 'Paused', match: (c) => c.status === 'paused' },
-  { label: 'Complete', match: (c) => c.status === 'complete' || c.status === 'archived' },
-  { label: 'With sales', match: (c) => c.attributedSalesCents > 0 },
+const CAMPAIGN_FIELDS: FilterField<AdminCampaignRow>[] = [
+  {
+    id: 'status',
+    label: 'Status',
+    values: (rows) => distinct(rows.map((c) => c.status)),
+    match: (c, v) => c.status === v,
+  },
+  {
+    id: 'brand',
+    label: 'Brand',
+    values: (rows) => distinct(rows.map((c) => c.brandName)),
+    match: (c, v) => c.brandName === v,
+  },
+  {
+    id: 'state',
+    label: 'State',
+    values: fixed(['Has sales', 'No sales yet', 'No videos yet']),
+    match: (c, v) =>
+      v === 'Has sales' ? c.attributedSalesCents > 0
+        : v === 'No sales yet' ? c.attributedSalesCents === 0
+          : c.submissions === 0,
+  },
+  {
+    id: 'created',
+    label: 'Created',
+    values: fixed(JOINED),
+    match: (c, v) => joinedWithin(c.createdAt, v),
+  },
 ];
 
-const RUN_FILTERS: Filter<AdminRunRow>[] = [
-  { label: 'Settled', match: (r) => r.status === 'settled' },
-  { label: 'In flight', match: (r) => r.status === 'authorized' || r.status === 'processing' },
-  { label: 'Failed', match: (r) => r.status === 'failed' || r.status === 'cancelled' },
-  { label: 'Transfer problem', match: (r) => r.payouts.some((p) => p.status === 'failed') },
+const RUN_FIELDS: FilterField<AdminRunRow>[] = [
+  {
+    id: 'status',
+    label: 'Status',
+    values: (rows) => distinct(rows.map((r) => r.status)),
+    match: (r, v) => r.status === v,
+  },
+  {
+    id: 'brand',
+    label: 'Brand',
+    values: (rows) => distinct(rows.map((r) => r.brandName)),
+    match: (r, v) => r.brandName === v,
+  },
+  {
+    id: 'method',
+    label: 'Method',
+    values: (rows) => distinct(rows.map((r) => r.method)),
+    match: (r, v) => r.method === v,
+  },
+  {
+    id: 'state',
+    label: 'State',
+    values: fixed(['In flight', 'Transfer problem']),
+    match: (r, v) =>
+      v === 'In flight'
+        ? r.status === 'authorized' || r.status === 'processing'
+        : r.payouts.some((p) => p.status === 'failed'),
+  },
 ];
+
+const PAYOUT_FIELDS: FilterField<AdminCreatorRow>[] = [
+  {
+    id: 'state',
+    label: 'State',
+    values: fixed(['Owed now', 'Still clearing', 'Payouts held', 'Payable', 'Nothing owed']),
+    match: (c, v) =>
+      v === 'Owed now' ? c.owedCents > 0
+        : v === 'Still clearing' ? c.pendingCents > 0
+          : v === 'Payouts held' ? Boolean(c.heldReason)
+            : v === 'Payable' ? !c.heldReason
+              : c.owedCents === 0 && c.pendingCents === 0,
+  },
+];
+
+/* ─────────────────────────────────────────────────────────────
+   Columns
+   ───────────────────────────────────────────────────────────── */
+
+const BRAND_COLUMNS: Column<AdminBrandRow>[] = [
+  {
+    id: 'name', label: 'Brand', sort: (b) => b.name,
+    render: (b) => (
+      <>
+        <p className="font-semibold text-heading">{b.name}</p>
+        <p className="text-xs text-faint">
+          {b.agreementSignedAt ? `Agreed ${day(b.agreementSignedAt)}` : 'No agreement signed'}
+        </p>
+      </>
+    ),
+  },
+  {
+    id: 'owner', label: 'Owner', sort: (b) => b.ownerName ?? b.ownerEmail ?? '',
+    render: (b) => <span className="text-body">{b.ownerName ?? b.ownerEmail ?? '—'}</span>,
+  },
+  {
+    id: 'email', label: 'Email', off: true, sort: (b) => b.ownerEmail ?? '',
+    render: (b) => <span className="text-body">{b.ownerEmail ?? '—'}</span>,
+  },
+  {
+    id: 'phone', label: 'Phone', off: true, sort: (b) => b.contactPhone ?? '',
+    render: (b) => <span className="text-body">{b.contactPhone ?? '—'}</span>,
+  },
+  {
+    id: 'connections', label: 'Connections',
+    csv: (b) => [b.shopifyConnected ? 'Shopify' : '', b.metaConnected ? 'Meta' : ''].filter(Boolean).join(' '),
+    render: (b) => (
+      <span className="space-x-1">
+        <Pill tone={b.shopifyConnected ? 'good' : 'idle'}>Shopify</Pill>
+        <Pill tone={b.metaConnected ? 'good' : 'idle'}>Meta</Pill>
+      </span>
+    ),
+  },
+  {
+    id: 'billing', label: 'Billing',
+    sort: (b) => (b.billingOrigin === 'shopify_app_store' ? 'Shopify' : b.paymentMethod ?? 'None'),
+    render: (b) => (b.billingOrigin === 'shopify_app_store'
+      ? <Pill tone={b.shopifyPlanStatus === 'ACTIVE' ? 'good' : 'warn'}>Shopify billing</Pill>
+      : <Pill tone={b.paymentMethod ? 'good' : 'idle'}>{b.paymentMethod ?? 'No method'}</Pill>),
+  },
+  { id: 'campaigns', label: 'Campaigns', right: true, sort: (b) => b.campaigns, render: (b) => <span className="text-body">{b.campaigns}</span> },
+  { id: 'creators', label: 'Creators', right: true, sort: (b) => b.creators, render: (b) => <span className="text-body">{b.creators}</span> },
+  { id: 'orders', label: 'Orders', right: true, off: true, sort: (b) => b.orders, render: (b) => <span className="text-body">{count(b.orders)}</span> },
+  {
+    id: 'sales', label: 'Attributed', right: true,
+    sort: (b) => b.attributedSalesCents, csv: (b) => usd(b.attributedSalesCents),
+    render: (b) => <span className="text-heading font-semibold">{money(b.attributedSalesCents)}</span>,
+  },
+  {
+    id: 'fee', label: 'KYRO fee', right: true,
+    sort: (b) => b.feeCents, csv: (b) => usd(b.feeCents),
+    render: (b) => <span className="text-body">{money(b.feeCents)}</span>,
+  },
+  {
+    id: 'owed', label: 'Owed', right: true,
+    sort: (b) => b.owedCents, csv: (b) => usd(b.owedCents),
+    render: (b) => (b.owedCents > 0
+      ? <span className={b.billable ? 'text-heading font-semibold' : 'text-bad font-semibold'}>{money(b.owedCents)}</span>
+      : <span className="text-faint">—</span>),
+  },
+  {
+    id: 'joined', label: 'Joined', off: true, right: true,
+    sort: (b) => b.createdAt, csv: (b) => b.createdAt.slice(0, 10),
+    render: (b) => <span className="text-body">{day(b.createdAt)}</span>,
+  },
+];
+
+const CREATOR_COLUMNS: Column<AdminCreatorRow>[] = [
+  {
+    id: 'name', label: 'Creator', sort: (c) => c.name,
+    render: (c) => (
+      <>
+        <p className="font-semibold text-heading">{c.name}</p>
+        {c.handle && <p className="text-xs text-faint">@{c.handle}</p>}
+      </>
+    ),
+  },
+  {
+    id: 'payout', label: 'Payout status', sort: (c) => c.heldReason ?? 'Payable',
+    render: (c) => (c.heldReason ? <Pill tone="warn">{c.heldReason}</Pill> : <Pill tone="good">Payable</Pill>),
+  },
+  {
+    id: 'email', label: 'Email', off: true, sort: (c) => c.email ?? '',
+    render: (c) => <span className="text-body">{c.email ?? '—'}</span>,
+  },
+  {
+    id: 'location', label: 'Location', off: true, sort: (c) => c.location ?? '',
+    render: (c) => <span className="text-body">{c.location ?? '—'}</span>,
+  },
+  { id: 'campaigns', label: 'Campaigns', right: true, sort: (c) => c.campaigns, render: (c) => <span className="text-body">{c.campaigns}</span> },
+  { id: 'videos', label: 'Videos', right: true, sort: (c) => c.submissions, render: (c) => <span className="text-body">{c.submissions}</span> },
+  { id: 'used', label: 'Used', right: true, sort: (c) => c.used, render: (c) => <span className="text-body">{c.used}</span> },
+  { id: 'orders', label: 'Orders', right: true, sort: (c) => c.orders, render: (c) => <span className="text-body">{c.orders}</span> },
+  {
+    id: 'earned', label: 'Earned', right: true,
+    sort: (c) => c.earnedCents, csv: (c) => usd(c.earnedCents),
+    render: (c) => <span className="text-heading font-semibold">{moneyExact(c.earnedCents)}</span>,
+  },
+  {
+    id: 'owed', label: 'Owed now', right: true, off: true,
+    sort: (c) => c.owedCents, csv: (c) => usd(c.owedCents),
+    render: (c) => <span className="text-body">{moneyExact(c.owedCents)}</span>,
+  },
+  {
+    id: 'paid', label: 'Paid', right: true,
+    sort: (c) => c.paidCents, csv: (c) => usd(c.paidCents),
+    render: (c) => <span className="text-body">{moneyExact(c.paidCents)}</span>,
+  },
+  {
+    id: 'joined', label: 'Joined', off: true, right: true,
+    sort: (c) => c.createdAt, csv: (c) => c.createdAt.slice(0, 10),
+    render: (c) => <span className="text-body">{day(c.createdAt)}</span>,
+  },
+];
+
+/** The payouts view asks a different question of the same rows: who is owed. */
+const PAYOUT_COLUMNS: Column<AdminCreatorRow>[] = [
+  CREATOR_COLUMNS[0],
+  CREATOR_COLUMNS[1],
+  {
+    id: 'pending', label: 'Clearing', right: true,
+    sort: (c) => c.pendingCents, csv: (c) => usd(c.pendingCents),
+    render: (c) => <span className="text-body">{moneyExact(c.pendingCents)}</span>,
+  },
+  {
+    id: 'owed', label: 'Owed now', right: true,
+    sort: (c) => c.owedCents, csv: (c) => usd(c.owedCents),
+    render: (c) => (c.owedCents > 0
+      ? <span className="text-heading font-semibold">{moneyExact(c.owedCents)}</span>
+      : <span className="text-faint">—</span>),
+  },
+  {
+    id: 'paid', label: 'Paid to date', right: true,
+    sort: (c) => c.paidCents, csv: (c) => usd(c.paidCents),
+    render: (c) => <span className="text-body">{moneyExact(c.paidCents)}</span>,
+  },
+  {
+    id: 'email', label: 'Email', off: true, sort: (c) => c.email ?? '',
+    render: (c) => <span className="text-body">{c.email ?? '—'}</span>,
+  },
+];
+
+const campaignColumns = (onBrand?: (id: string) => void): Column<AdminCampaignRow>[] => [
+  {
+    id: 'name', label: 'Campaign', sort: (c) => c.name,
+    render: (c) => (
+      <>
+        <p className="font-semibold text-heading">{c.name}</p>
+        {onBrand ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onBrand(c.brandId); }}
+            className="text-xs text-faint hover:text-heading hover:underline"
+          >
+            {c.brandName}
+          </button>
+        ) : <p className="text-xs text-faint">{c.brandName}</p>}
+      </>
+    ),
+  },
+  {
+    id: 'brand', label: 'Brand', off: true, sort: (c) => c.brandName,
+    render: (c) => <span className="text-body">{c.brandName}</span>,
+  },
+  {
+    id: 'status', label: 'Status', sort: (c) => c.status,
+    render: (c) => (
+      <Pill tone={c.status === 'live' ? 'good' : c.status === 'draft' ? 'idle' : 'warn'}>
+        {c.status === 'pending_fund' ? 'legacy' : c.status}
+      </Pill>
+    ),
+  },
+  {
+    id: 'rate', label: 'Rate', right: true,
+    sort: (c) => c.commissionBps ?? 0, csv: (c) => pct(c.commissionBps),
+    render: (c) => <span className="text-body">{pct(c.commissionBps)}</span>,
+  },
+  { id: 'creators', label: 'Creators', right: true, sort: (c) => c.creators, render: (c) => <span className="text-body">{c.creators}</span> },
+  { id: 'videos', label: 'Videos', right: true, sort: (c) => c.submissions, render: (c) => <span className="text-body">{c.submissions}</span> },
+  { id: 'orders', label: 'Orders', right: true, sort: (c) => c.orders, render: (c) => <span className="text-body">{c.orders}</span> },
+  {
+    id: 'sales', label: 'Attributed', right: true,
+    sort: (c) => c.attributedSalesCents, csv: (c) => usd(c.attributedSalesCents),
+    render: (c) => <span className="text-heading font-semibold">{money(c.attributedSalesCents)}</span>,
+  },
+  {
+    id: 'fee', label: 'KYRO fee', right: true,
+    sort: (c) => c.feeCents, csv: (c) => usd(c.feeCents),
+    render: (c) => <span className="text-body">{money(c.feeCents)}</span>,
+  },
+  {
+    id: 'created', label: 'Created', off: true, right: true,
+    sort: (c) => c.createdAt, csv: (c) => c.createdAt.slice(0, 10),
+    render: (c) => <span className="text-body">{day(c.createdAt)}</span>,
+  },
+];
+
+const RUN_COLUMNS: Column<AdminRunRow>[] = [
+  {
+    id: 'brand', label: 'Brand', sort: (r) => r.brandName,
+    render: (r) => (
+      <>
+        <p className="font-semibold text-heading">{r.brandName}</p>
+        <p className="text-xs text-faint">{day(r.authorizedAt)}</p>
+      </>
+    ),
+  },
+  {
+    id: 'status', label: 'Status', sort: (r) => r.status,
+    render: (r) => (
+      <Pill tone={r.status === 'settled' ? 'good' : r.status === 'failed' || r.status === 'cancelled' ? 'bad' : 'warn'}>
+        {r.status}
+      </Pill>
+    ),
+  },
+  {
+    id: 'method', label: 'Method', sort: (r) => r.method ?? '',
+    render: (r) => (
+      <span className="text-body">
+        {r.method ? (r.method === 'us_bank_account' ? 'bank debit' : r.method) : '—'}
+      </span>
+    ),
+  },
+  { id: 'orders', label: 'Orders', right: true, sort: (r) => r.orders, render: (r) => <span className="text-body">{r.orders}</span> },
+  { id: 'creators', label: 'Creators', right: true, sort: (r) => r.creators, render: (r) => <span className="text-body">{r.creators}</span> },
+  {
+    id: 'commission', label: 'Commission', right: true,
+    sort: (r) => r.commissionCents, csv: (r) => usd(r.commissionCents),
+    render: (r) => <span className="text-body">{moneyExact(r.commissionCents)}</span>,
+  },
+  {
+    id: 'fee', label: 'KYRO fee', right: true,
+    sort: (r) => r.feeCents, csv: (r) => usd(r.feeCents),
+    render: (r) => <span className="text-heading font-semibold">{moneyExact(r.feeCents)}</span>,
+  },
+  {
+    id: 'processing', label: 'Processing', right: true, off: true,
+    sort: (r) => r.processingCents, csv: (r) => usd(r.processingCents),
+    render: (r) => <span className="text-body">{moneyExact(r.processingCents)}</span>,
+  },
+  {
+    id: 'total', label: 'Charged', right: true,
+    sort: (r) => r.totalCents, csv: (r) => usd(r.totalCents),
+    render: (r) => <span className="text-heading font-semibold">{moneyExact(r.totalCents)}</span>,
+  },
+  {
+    id: 'settled', label: 'Settled', right: true, off: true,
+    sort: (r) => r.settledAt ?? '', csv: (r) => r.settledAt?.slice(0, 10) ?? '',
+    render: (r) => <span className="text-body">{r.settledAt ? day(r.settledAt) : '—'}</span>,
+  },
+];
+
+/* ─────────────────────────────────────────────────────────────
+   The ledger
+
+   Every movement of money, from the rows already loaded. Payment runs answer
+   what a brand was charged; this answers where a given dollar went, which is
+   the question a creator asking about a missing transfer actually has.
+
+   Deliberately not a balance. KYRO charges a brand per run and transfers
+   straight through to the creator, so there is no float to keep a running
+   total of, and inventing one would be describing a product that does not
+   exist.
+   ───────────────────────────────────────────────────────────── */
+
+interface LedgerRow {
+  id: string;
+  at: string;
+  type: string;
+  status: string;
+  who: string;
+  brandId: string;
+  creatorId: string | null;
+  direction: 'In' | 'Out';
+  amountCents: number;
+  detail: string;
+}
+
+function buildLedger(runs: AdminRunRow[]): LedgerRow[] {
+  const rows: LedgerRow[] = [];
+
+  for (const r of runs) {
+    rows.push({
+      id: `${r.id}-authorized`,
+      at: r.authorizedAt,
+      type: 'Brand charged',
+      status: r.status,
+      who: r.brandName,
+      brandId: r.brandId,
+      creatorId: null,
+      direction: 'In',
+      amountCents: r.totalCents,
+      detail: `${r.orders} orders, KYRO fee ${moneyExact(r.feeCents)}`,
+    });
+
+    if (r.settledAt) {
+      rows.push({
+        id: `${r.id}-settled`,
+        at: r.settledAt,
+        type: 'Charge settled',
+        status: 'settled',
+        who: r.brandName,
+        brandId: r.brandId,
+        creatorId: null,
+        direction: 'In',
+        amountCents: r.feeCents,
+        detail: 'KYRO fee collected',
+      });
+    }
+
+    for (const p of r.payouts) {
+      rows.push({
+        id: `${r.id}-${p.creatorId}`,
+        at: p.paidAt ?? r.authorizedAt,
+        type: 'Creator transfer',
+        status: p.status,
+        who: p.creatorName,
+        brandId: r.brandId,
+        creatorId: p.creatorId,
+        direction: 'Out',
+        amountCents: p.amountCents,
+        detail: p.failureReason ?? r.brandName,
+      });
+    }
+  }
+
+  return rows.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+const LEDGER_COLUMNS: Column<LedgerRow>[] = [
+  {
+    id: 'at', label: 'When', sort: (l) => l.at, csv: (l) => l.at,
+    render: (l) => <span className="text-body">{day(l.at)}</span>,
+  },
+  { id: 'type', label: 'Type', sort: (l) => l.type, render: (l) => <span className="text-heading font-semibold">{l.type}</span> },
+  {
+    id: 'status', label: 'Status', sort: (l) => l.status,
+    render: (l) => (
+      <Pill tone={l.status === 'settled' || l.status === 'paid' ? 'good' : l.status === 'failed' || l.status === 'cancelled' ? 'bad' : 'warn'}>
+        {l.status}
+      </Pill>
+    ),
+  },
+  { id: 'who', label: 'Who', sort: (l) => l.who, render: (l) => <span className="text-body">{l.who}</span> },
+  {
+    id: 'direction', label: 'Direction', off: true, sort: (l) => l.direction,
+    render: (l) => <span className="text-body">{l.direction === 'In' ? 'Money in' : 'Money out'}</span>,
+  },
+  {
+    id: 'amount', label: 'Amount', right: true,
+    sort: (l) => l.amountCents, csv: (l) => usd(l.amountCents),
+    render: (l) => (
+      <span className={l.direction === 'In' ? 'text-heading font-semibold' : 'text-body'}>
+        {l.direction === 'In' ? '' : '−'}{moneyExact(l.amountCents)}
+      </span>
+    ),
+  },
+  { id: 'detail', label: 'Detail', sort: (l) => l.detail, render: (l) => <span className="text-xs text-faint">{l.detail}</span> },
+];
+
+const LEDGER_FIELDS: FilterField<LedgerRow>[] = [
+  {
+    id: 'type', label: 'Type',
+    values: (rows) => distinct(rows.map((l) => l.type)),
+    match: (l, v) => l.type === v,
+  },
+  {
+    id: 'status', label: 'Status',
+    values: (rows) => distinct(rows.map((l) => l.status)),
+    match: (l, v) => l.status === v,
+  },
+  {
+    id: 'direction', label: 'Direction',
+    values: fixed(['Money in', 'Money out']),
+    match: (l, v) => (v === 'Money in') === (l.direction === 'In'),
+  },
+];
+
+/* ─────────────────────────────────────────────────────────────
+   Searchable text
+   ───────────────────────────────────────────────────────────── */
 
 const brandText = (b: AdminBrandRow) =>
   `${b.name} ${b.handle ?? ''} ${b.ownerName ?? ''} ${b.ownerEmail ?? ''} ${b.websiteUrl ?? ''} ${b.businessType ?? ''}`;
@@ -92,6 +636,11 @@ const creatorText = (c: AdminCreatorRow) =>
 const campaignText = (c: AdminCampaignRow) => `${c.name} ${c.brandName} ${c.status}`;
 const runText = (r: AdminRunRow) =>
   `${r.brandName} ${r.status} ${r.method ?? ''} ${r.payouts.map((p) => p.creatorName).join(' ')}`;
+const ledgerText = (l: LedgerRow) => `${l.who} ${l.type} ${l.status} ${l.detail}`;
+
+/* ─────────────────────────────────────────────────────────────
+   Pieces
+   ───────────────────────────────────────────────────────────── */
 
 /**
  * One campaign's months. Same shape as the platform chart, smaller, and
@@ -126,10 +675,6 @@ function MiniMonths({ months }: { months: AdminCampaignRow['months'] }) {
     </div>
   );
 }
-
-/* ─────────────────────────────────────────────────────────────
-   Sections
-   ───────────────────────────────────────────────────────────── */
 
 function Attention({ data, onBrand, onCreator }: {
   data: Overview;
@@ -206,212 +751,58 @@ function Attention({ data, onBrand, onCreator }: {
   );
 }
 
-function BrandsTable({ rows, onOpen }: { rows: AdminBrandRow[]; onOpen: (id: string) => void }) {
-  if (rows.length === 0) return <EmptyRow>No brands yet.</EmptyRow>;
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wider text-faint border-b border-line">
-            <TH>Brand</TH><TH>Connections</TH><TH>Billing</TH>
-            <TH right>Campaigns</TH><TH right>Creators</TH>
-            <TH right>Attributed</TH><TH right>KYRO fee</TH><TH right>Owed</TH>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {rows.map((b) => (
-            <tr key={b.id} className="hover:bg-surface-2 cursor-pointer" onClick={() => onOpen(b.id)}>
-              <td className="p-4">
-                <p className="font-semibold text-heading">{b.name}</p>
-                <p className="text-xs text-faint">
-                  {b.agreementSignedAt ? `Agreed ${day(b.agreementSignedAt)}` : 'No agreement signed'}
-                </p>
-              </td>
-              <td className="p-4 space-x-1">
-                <Pill tone={b.shopifyConnected ? 'good' : 'idle'}>Shopify</Pill>
-                <Pill tone={b.metaConnected ? 'good' : 'idle'}>Meta</Pill>
-              </td>
-              <td className="p-4">
-                {b.billingOrigin === 'shopify_app_store' ? (
-                  <Pill tone={b.shopifyPlanStatus === 'ACTIVE' ? 'good' : 'warn'}>Shopify billing</Pill>
-                ) : (
-                  <Pill tone={b.paymentMethod ? 'good' : 'idle'}>{b.paymentMethod ?? 'No method'}</Pill>
-                )}
-              </td>
-              <td className="p-4 text-right tabular-nums text-body">{b.campaigns}</td>
-              <td className="p-4 text-right tabular-nums text-body">{b.creators}</td>
-              <td className="p-4 text-right tabular-nums text-heading font-semibold">{money(b.attributedSalesCents)}</td>
-              <td className="p-4 text-right tabular-nums text-body">{money(b.feeCents)}</td>
-              <td className="p-4 text-right tabular-nums">
-                {b.owedCents > 0
-                  ? <span className={b.billable ? 'text-heading font-semibold' : 'text-bad font-semibold'}>{money(b.owedCents)}</span>
-                  : <span className="text-faint">—</span>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function CreatorsTable({ rows, onOpen }: { rows: AdminCreatorRow[]; onOpen: (id: string) => void }) {
-  if (rows.length === 0) return <EmptyRow>No creators yet.</EmptyRow>;
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wider text-faint border-b border-line">
-            <TH>Creator</TH><TH>Payout status</TH>
-            <TH right>Campaigns</TH><TH right>Videos</TH><TH right>Used</TH>
-            <TH right>Orders</TH><TH right>Earned</TH><TH right>Paid</TH>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {rows.map((c) => (
-            <tr key={c.id} className="hover:bg-surface-2 cursor-pointer" onClick={() => onOpen(c.id)}>
-              <td className="p-4">
-                <p className="font-semibold text-heading">{c.name}</p>
-                {c.handle && <p className="text-xs text-faint">@{c.handle}</p>}
-              </td>
-              <td className="p-4">
-                {c.heldReason ? <Pill tone="warn">{c.heldReason}</Pill> : <Pill tone="good">Payable</Pill>}
-              </td>
-              <td className="p-4 text-right tabular-nums text-body">{c.campaigns}</td>
-              <td className="p-4 text-right tabular-nums text-body">{c.submissions}</td>
-              <td className="p-4 text-right tabular-nums text-body">{c.used}</td>
-              <td className="p-4 text-right tabular-nums text-body">{c.orders}</td>
-              <td className="p-4 text-right tabular-nums text-heading font-semibold">{moneyExact(c.earnedCents)}</td>
-              <td className="p-4 text-right tabular-nums text-body">{moneyExact(c.paidCents)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function CampaignsTable({ rows, onBrand, onOpen }: {
-  rows: AdminCampaignRow[]; onBrand: (id: string) => void; onOpen?: (id: string) => void;
-}) {
-  if (rows.length === 0) return <EmptyRow>No campaigns yet.</EmptyRow>;
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wider text-faint border-b border-line">
-            <TH>Campaign</TH><TH>Status</TH><TH right>Rate</TH>
-            <TH right>Creators</TH><TH right>Videos</TH><TH right>Orders</TH>
-            <TH right>Attributed</TH><TH right>KYRO fee</TH>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {rows.map((c) => (
-            <tr key={c.id} className={`hover:bg-surface-2 ${onOpen ? 'cursor-pointer' : ''}`} onClick={onOpen ? () => onOpen(c.id) : undefined}>
-              <td className="p-4">
-                <p className="font-semibold text-heading">{c.name}</p>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onBrand(c.brandId); }}
-                  className="text-xs text-faint hover:text-heading hover:underline"
-                >
-                  {c.brandName}
-                </button>
-              </td>
-              <td className="p-4">
-                <Pill tone={c.status === 'live' ? 'good' : c.status === 'draft' ? 'idle' : 'warn'}>
-                  {c.status === 'pending_fund' ? 'legacy' : c.status}
-                </Pill>
-              </td>
-              <td className="p-4 text-right tabular-nums text-body">{pct(c.commissionBps)}</td>
-              <td className="p-4 text-right tabular-nums text-body">{c.creators}</td>
-              <td className="p-4 text-right tabular-nums text-body">{c.submissions}</td>
-              <td className="p-4 text-right tabular-nums text-body">{c.orders}</td>
-              <td className="p-4 text-right tabular-nums text-heading font-semibold">{money(c.attributedSalesCents)}</td>
-              <td className="p-4 text-right tabular-nums text-body">{money(c.feeCents)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 /* ─────────────────────────────────────────────────────────────
    List sections
 
-   A table, the controls above it, the pager below it, and an export that
-   writes whatever survived the controls. Each is its own component because
-   each owns a hook, and a hook cannot live inside the branch that chooses
-   which section to render.
+   Each is its own component because each owns a hook, and a hook cannot live
+   inside the branch that chooses which section to render.
    ───────────────────────────────────────────────────────────── */
 
 function BrandsSection({ rows, onOpen }: { rows: AdminBrandRow[]; onOpen: (id: string) => void }) {
-  const view = useTableView({ rows, search: brandText, filters: BRAND_FILTERS });
-
-  const exportCsv = () => {
-    const header = [
-      'Brand', 'Handle', 'Owner', 'Email', 'Phone', 'Website', 'Business type',
-      'Billed through', 'Payment method', 'Shopify connected', 'Meta connected',
-      'Agreement signed', 'Campaigns', 'Creators', 'Orders',
-      'Attributed sales (USD)', 'Creator commission (USD)', 'KYRO fee (USD)',
-      'Owed to creators (USD)', 'Billable', 'Joined',
-    ];
-    const body = view.filtered.map((b) => [
-      b.name, b.handle ?? '', b.ownerName ?? '', b.ownerEmail ?? '', b.contactPhone ?? '',
-      b.websiteUrl ?? '', b.businessType ?? '',
-      b.billingOrigin === 'shopify_app_store' ? 'Shopify' : 'Stripe',
-      b.paymentMethod ?? '', b.shopifyConnected ? 'yes' : 'no', b.metaConnected ? 'yes' : 'no',
-      b.agreementSignedAt ?? '', b.campaigns, b.creators, b.orders,
-      usd(b.attributedSalesCents), usd(b.commissionCents), usd(b.feeCents), usd(b.owedCents),
-      b.billable ? 'yes' : 'no', b.createdAt.slice(0, 10),
-    ]);
-    downloadCsv(`kyro-brands-${stamp()}.csv`, toCsv(header, body));
-  };
+  const view = useCrmTable({
+    id: 'brands', rows, rowId: (b) => b.id, search: brandText,
+    fields: BRAND_FIELDS, columns: BRAND_COLUMNS,
+    email: (b) => b.ownerEmail, filename: 'kyro-brands',
+  });
 
   return (
     <Panel
       title="Brands"
       note="Every brand on KYRO. Open one for its profile, campaigns and creators."
-      right={<ExportButton onClick={exportCsv} disabled={view.filtered.length === 0} />}
+      right={<ExportButton onClick={view.exportCsv} disabled={view.matched === 0} />}
     >
       <div className="p-4 border-b border-line">{view.controls}</div>
-      {view.matched === 0
-        ? <EmptyRow>{rows.length === 0 ? 'No brands yet.' : 'No brand matches that.'}</EmptyRow>
-        : <BrandsTable rows={view.shown} onOpen={onOpen} />}
+      {view.bulkBar}
+      <DataTable
+        view={view}
+        onOpen={onOpen}
+        empty={rows.length === 0 ? 'No brands yet.' : 'No brand matches that.'}
+      />
       {view.pager}
     </Panel>
   );
 }
 
 function CreatorsSection({ rows, onOpen }: { rows: AdminCreatorRow[]; onOpen: (id: string) => void }) {
-  const view = useTableView({ rows, search: creatorText, filters: CREATOR_FILTERS });
-
-  const exportCsv = () => {
-    const header = [
-      'Creator', 'Handle', 'Email', 'Location', 'Niche', 'Payout status',
-      'Stripe payouts enabled', 'Tax details', 'Campaigns', 'Videos', 'Used',
-      'Orders', 'Earned (USD)', 'Paid (USD)', 'Joined',
-    ];
-    const body = view.filtered.map((c) => [
-      c.name, c.handle ?? '', c.email ?? '', c.location ?? '', c.niche.join('; '),
-      c.heldReason ?? 'Payable', c.payoutsReady ? 'yes' : 'no', c.taxFormStatus,
-      c.campaigns, c.submissions, c.used, c.orders,
-      usd(c.earnedCents), usd(c.paidCents), c.createdAt.slice(0, 10),
-    ]);
-    downloadCsv(`kyro-creators-${stamp()}.csv`, toCsv(header, body));
-  };
+  const view = useCrmTable({
+    id: 'creators', rows, rowId: (c) => c.id, search: creatorText,
+    fields: CREATOR_FIELDS, columns: CREATOR_COLUMNS,
+    email: (c) => c.email, filename: 'kyro-creators',
+  });
 
   return (
     <Panel
       title="Creators"
       note="Everyone on the platform. Open one for their profile and transfers."
-      right={<ExportButton onClick={exportCsv} disabled={view.filtered.length === 0} />}
+      right={<ExportButton onClick={view.exportCsv} disabled={view.matched === 0} />}
     >
       <div className="p-4 border-b border-line">{view.controls}</div>
-      {view.matched === 0
-        ? <EmptyRow>{rows.length === 0 ? 'No creators yet.' : 'No creator matches that.'}</EmptyRow>
-        : <CreatorsTable rows={view.shown} onOpen={onOpen} />}
+      {view.bulkBar}
+      <DataTable
+        view={view}
+        onOpen={onOpen}
+        empty={rows.length === 0 ? 'No creators yet.' : 'No creator matches that.'}
+      />
       {view.pager}
     </Panel>
   );
@@ -420,84 +811,56 @@ function CreatorsSection({ rows, onOpen }: { rows: AdminCreatorRow[]; onOpen: (i
 function CampaignsSection({ rows, onBrand, onOpen }: {
   rows: AdminCampaignRow[]; onBrand: (id: string) => void; onOpen: (id: string) => void;
 }) {
-  const view = useTableView({ rows, search: campaignText, filters: CAMPAIGN_FILTERS });
-
-  const exportCsv = () => {
-    const header = [
-      'Campaign', 'Brand', 'Status', 'Creator rate', 'KYRO rate', 'Creators',
-      'Videos', 'Orders', 'Attributed sales (USD)', 'Creator commission (USD)',
-      'KYRO fee (USD)', 'Created',
-    ];
-    const body = view.filtered.map((c) => [
-      c.name, c.brandName, c.status, pct(c.commissionBps), pct(c.feeBps),
-      c.creators, c.submissions, c.orders,
-      usd(c.attributedSalesCents), usd(c.commissionCents), usd(c.feeCents),
-      c.createdAt.slice(0, 10),
-    ]);
-    downloadCsv(`kyro-campaigns-${stamp()}.csv`, toCsv(header, body));
-  };
+  const columns = useMemo(() => campaignColumns(onBrand), [onBrand]);
+  const view = useCrmTable({
+    id: 'campaigns', rows, rowId: (c) => c.id, search: campaignText,
+    fields: CAMPAIGN_FIELDS, columns, filename: 'kyro-campaigns',
+  });
 
   return (
     <Panel
       title="Campaigns"
       note="Every campaign, its rate, and what it has driven. Open one for its month by month performance."
-      right={<ExportButton onClick={exportCsv} disabled={view.filtered.length === 0} />}
+      right={<ExportButton onClick={view.exportCsv} disabled={view.matched === 0} />}
     >
       <div className="p-4 border-b border-line">{view.controls}</div>
-      {view.matched === 0
-        ? <EmptyRow>{rows.length === 0 ? 'No campaigns yet.' : 'No campaign matches that.'}</EmptyRow>
-        : <CampaignsTable rows={view.shown} onBrand={onBrand} onOpen={onOpen} />}
+      {view.bulkBar}
+      <DataTable
+        view={view}
+        onOpen={onOpen}
+        empty={rows.length === 0 ? 'No campaigns yet.' : 'No campaign matches that.'}
+      />
       {view.pager}
     </Panel>
   );
 }
 
-/**
- * Finance: what has actually moved.
- *
- * The distinction that matters here is earned against collected. A fee on an
- * order that cleared is earned; it is only collected once the brand's run has
- * settled, and a run sitting in `processing` on a bank debit has been charged
- * without the money arriving.
- */
-function FinanceSection({ data, onBrand }: { data: Overview; onBrand: (id: string) => void }) {
+/* ─────────────────────────────────────────────────────────────
+   Finance
+
+   Three questions, three pages. Who is owed, what brands were charged, and
+   where every dollar went. The distinction that matters across all three is
+   earned against collected: a fee on an order that cleared is earned, and it
+   is collected only once the brand's run has settled.
+   ───────────────────────────────────────────────────────────── */
+
+type FinancePage = 'payouts' | 'runs' | 'activity';
+
+const FINANCE_TABS: Array<{ id: FinancePage; label: string }> = [
+  { id: 'payouts', label: 'Payouts' },
+  { id: 'runs', label: 'Payment runs' },
+  { id: 'activity', label: 'Activity' },
+];
+
+function FinanceSection({ data, onBrand, onCreator }: {
+  data: Overview; onBrand: (id: string) => void; onCreator: (id: string) => void;
+}) {
+  const [tab, setTab] = useState<FinancePage>('payouts');
   const t = data.totals;
   const settled = data.runs.filter((r) => r.status === 'settled');
   const inFlight = data.runs.filter((r) => r.status === 'authorized' || r.status === 'processing');
   const collectedProcessing = settled.reduce((s, r) => s + r.processingCents, 0);
   const uncollected = t.feeCents - t.feeCollectedCents;
-
-  const view = useTableView({ rows: data.runs, search: runText, filters: RUN_FILTERS });
-
-  const exportRuns = () => {
-    const header = [
-      'Authorized', 'Settled', 'Brand', 'Status', 'Method',
-      'Creator commission (USD)', 'KYRO fee (USD)', 'Processing (USD)', 'Total charged (USD)',
-      'Orders', 'Creators',
-    ];
-    const rows = view.filtered.map((r) => [
-      r.authorizedAt, r.settledAt ?? '', r.brandName, r.status, r.method ?? '',
-      usd(r.commissionCents), usd(r.feeCents), usd(r.processingCents), usd(r.totalCents),
-      r.orders, r.creators,
-    ]);
-    downloadCsv(`kyro-payment-runs-${stamp()}.csv`, toCsv(header, rows));
-  };
-
-  /* The money that reached each creator, one row per transfer. The runs
-     export answers "what did we charge"; this answers "what did we send",
-     which is the one a creator asking about a missing payment needs. */
-  const exportTransfers = () => {
-    const header = [
-      'Paid', 'Creator', 'Brand', 'Amount (USD)', 'Status', 'Failure reason', 'Run authorized',
-    ];
-    const rows = view.filtered.flatMap((r) =>
-      r.payouts.map((p) => [
-        p.paidAt ?? '', p.creatorName, r.brandName, usd(p.amountCents),
-        p.status, p.failureReason ?? '', r.authorizedAt,
-      ])
-    );
-    downloadCsv(`kyro-transfers-${stamp()}.csv`, toCsv(header, rows));
-  };
 
   return (
     <div className="space-y-6">
@@ -513,38 +876,24 @@ function FinanceSection({ data, onBrand }: { data: Overview; onBrand: (id: strin
           sub="passed to Stripe at cost" />
       </div>
 
-      <Panel
-        title="Payment runs"
-        note="Every run a brand authorized, what it was charged, and what reached creators."
-        right={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={exportTransfers}
-              disabled={view.filtered.length === 0}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-xs font-semibold text-body hover:text-heading disabled:opacity-40"
-              title="One row per creator transfer, as a spreadsheet"
-            >
-              <Download size={13} /> Transfers
-            </button>
-            <ExportButton onClick={exportRuns} disabled={view.filtered.length === 0} />
-          </div>
-        }
-      >
-        <div className="p-4 border-b border-line">{view.controls}</div>
-        {view.matched === 0 ? (
-          <EmptyRow>
-            {data.runs.length === 0
-              ? 'No payment runs yet. A run appears when a brand authorizes one.'
-              : 'No run matches that.'}
-          </EmptyRow>
-        ) : (
-          <div className="divide-y divide-line">
-            {view.shown.map((r) => <RunRow key={r.id} run={r} onBrand={onBrand} />)}
-          </div>
-        )}
-        {view.pager}
-      </Panel>
+      <div className="flex flex-wrap items-center gap-1 p-1 bg-surface-2 border border-line rounded-xl w-fit">
+        {FINANCE_TABS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setTab(f.id)}
+            className={`text-xs font-semibold px-3 py-2 rounded-lg transition ${
+              tab === f.id ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'payouts' ? <PayoutsTab rows={data.creators} onOpen={onCreator} />
+        : tab === 'runs' ? <RunsTab rows={data.runs} onBrand={onBrand} />
+          : <ActivityTab runs={data.runs} onBrand={onBrand} onCreator={onCreator} />}
 
       {inFlight.length > 0 && (
         <p className="text-xs text-faint text-center">
@@ -555,64 +904,91 @@ function FinanceSection({ data, onBrand }: { data: Overview; onBrand: (id: strin
   );
 }
 
-function RunRow({ run, onBrand }: { run: AdminRunRow; onBrand: (id: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const tone = run.status === 'settled' ? 'good' : run.status === 'failed' || run.status === 'cancelled' ? 'bad' : 'warn';
+function PayoutsTab({ rows, onOpen }: { rows: AdminCreatorRow[]; onOpen: (id: string) => void }) {
+  const view = useCrmTable({
+    id: 'payouts', rows, rowId: (c) => c.id, search: creatorText,
+    fields: PAYOUT_FIELDS, columns: PAYOUT_COLUMNS,
+    email: (c) => c.email, filename: 'kyro-payouts',
+  });
 
   return (
-    <div className="p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-0">
-          <button type="button" onClick={() => onBrand(run.brandId)} className="font-semibold text-heading hover:underline">
-            {run.brandName}
-          </button>
-          <p className="text-xs text-muted">
-            {day(run.authorizedAt)} · {run.orders} orders · {run.creators} creator{run.creators === 1 ? '' : 's'}
-            {run.method ? ` · ${run.method === 'us_bank_account' ? 'bank debit' : run.method}` : ''}
-          </p>
-        </div>
-        <Pill tone={tone}>{run.status}</Pill>
-        <div className="text-right">
-          <p className="text-sm font-bold text-heading tabular-nums">{moneyExact(run.totalCents)}</p>
-          <p className="text-[11px] text-faint">KYRO {moneyExact(run.feeCents)}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="text-xs font-semibold text-muted hover:text-heading px-2 py-1 rounded border border-line"
-        >
-          {open ? 'Hide' : 'Transfers'}
-        </button>
-      </div>
+    <Panel
+      title="Payouts"
+      note="What each creator is owed, what is still clearing, and what has reached them."
+      right={<ExportButton onClick={view.exportCsv} disabled={view.matched === 0} />}
+    >
+      <div className="p-4 border-b border-line">{view.controls}</div>
+      {view.bulkBar}
+      <DataTable
+        view={view}
+        onOpen={onOpen}
+        empty={rows.length === 0 ? 'No creators yet.' : 'No creator matches that.'}
+      />
+      {view.pager}
+    </Panel>
+  );
+}
 
-      {open && (
-        <div className="mt-3 pl-3 border-l-2 border-line space-y-2">
-          <div className="grid grid-cols-3 gap-3 text-xs">
-            <div><span className="text-faint">Commission</span><p className="text-heading tabular-nums">{moneyExact(run.commissionCents)}</p></div>
-            <div><span className="text-faint">KYRO fee</span><p className="text-heading tabular-nums">{moneyExact(run.feeCents)}</p></div>
-            <div><span className="text-faint">Processing</span><p className="text-heading tabular-nums">{moneyExact(run.processingCents)}</p></div>
-          </div>
-          {run.payouts.length === 0 ? (
-            <p className="text-xs text-faint">No transfers recorded on this run.</p>
-          ) : (
-            run.payouts.map((p) => (
-              <div key={`${run.id}-${p.creatorId}`} className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-body truncate">{p.creatorName}</span>
-                <span className="flex items-center gap-2">
-                  <span className="text-heading tabular-nums">{moneyExact(p.amountCents)}</span>
-                  <Pill tone={p.status === 'paid' ? 'good' : p.status === 'failed' ? 'bad' : 'warn'}>{p.status}</Pill>
-                </span>
-              </div>
-            ))
-          )}
-          {run.payouts.some((p) => p.failureReason) && (
-            <p className="text-xs text-bad">
-              {run.payouts.find((p) => p.failureReason)?.failureReason}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
+function RunsTab({ rows, onBrand }: { rows: AdminRunRow[]; onBrand: (id: string) => void }) {
+  const view = useCrmTable({
+    id: 'runs', rows, rowId: (r) => r.id, search: runText,
+    fields: RUN_FIELDS, columns: RUN_COLUMNS, filename: 'kyro-payment-runs',
+  });
+
+  const openBrand = useCallback((runId: string) => {
+    const run = rows.find((r) => r.id === runId);
+    if (run) onBrand(run.brandId);
+  }, [rows, onBrand]);
+
+  return (
+    <Panel
+      title="Payment runs"
+      note="Every run a brand authorized and what it was charged. Open one for the brand behind it."
+      right={<ExportButton onClick={view.exportCsv} disabled={view.matched === 0} />}
+    >
+      <div className="p-4 border-b border-line">{view.controls}</div>
+      {view.bulkBar}
+      <DataTable
+        view={view}
+        onOpen={openBrand}
+        empty={rows.length === 0 ? 'No payment runs yet. A run appears when a brand authorizes one.' : 'No run matches that.'}
+      />
+      {view.pager}
+    </Panel>
+  );
+}
+
+function ActivityTab({ runs, onBrand, onCreator }: {
+  runs: AdminRunRow[]; onBrand: (id: string) => void; onCreator: (id: string) => void;
+}) {
+  const rows = useMemo(() => buildLedger(runs), [runs]);
+  const view = useCrmTable({
+    id: 'activity', rows, rowId: (l) => l.id, search: ledgerText,
+    fields: LEDGER_FIELDS, columns: LEDGER_COLUMNS, filename: 'kyro-activity',
+  });
+
+  const open = useCallback((id: string) => {
+    const row = rows.find((l) => l.id === id);
+    if (!row) return;
+    if (row.creatorId) onCreator(row.creatorId);
+    else onBrand(row.brandId);
+  }, [rows, onBrand, onCreator]);
+
+  return (
+    <Panel
+      title="Activity"
+      note="Every movement of money, newest first. Charges in, transfers out."
+      right={<ExportButton onClick={view.exportCsv} disabled={view.matched === 0} />}
+    >
+      <div className="p-4 border-b border-line">{view.controls}</div>
+      {view.bulkBar}
+      <DataTable
+        view={view}
+        onOpen={open}
+        empty={rows.length === 0 ? 'Nothing has moved yet.' : 'Nothing matches that.'}
+      />
+      {view.pager}
+    </Panel>
   );
 }
 
@@ -627,6 +1003,7 @@ function BrandDetail({ brand, data, onBack, onCreator, onCampaign }: {
   const campaigns = data.campaigns.filter((c) => c.brandId === brand.id);
   const creators = data.creators.filter((c) => c.brandIds.includes(brand.id));
   const runs = data.runs.filter((r) => r.brandId === brand.id);
+  const columns = useMemo(() => campaignColumns(), []);
 
   return (
     <div className="space-y-6">
@@ -689,22 +1066,25 @@ function BrandDetail({ brand, data, onBack, onCreator, onCampaign }: {
       </div>
 
       <Panel title="Campaigns" note={`Everything ${brand.name} has run. Open one for its performance.`}>
-        {campaigns.length === 0
-          ? <EmptyRow>This brand has not created a campaign yet.</EmptyRow>
-          : <CampaignsTable rows={campaigns} onBrand={() => {}} onOpen={onCampaign} />}
+        <SimpleTable
+          rows={campaigns} columns={columns} rowId={(c) => c.id} onOpen={onCampaign}
+          empty="This brand has not created a campaign yet."
+        />
       </Panel>
 
       <Panel title="Creators" note={`Everyone who has submitted to ${brand.name}.`}>
-        <CreatorsTable rows={creators} onOpen={onCreator} />
+        <SimpleTable
+          rows={creators} columns={CREATOR_COLUMNS} rowId={(c) => c.id} onOpen={onCreator}
+          empty="Nobody has submitted to this brand yet."
+        />
       </Panel>
 
-      {runs.length > 0 && (
-        <Panel title="Payment runs" note="What this brand has authorized.">
-          <div className="divide-y divide-line">
-            {runs.map((r) => <RunRow key={r.id} run={r} onBrand={() => {}} />)}
-          </div>
-        </Panel>
-      )}
+      <Panel title="Payment runs" note="What this brand has authorized.">
+        <SimpleTable
+          rows={runs} columns={RUN_COLUMNS} rowId={(r) => r.id}
+          empty="This brand has not authorized a payment run yet."
+        />
+      </Panel>
     </div>
   );
 }
@@ -715,6 +1095,7 @@ function CreatorDetail({ creator, data, onBack, onBrand, onCampaign }: {
 }) {
   const campaigns = data.campaigns.filter((c) => creator.campaignIds.includes(c.id));
   const brands = data.brands.filter((b) => creator.brandIds.includes(b.id));
+  const columns = useMemo(() => campaignColumns(onBrand), [onBrand]);
   const transfers = data.runs.flatMap((r) =>
     r.payouts.filter((p) => p.creatorId === creator.id).map((p) => ({ run: r, payout: p }))
   );
@@ -767,15 +1148,17 @@ function CreatorDetail({ creator, data, onBack, onBrand, onCampaign }: {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Tile icon={Wallet} label="Earned" value={moneyExact(creator.earnedCents)} sub="all time" />
+        <Tile icon={Clock} label="Owed now" value={moneyExact(creator.owedCents)}
+          sub={creator.pendingCents > 0 ? `${moneyExact(creator.pendingCents)} still clearing` : 'nothing clearing'} />
         <Tile icon={CheckCircle2} label="Paid" value={moneyExact(creator.paidCents)} sub="reached their Stripe account" />
         <Tile icon={Video} label="Videos" value={`${creator.submissions}`} sub={`${creator.used} used by brands`} />
-        <Tile icon={TrendingUp} label="Orders" value={`${creator.orders}`} sub="attributed to their content" />
       </div>
 
       <Panel title="Campaigns" note="Everything this creator has submitted to.">
-        {campaigns.length === 0
-          ? <EmptyRow>This creator has not submitted to a campaign yet.</EmptyRow>
-          : <CampaignsTable rows={campaigns} onBrand={onBrand} onOpen={onCampaign} />}
+        <SimpleTable
+          rows={campaigns} columns={columns} rowId={(c) => c.id} onOpen={onCampaign}
+          empty="This creator has not submitted to a campaign yet."
+        />
       </Panel>
 
       <Panel title="Transfers" note="Every payment KYRO has sent them.">
@@ -873,9 +1256,10 @@ function CampaignDetail({ campaign, data, onBack, onBrand, onCreator }: {
       </Panel>
 
       <Panel title="Creators" note="Everyone who has submitted to this campaign.">
-        {creators.length === 0
-          ? <EmptyRow>No creator has submitted to this campaign yet.</EmptyRow>
-          : <CreatorsTable rows={creators} onOpen={onCreator} />}
+        <SimpleTable
+          rows={creators} columns={CREATOR_COLUMNS} rowId={(c) => c.id} onOpen={onCreator}
+          empty="No creator has submitted to this campaign yet."
+        />
       </Panel>
     </div>
   );
@@ -907,9 +1291,9 @@ export function AdminPortal() {
   /* Opening a record moves to that record's section and closes the other two,
      so Back always returns to the list the heading names. A stack of half
      open panes is how you end up not knowing where Back goes. */
-  const openBrand = (id: string) => { setCreatorId(null); setCampaignId(null); setBrandId(id); setPage('brands'); };
-  const openCreator = (id: string) => { setBrandId(null); setCampaignId(null); setCreatorId(id); setPage('creators'); };
-  const openCampaign = (id: string) => { setBrandId(null); setCreatorId(null); setCampaignId(id); setPage('campaigns'); };
+  const openBrand = useCallback((id: string) => { setCreatorId(null); setCampaignId(null); setBrandId(id); setPage('brands'); }, []);
+  const openCreator = useCallback((id: string) => { setBrandId(null); setCampaignId(null); setCreatorId(id); setPage('creators'); }, []);
+  const openCampaign = useCallback((id: string) => { setBrandId(null); setCreatorId(null); setCampaignId(id); setPage('campaigns'); }, []);
   const go = (p: Page) => { setBrandId(null); setCreatorId(null); setCampaignId(null); setPage(p); };
 
   const brand = useMemo(() => data?.brands.find((b) => b.id === brandId) ?? null, [data, brandId]);
@@ -967,7 +1351,7 @@ export function AdminPortal() {
   ) : page === 'campaigns' ? (
     <CampaignsSection rows={data.campaigns} onBrand={openBrand} onOpen={openCampaign} />
   ) : (
-    <FinanceSection data={data} onBrand={openBrand} />
+    <FinanceSection data={data} onBrand={openBrand} onCreator={openCreator} />
   );
 
   const navItem = (id: Page, label: string, Icon: typeof Users) => {
