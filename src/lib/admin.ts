@@ -129,6 +129,8 @@ export interface AdminCampaignRow {
   /** Basis points the creator earns, e.g. 1500 for 15%. */
   commissionBps: number | null;
   feeBps: number;
+  /** This campaign's own monthly series, for its performance chart. */
+  months: AdminMonth[];
   creators: number;
   submissions: number;
   orders: number;
@@ -363,6 +365,9 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
 
     const byBrand = new Map<string, Agg>();
     const byCampaign = new Map<string, Agg>();
+    /* One monthly series per campaign, keyed campaignId|YYYY-MM. Built in the
+       same pass as everything else so a campaign page costs no extra query. */
+    const byCampaignMonth = new Map<string, Agg>();
     const byCreator = new Map<string, Agg>();
     const byMonth = new Map<string, Agg>();
 
@@ -381,6 +386,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
       bump(byCampaign, e.campaign_id);
       bump(byCreator, e.creator_id);
       bump(byMonth, e.created_at.slice(0, 7));
+      bump(byCampaignMonth, `${e.campaign_id}|${e.created_at.slice(0, 7)}`);
     }
 
     const brandsPerCreator = new Map<string, Set<string>>();
@@ -532,6 +538,19 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
     });
 
     const brandNameById = new Map(brands.map((b) => [b.id, b.name]));
+
+    const monthsFor = (campaignId: string): AdminMonth[] =>
+      [...byCampaignMonth.entries()]
+        .filter(([key]) => key.startsWith(`${campaignId}|`))
+        .map(([key, a]) => ({
+          month: key.slice(campaignId.length + 1),
+          attributedSalesCents: a.sales,
+          commissionCents: a.commission,
+          feeCents: a.fee,
+          orders: a.orders.size,
+        }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
     const campaignRows: AdminCampaignRow[] = campaigns.map((c) => {
       const agg = byCampaign.get(c.id) ?? blank();
       return {
@@ -542,6 +561,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         status: c.status,
         commissionBps: c.commission_rate_bps,
         feeBps: c.platform_fee_bps,
+        months: monthsFor(c.id),
         creators: creatorsPerCampaign.get(c.id)?.size ?? 0,
         submissions: subsPerCampaign.get(c.id) ?? 0,
         orders: agg.orders.size,

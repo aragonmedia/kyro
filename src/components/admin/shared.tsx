@@ -5,7 +5,7 @@
  * format.ts.
  */
 
-import { Mail, Phone } from 'lucide-react';
+import { Download, Mail, Phone } from 'lucide-react';
 import { TONE } from './format';
 
 export function Pill({ tone, children }: { tone: keyof typeof TONE; children: React.ReactNode }) {
@@ -102,6 +102,26 @@ export function Field({ label, value }: { label: string; value: React.ReactNode 
       <p className="text-[11px] uppercase tracking-wider text-faint">{label}</p>
       <div className="text-sm text-heading mt-0.5">{value || <span className="text-faint">Not set</span>}</div>
     </div>
+  );
+}
+
+/**
+ * Takes whatever the section is currently showing to a spreadsheet.
+ *
+ * Always the filtered set and never only the visible page: a file that
+ * silently stops at row twenty is worse than no file.
+ */
+export function ExportButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-xs font-semibold text-body hover:text-heading disabled:opacity-40"
+      title="Everything currently in view, as a spreadsheet"
+    >
+      <Download size={13} /> Export
+    </button>
   );
 }
 

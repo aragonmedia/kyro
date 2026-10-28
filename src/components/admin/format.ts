@@ -25,6 +25,17 @@ export const monthLabel = (m: string) => {
 
 export const count = (n: number) => n.toLocaleString('en-US');
 
+/** Today, for naming an export. A file called kyro-brands.csv in a downloads
+    folder next to four others is unidentifiable a week later. */
+export const stamp = () => new Date().toISOString().slice(0, 10);
+
+/** Cents to a bare number a spreadsheet will treat as money. */
+export const usd = (cents: number) => (cents / 100).toFixed(2);
+
+/** How many rows a table shows at once. The first is the default, and a list
+    shorter than it hides the pager entirely. */
+export const PAGE_SIZES = [20, 50, 100] as const;
+
 /* The four reserved status meanings, on the theme tokens so they are correct
    in light and dark rather than tuned for one of them. Each is always paired
    with a word; none of them carries meaning by colour alone. */

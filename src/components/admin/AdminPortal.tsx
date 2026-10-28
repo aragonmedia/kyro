@@ -29,8 +29,9 @@ import {
 } from '../../lib/admin';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import { RevenueChart } from './RevenueChart';
-import { CallButton, EmptyRow, Field, MailButton, Panel, Pill, TH, Tile } from './shared';
-import { count, day, money, moneyExact, pct } from './format';
+import { useTableView, type Filter } from './TableView';
+import { CallButton, EmptyRow, ExportButton, Field, MailButton, Panel, Pill, TH, Tile } from './shared';
+import { count, day, money, moneyExact, monthLabel, pct, stamp, usd } from './format';
 
 type Page = 'overview' | 'brands' | 'creators' | 'campaigns' | 'finance';
 
@@ -41,6 +42,90 @@ const NAV: Array<{ id: Page; label: string; icon: typeof Users }> = [
   { id: 'campaigns', label: 'Campaigns', icon: Layers },
   { id: 'finance', label: 'Finance', icon: DollarSign },
 ];
+
+/* ─────────────────────────────────────────────────────────────
+   What each list can be narrowed by.
+
+   Every chip answers a question an admin actually has, phrased as the state
+   it finds rather than as a column name: "Payouts held", not
+   "payouts_ready = false". They live at module scope because they close over
+   nothing, which keeps the memo inside useTableView from recomputing on
+   every render.
+   ───────────────────────────────────────────────────────────── */
+
+const BRAND_FILTERS: Filter<AdminBrandRow>[] = [
+  { label: 'Owes money', match: (b) => b.owedCents > 0 },
+  { label: 'Cannot be charged', match: (b) => !b.billable },
+  { label: 'No agreement', match: (b) => !b.agreementSignedAt },
+  { label: 'Shopify billing', match: (b) => b.billingOrigin === 'shopify_app_store' },
+  { label: 'No sales yet', match: (b) => b.attributedSalesCents === 0 },
+];
+
+const CREATOR_FILTERS: Filter<AdminCreatorRow>[] = [
+  { label: 'Payable', match: (c) => !c.heldReason },
+  { label: 'Payouts held', match: (c) => !!c.heldReason },
+  { label: 'Stripe not set up', match: (c) => !c.payoutsReady },
+  { label: 'Tax incomplete', match: (c) => !c.taxComplete },
+  { label: 'Earning', match: (c) => c.earnedCents > 0 },
+  { label: 'No videos yet', match: (c) => c.submissions === 0 },
+];
+
+const CAMPAIGN_FILTERS: Filter<AdminCampaignRow>[] = [
+  { label: 'Live', match: (c) => c.status === 'live' },
+  { label: 'Draft', match: (c) => c.status === 'draft' },
+  { label: 'Paused', match: (c) => c.status === 'paused' },
+  { label: 'Complete', match: (c) => c.status === 'complete' || c.status === 'archived' },
+  { label: 'With sales', match: (c) => c.attributedSalesCents > 0 },
+];
+
+const RUN_FILTERS: Filter<AdminRunRow>[] = [
+  { label: 'Settled', match: (r) => r.status === 'settled' },
+  { label: 'In flight', match: (r) => r.status === 'authorized' || r.status === 'processing' },
+  { label: 'Failed', match: (r) => r.status === 'failed' || r.status === 'cancelled' },
+  { label: 'Transfer problem', match: (r) => r.payouts.some((p) => p.status === 'failed') },
+];
+
+const brandText = (b: AdminBrandRow) =>
+  `${b.name} ${b.handle ?? ''} ${b.ownerName ?? ''} ${b.ownerEmail ?? ''} ${b.websiteUrl ?? ''} ${b.businessType ?? ''}`;
+const creatorText = (c: AdminCreatorRow) =>
+  `${c.name} ${c.handle ?? ''} ${c.email ?? ''} ${c.location ?? ''} ${c.niche.join(' ')} ${c.socials.map((s) => s.handle).join(' ')}`;
+const campaignText = (c: AdminCampaignRow) => `${c.name} ${c.brandName} ${c.status}`;
+const runText = (r: AdminRunRow) =>
+  `${r.brandName} ${r.status} ${r.method ?? ''} ${r.payouts.map((p) => p.creatorName).join(' ')}`;
+
+/**
+ * One campaign's months. Same shape as the platform chart, smaller, and
+ * always attributed sales: at campaign scale the 1% fee is a rounding error
+ * and plotting it would waste the panel.
+ */
+function MiniMonths({ months }: { months: AdminCampaignRow['months'] }) {
+  if (months.length === 0) {
+    return <EmptyRow>No attributed sales on this campaign yet.</EmptyRow>;
+  }
+  const max = Math.max(...months.map((m) => m.attributedSalesCents), 1);
+  return (
+    <div className="p-5">
+      <div className="flex items-end justify-between gap-1 h-32">
+        {months.map((m) => (
+          <div key={m.month} className="flex-1 min-w-0 h-full flex flex-col justify-end items-center group relative">
+            <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[11px] font-semibold text-heading opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap tabular-nums">
+              {moneyExact(m.attributedSalesCents)}
+            </span>
+            <div
+              className="w-full max-w-[20px] bg-gradient-kyro rounded-t-sm group-hover:opacity-80 transition-opacity"
+              style={{ height: `${Math.max((m.attributedSalesCents / max) * 100, 2)}%` }}
+              title={`${monthLabel(m.month)}: ${moneyExact(m.attributedSalesCents)} across ${m.orders} orders`}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-[11px] text-faint">{monthLabel(months[0].month)}</span>
+        <span className="text-[11px] text-faint">{monthLabel(months[months.length - 1].month)}</span>
+      </div>
+    </div>
+  );
+}
 
 /* ─────────────────────────────────────────────────────────────
    Sections
@@ -206,7 +291,9 @@ function CreatorsTable({ rows, onOpen }: { rows: AdminCreatorRow[]; onOpen: (id:
   );
 }
 
-function CampaignsTable({ rows, onBrand }: { rows: AdminCampaignRow[]; onBrand: (id: string) => void }) {
+function CampaignsTable({ rows, onBrand, onOpen }: {
+  rows: AdminCampaignRow[]; onBrand: (id: string) => void; onOpen?: (id: string) => void;
+}) {
   if (rows.length === 0) return <EmptyRow>No campaigns yet.</EmptyRow>;
   return (
     <div className="overflow-x-auto">
@@ -220,10 +307,14 @@ function CampaignsTable({ rows, onBrand }: { rows: AdminCampaignRow[]; onBrand: 
         </thead>
         <tbody className="divide-y divide-line">
           {rows.map((c) => (
-            <tr key={c.id} className="hover:bg-surface-2">
+            <tr key={c.id} className={`hover:bg-surface-2 ${onOpen ? 'cursor-pointer' : ''}`} onClick={onOpen ? () => onOpen(c.id) : undefined}>
               <td className="p-4">
                 <p className="font-semibold text-heading">{c.name}</p>
-                <button type="button" onClick={() => onBrand(c.brandId)} className="text-xs text-faint hover:text-heading hover:underline">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onBrand(c.brandId); }}
+                  className="text-xs text-faint hover:text-heading hover:underline"
+                >
                   {c.brandName}
                 </button>
               </td>
@@ -246,6 +337,121 @@ function CampaignsTable({ rows, onBrand }: { rows: AdminCampaignRow[]; onBrand: 
   );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   List sections
+
+   A table, the controls above it, the pager below it, and an export that
+   writes whatever survived the controls. Each is its own component because
+   each owns a hook, and a hook cannot live inside the branch that chooses
+   which section to render.
+   ───────────────────────────────────────────────────────────── */
+
+function BrandsSection({ rows, onOpen }: { rows: AdminBrandRow[]; onOpen: (id: string) => void }) {
+  const view = useTableView({ rows, search: brandText, filters: BRAND_FILTERS });
+
+  const exportCsv = () => {
+    const header = [
+      'Brand', 'Handle', 'Owner', 'Email', 'Phone', 'Website', 'Business type',
+      'Billed through', 'Payment method', 'Shopify connected', 'Meta connected',
+      'Agreement signed', 'Campaigns', 'Creators', 'Orders',
+      'Attributed sales (USD)', 'Creator commission (USD)', 'KYRO fee (USD)',
+      'Owed to creators (USD)', 'Billable', 'Joined',
+    ];
+    const body = view.filtered.map((b) => [
+      b.name, b.handle ?? '', b.ownerName ?? '', b.ownerEmail ?? '', b.contactPhone ?? '',
+      b.websiteUrl ?? '', b.businessType ?? '',
+      b.billingOrigin === 'shopify_app_store' ? 'Shopify' : 'Stripe',
+      b.paymentMethod ?? '', b.shopifyConnected ? 'yes' : 'no', b.metaConnected ? 'yes' : 'no',
+      b.agreementSignedAt ?? '', b.campaigns, b.creators, b.orders,
+      usd(b.attributedSalesCents), usd(b.commissionCents), usd(b.feeCents), usd(b.owedCents),
+      b.billable ? 'yes' : 'no', b.createdAt.slice(0, 10),
+    ]);
+    downloadCsv(`kyro-brands-${stamp()}.csv`, toCsv(header, body));
+  };
+
+  return (
+    <Panel
+      title="Brands"
+      note="Every brand on KYRO. Open one for its profile, campaigns and creators."
+      right={<ExportButton onClick={exportCsv} disabled={view.filtered.length === 0} />}
+    >
+      <div className="p-4 border-b border-line">{view.controls}</div>
+      {view.matched === 0
+        ? <EmptyRow>{rows.length === 0 ? 'No brands yet.' : 'No brand matches that.'}</EmptyRow>
+        : <BrandsTable rows={view.shown} onOpen={onOpen} />}
+      {view.pager}
+    </Panel>
+  );
+}
+
+function CreatorsSection({ rows, onOpen }: { rows: AdminCreatorRow[]; onOpen: (id: string) => void }) {
+  const view = useTableView({ rows, search: creatorText, filters: CREATOR_FILTERS });
+
+  const exportCsv = () => {
+    const header = [
+      'Creator', 'Handle', 'Email', 'Location', 'Niche', 'Payout status',
+      'Stripe payouts enabled', 'Tax details', 'Campaigns', 'Videos', 'Used',
+      'Orders', 'Earned (USD)', 'Paid (USD)', 'Joined',
+    ];
+    const body = view.filtered.map((c) => [
+      c.name, c.handle ?? '', c.email ?? '', c.location ?? '', c.niche.join('; '),
+      c.heldReason ?? 'Payable', c.payoutsReady ? 'yes' : 'no', c.taxFormStatus,
+      c.campaigns, c.submissions, c.used, c.orders,
+      usd(c.earnedCents), usd(c.paidCents), c.createdAt.slice(0, 10),
+    ]);
+    downloadCsv(`kyro-creators-${stamp()}.csv`, toCsv(header, body));
+  };
+
+  return (
+    <Panel
+      title="Creators"
+      note="Everyone on the platform. Open one for their profile and transfers."
+      right={<ExportButton onClick={exportCsv} disabled={view.filtered.length === 0} />}
+    >
+      <div className="p-4 border-b border-line">{view.controls}</div>
+      {view.matched === 0
+        ? <EmptyRow>{rows.length === 0 ? 'No creators yet.' : 'No creator matches that.'}</EmptyRow>
+        : <CreatorsTable rows={view.shown} onOpen={onOpen} />}
+      {view.pager}
+    </Panel>
+  );
+}
+
+function CampaignsSection({ rows, onBrand, onOpen }: {
+  rows: AdminCampaignRow[]; onBrand: (id: string) => void; onOpen: (id: string) => void;
+}) {
+  const view = useTableView({ rows, search: campaignText, filters: CAMPAIGN_FILTERS });
+
+  const exportCsv = () => {
+    const header = [
+      'Campaign', 'Brand', 'Status', 'Creator rate', 'KYRO rate', 'Creators',
+      'Videos', 'Orders', 'Attributed sales (USD)', 'Creator commission (USD)',
+      'KYRO fee (USD)', 'Created',
+    ];
+    const body = view.filtered.map((c) => [
+      c.name, c.brandName, c.status, pct(c.commissionBps), pct(c.feeBps),
+      c.creators, c.submissions, c.orders,
+      usd(c.attributedSalesCents), usd(c.commissionCents), usd(c.feeCents),
+      c.createdAt.slice(0, 10),
+    ]);
+    downloadCsv(`kyro-campaigns-${stamp()}.csv`, toCsv(header, body));
+  };
+
+  return (
+    <Panel
+      title="Campaigns"
+      note="Every campaign, its rate, and what it has driven. Open one for its month by month performance."
+      right={<ExportButton onClick={exportCsv} disabled={view.filtered.length === 0} />}
+    >
+      <div className="p-4 border-b border-line">{view.controls}</div>
+      {view.matched === 0
+        ? <EmptyRow>{rows.length === 0 ? 'No campaigns yet.' : 'No campaign matches that.'}</EmptyRow>
+        : <CampaignsTable rows={view.shown} onBrand={onBrand} onOpen={onOpen} />}
+      {view.pager}
+    </Panel>
+  );
+}
+
 /**
  * Finance: what has actually moved.
  *
@@ -261,19 +467,36 @@ function FinanceSection({ data, onBrand }: { data: Overview; onBrand: (id: strin
   const collectedProcessing = settled.reduce((s, r) => s + r.processingCents, 0);
   const uncollected = t.feeCents - t.feeCollectedCents;
 
+  const view = useTableView({ rows: data.runs, search: runText, filters: RUN_FILTERS });
+
   const exportRuns = () => {
     const header = [
       'Authorized', 'Settled', 'Brand', 'Status', 'Method',
       'Creator commission (USD)', 'KYRO fee (USD)', 'Processing (USD)', 'Total charged (USD)',
       'Orders', 'Creators',
     ];
-    const rows = data.runs.map((r) => [
+    const rows = view.filtered.map((r) => [
       r.authorizedAt, r.settledAt ?? '', r.brandName, r.status, r.method ?? '',
-      (r.commissionCents / 100).toFixed(2), (r.feeCents / 100).toFixed(2),
-      (r.processingCents / 100).toFixed(2), (r.totalCents / 100).toFixed(2),
+      usd(r.commissionCents), usd(r.feeCents), usd(r.processingCents), usd(r.totalCents),
       r.orders, r.creators,
     ]);
-    downloadCsv(`kyro-payment-runs-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(header, rows));
+    downloadCsv(`kyro-payment-runs-${stamp()}.csv`, toCsv(header, rows));
+  };
+
+  /* The money that reached each creator, one row per transfer. The runs
+     export answers "what did we charge"; this answers "what did we send",
+     which is the one a creator asking about a missing payment needs. */
+  const exportTransfers = () => {
+    const header = [
+      'Paid', 'Creator', 'Brand', 'Amount (USD)', 'Status', 'Failure reason', 'Run authorized',
+    ];
+    const rows = view.filtered.flatMap((r) =>
+      r.payouts.map((p) => [
+        p.paidAt ?? '', p.creatorName, r.brandName, usd(p.amountCents),
+        p.status, p.failureReason ?? '', r.authorizedAt,
+      ])
+    );
+    downloadCsv(`kyro-transfers-${stamp()}.csv`, toCsv(header, rows));
   };
 
   return (
@@ -294,23 +517,33 @@ function FinanceSection({ data, onBrand }: { data: Overview; onBrand: (id: strin
         title="Payment runs"
         note="Every run a brand authorized, what it was charged, and what reached creators."
         right={
-          <button
-            type="button"
-            onClick={exportRuns}
-            disabled={data.runs.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-xs font-semibold text-body hover:text-heading disabled:opacity-40"
-          >
-            <Download size={13} /> Export
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={exportTransfers}
+              disabled={view.filtered.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-xs font-semibold text-body hover:text-heading disabled:opacity-40"
+              title="One row per creator transfer, as a spreadsheet"
+            >
+              <Download size={13} /> Transfers
+            </button>
+            <ExportButton onClick={exportRuns} disabled={view.filtered.length === 0} />
+          </div>
         }
       >
-        {data.runs.length === 0 ? (
-          <EmptyRow>No payment runs yet. A run appears when a brand authorizes one.</EmptyRow>
+        <div className="p-4 border-b border-line">{view.controls}</div>
+        {view.matched === 0 ? (
+          <EmptyRow>
+            {data.runs.length === 0
+              ? 'No payment runs yet. A run appears when a brand authorizes one.'
+              : 'No run matches that.'}
+          </EmptyRow>
         ) : (
           <div className="divide-y divide-line">
-            {data.runs.map((r) => <RunRow key={r.id} run={r} onBrand={onBrand} />)}
+            {view.shown.map((r) => <RunRow key={r.id} run={r} onBrand={onBrand} />)}
           </div>
         )}
+        {view.pager}
       </Panel>
 
       {inFlight.length > 0 && (
@@ -387,8 +620,9 @@ function RunRow({ run, onBrand }: { run: AdminRunRow; onBrand: (id: string) => v
    Detail panes
    ───────────────────────────────────────────────────────────── */
 
-function BrandDetail({ brand, data, onBack, onCreator }: {
-  brand: AdminBrandRow; data: Overview; onBack: () => void; onCreator: (id: string) => void;
+function BrandDetail({ brand, data, onBack, onCreator, onCampaign }: {
+  brand: AdminBrandRow; data: Overview; onBack: () => void;
+  onCreator: (id: string) => void; onCampaign: (id: string) => void;
 }) {
   const campaigns = data.campaigns.filter((c) => c.brandId === brand.id);
   const creators = data.creators.filter((c) => c.brandIds.includes(brand.id));
@@ -454,8 +688,10 @@ function BrandDetail({ brand, data, onBack, onCreator }: {
         <Tile icon={Layers} label="Campaigns" value={`${brand.campaigns}`} sub={`${brand.creators} creators`} />
       </div>
 
-      <Panel title="Campaigns" note={`Everything ${brand.name} has run.`}>
-        <CampaignsTable rows={campaigns} onBrand={() => {}} />
+      <Panel title="Campaigns" note={`Everything ${brand.name} has run. Open one for its performance.`}>
+        {campaigns.length === 0
+          ? <EmptyRow>This brand has not created a campaign yet.</EmptyRow>
+          : <CampaignsTable rows={campaigns} onBrand={() => {}} onOpen={onCampaign} />}
       </Panel>
 
       <Panel title="Creators" note={`Everyone who has submitted to ${brand.name}.`}>
@@ -473,8 +709,9 @@ function BrandDetail({ brand, data, onBack, onCreator }: {
   );
 }
 
-function CreatorDetail({ creator, data, onBack, onBrand }: {
-  creator: AdminCreatorRow; data: Overview; onBack: () => void; onBrand: (id: string) => void;
+function CreatorDetail({ creator, data, onBack, onBrand, onCampaign }: {
+  creator: AdminCreatorRow; data: Overview; onBack: () => void;
+  onBrand: (id: string) => void; onCampaign: (id: string) => void;
 }) {
   const campaigns = data.campaigns.filter((c) => creator.campaignIds.includes(c.id));
   const brands = data.brands.filter((b) => creator.brandIds.includes(b.id));
@@ -536,7 +773,9 @@ function CreatorDetail({ creator, data, onBack, onBrand }: {
       </div>
 
       <Panel title="Campaigns" note="Everything this creator has submitted to.">
-        <CampaignsTable rows={campaigns} onBrand={onBrand} />
+        {campaigns.length === 0
+          ? <EmptyRow>This creator has not submitted to a campaign yet.</EmptyRow>
+          : <CampaignsTable rows={campaigns} onBrand={onBrand} onOpen={onCampaign} />}
       </Panel>
 
       <Panel title="Transfers" note="Every payment KYRO has sent them.">
@@ -560,6 +799,88 @@ function CreatorDetail({ creator, data, onBack, onBrand }: {
   );
 }
 
+/**
+ * One campaign.
+ *
+ * The list answers how campaigns compare. This answers whether a single one
+ * is going anywhere, which is a question about direction and therefore needs
+ * months rather than a total: two campaigns at $4,000 attributed are not the
+ * same campaign if one did it all in March and the other is still climbing.
+ */
+function CampaignDetail({ campaign, data, onBack, onBrand, onCreator }: {
+  campaign: AdminCampaignRow;
+  data: Overview;
+  onBack: () => void;
+  onBrand: (id: string) => void;
+  onCreator: (id: string) => void;
+}) {
+  const creators = data.creators.filter((c) => c.campaignIds.includes(campaign.id));
+  const aov = campaign.orders > 0 ? campaign.attributedSalesCents / campaign.orders : 0;
+  const perVideo = campaign.submissions > 0 ? campaign.attributedSalesCents / campaign.submissions : 0;
+
+  const exportMonths = () => {
+    const header = ['Month', 'Attributed sales (USD)', 'Creator commission (USD)', 'KYRO fee (USD)', 'Orders'];
+    const rows = campaign.months.map((m) => [
+      m.month, usd(m.attributedSalesCents), usd(m.commissionCents), usd(m.feeCents), m.orders,
+    ]);
+    const slug = campaign.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'campaign';
+    downloadCsv(`kyro-campaign-${slug}-${stamp()}.csv`, toCsv(header, rows));
+  };
+
+  return (
+    <div className="space-y-6">
+      <button type="button" onClick={onBack} className="flex items-center gap-2 text-sm text-muted hover:text-heading">
+        <ArrowLeft size={16} /> All campaigns
+      </button>
+
+      <div className="bg-surface border border-line rounded-2xl p-5 md:p-6 space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-heading">{campaign.name}</h1>
+            <p className="text-sm text-muted">
+              <button type="button" onClick={() => onBrand(campaign.brandId)} className="text-kyro-500 hover:underline">
+                {campaign.brandName}
+              </button>
+              {' · '}Created {day(campaign.createdAt)}
+            </p>
+          </div>
+          <Pill tone={campaign.status === 'live' ? 'good' : campaign.status === 'draft' ? 'idle' : 'warn'}>
+            {campaign.status === 'pending_fund' ? 'legacy' : campaign.status}
+          </Pill>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Field label="Creator rate" value={pct(campaign.commissionBps)} />
+          <Field label="KYRO rate" value={pct(campaign.feeBps)} />
+          <Field label="Average order" value={campaign.orders > 0 ? moneyExact(aov) : null} />
+          <Field label="Sales per video" value={campaign.submissions > 0 ? moneyExact(perVideo) : null} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Tile icon={TrendingUp} label="Attributed sales" value={money(campaign.attributedSalesCents)} sub={`${count(campaign.orders)} orders`} />
+        <Tile icon={Users} label="Creator commission" value={money(campaign.commissionCents)} sub="earned on this campaign" />
+        <Tile icon={Wallet} label="KYRO fee" value={money(campaign.feeCents)} sub="earned on this campaign" />
+        <Tile icon={Video} label="Videos" value={`${campaign.submissions}`} sub={`${campaign.creators} creators`} />
+      </div>
+
+      <Panel
+        title="Performance by month"
+        note="Attributed sales, by the month the order cleared. Reversed orders never counted."
+        right={<ExportButton onClick={exportMonths} disabled={campaign.months.length === 0} />}
+      >
+        <MiniMonths months={campaign.months} />
+      </Panel>
+
+      <Panel title="Creators" note="Everyone who has submitted to this campaign.">
+        {creators.length === 0
+          ? <EmptyRow>No creator has submitted to this campaign yet.</EmptyRow>
+          : <CreatorsTable rows={creators} onOpen={onCreator} />}
+      </Panel>
+    </div>
+  );
+}
+
 /* ─────────────────────────────────────────────────────────────
    Shell
    ───────────────────────────────────────────────────────────── */
@@ -571,6 +892,7 @@ export function AdminPortal() {
   const [page, setPage] = useState<Page>('overview');
   const [brandId, setBrandId] = useState<string | null>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
+  const [campaignId, setCampaignId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -582,12 +904,17 @@ export function AdminPortal() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const openBrand = (id: string) => { setCreatorId(null); setBrandId(id); setPage('brands'); };
-  const openCreator = (id: string) => { setBrandId(null); setCreatorId(id); setPage('creators'); };
-  const go = (p: Page) => { setBrandId(null); setCreatorId(null); setPage(p); };
+  /* Opening a record moves to that record's section and closes the other two,
+     so Back always returns to the list the heading names. A stack of half
+     open panes is how you end up not knowing where Back goes. */
+  const openBrand = (id: string) => { setCreatorId(null); setCampaignId(null); setBrandId(id); setPage('brands'); };
+  const openCreator = (id: string) => { setBrandId(null); setCampaignId(null); setCreatorId(id); setPage('creators'); };
+  const openCampaign = (id: string) => { setBrandId(null); setCreatorId(null); setCampaignId(id); setPage('campaigns'); };
+  const go = (p: Page) => { setBrandId(null); setCreatorId(null); setCampaignId(null); setPage(p); };
 
   const brand = useMemo(() => data?.brands.find((b) => b.id === brandId) ?? null, [data, brandId]);
   const creator = useMemo(() => data?.creators.find((c) => c.id === creatorId) ?? null, [data, creatorId]);
+  const campaign = useMemo(() => data?.campaigns.find((c) => c.id === campaignId) ?? null, [data, campaignId]);
 
   if (loading && !data) return <div className="p-16 text-center text-sm text-muted">Loading…</div>;
 
@@ -604,9 +931,20 @@ export function AdminPortal() {
   const uncollected = t.feeCents - t.feeCollectedCents;
 
   const body = brand ? (
-    <BrandDetail brand={brand} data={data} onBack={() => setBrandId(null)} onCreator={openCreator} />
+    <BrandDetail
+      brand={brand} data={data} onBack={() => setBrandId(null)}
+      onCreator={openCreator} onCampaign={openCampaign}
+    />
   ) : creator ? (
-    <CreatorDetail creator={creator} data={data} onBack={() => setCreatorId(null)} onBrand={openBrand} />
+    <CreatorDetail
+      creator={creator} data={data} onBack={() => setCreatorId(null)}
+      onBrand={openBrand} onCampaign={openCampaign}
+    />
+  ) : campaign ? (
+    <CampaignDetail
+      campaign={campaign} data={data} onBack={() => setCampaignId(null)}
+      onBrand={openBrand} onCreator={openCreator}
+    />
   ) : page === 'overview' ? (
     <div className="space-y-6">
       <RevenueChart months={data.months} totals={t} />
@@ -623,17 +961,11 @@ export function AdminPortal() {
       <Attention data={data} onBrand={openBrand} onCreator={openCreator} />
     </div>
   ) : page === 'brands' ? (
-    <Panel title="Brands" note="Every brand on KYRO. Open one for its profile, campaigns and creators.">
-      <BrandsTable rows={data.brands} onOpen={openBrand} />
-    </Panel>
+    <BrandsSection rows={data.brands} onOpen={openBrand} />
   ) : page === 'creators' ? (
-    <Panel title="Creators" note="Everyone on the platform. Open one for their profile and transfers.">
-      <CreatorsTable rows={data.creators} onOpen={openCreator} />
-    </Panel>
+    <CreatorsSection rows={data.creators} onOpen={openCreator} />
   ) : page === 'campaigns' ? (
-    <Panel title="Campaigns" note="Every campaign, its rate, and what it has driven.">
-      <CampaignsTable rows={data.campaigns} onBrand={openBrand} />
-    </Panel>
+    <CampaignsSection rows={data.campaigns} onBrand={openBrand} onOpen={openCampaign} />
   ) : (
     <FinanceSection data={data} onBrand={openBrand} />
   );
