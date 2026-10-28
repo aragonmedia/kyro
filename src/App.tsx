@@ -63,7 +63,7 @@ import { AffiliateOrdersCard, AffiliateOrdersPage } from './components/Affiliate
 import { CoverImage, VideoTile } from './components/MediaTile';
 import { CampaignCoverControl } from './components/CampaignCover';
 import { SubmissionDetailModal } from './components/SubmissionDetail';
-import { AdminOverview } from './components/AdminOverview';
+import { AdminPortal } from './components/admin/AdminPortal';
 import { CreatorAnalytics } from './components/CreatorAnalytics';
 import { MotionButton } from './components/MotionButton';
 import { PayoutsPanel } from './components/PayoutsPanel';
@@ -5612,7 +5612,7 @@ function App() {
       {role === 'creator' && (
         <CreatorDashboard onViewOrders={() => { setView('affiliate-orders'); nav('/orders'); }} />
       )}
-      {role === 'admin' && <AdminOverview />}
+      {role === 'admin' && <AdminPortal />}
     </AppShell>
   );
 }

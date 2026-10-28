@@ -76,6 +76,9 @@ export interface AdminBrandRow {
   ownerName: string | null;
   /** Operational only. Never a marketing channel; see migration 0033. */
   contactPhone: string | null;
+  websiteUrl: string | null;
+  description: string | null;
+  businessType: string | null;
   campaigns: number;
   creators: number;
   orders: number;
@@ -94,6 +97,15 @@ export interface AdminCreatorRow {
   handle: string | null;
   /** Registered address, for reaching them about a held payout. */
   email: string | null;
+  bio: string | null;
+  location: string | null;
+  niche: string[];
+  socials: Array<{ network: string; handle: string; followers: number | null }>;
+  taxFormStatus: string;
+  /** Brands this creator has submitted to, so a brand page can list its own. */
+  brandIds: string[];
+  /** Campaign ids, for the same reason. */
+  campaignIds: string[];
   campaigns: number;
   submissions: number;
   used: number;
@@ -126,6 +138,35 @@ export interface AdminCampaignRow {
   createdAt: string;
 }
 
+/** One authorized payment run, with the transfers it produced. */
+export interface AdminRunRow {
+  id: string;
+  brandId: string;
+  brandName: string;
+  status: string;
+  /** What the creators were owed. */
+  commissionCents: number;
+  /** KYRO's share of this run. */
+  feeCents: number;
+  /** What the brand was actually charged, processing included. */
+  totalCents: number;
+  /** total minus commission and fee: what the processor took. */
+  processingCents: number;
+  orders: number;
+  creators: number;
+  method: string | null;
+  authorizedAt: string;
+  settledAt: string | null;
+  payouts: Array<{
+    creatorId: string;
+    creatorName: string;
+    amountCents: number;
+    status: string;
+    paidAt: string | null;
+    failureReason: string | null;
+  }>;
+}
+
 export interface AdminMonth {
   /** YYYY-MM, in UTC. */
   month: string;
@@ -140,6 +181,7 @@ export interface AdminOverview {
   brands: AdminBrandRow[];
   creators: AdminCreatorRow[];
   campaigns: AdminCampaignRow[];
+  runs: AdminRunRow[];
   months: AdminMonth[];
   loadedAt: string;
 }
@@ -154,6 +196,7 @@ const EMPTY: AdminOverview = {
   brands: [],
   creators: [],
   campaigns: [],
+  runs: [],
   months: [],
   loadedAt: new Date(0).toISOString(),
 };
@@ -163,6 +206,7 @@ const EMPTY: AdminOverview = {
 interface BrandRaw {
   id: string; name: string; handle: string | null; logo_url: string | null;
   owner_user_id: string | null; contact_phone: string | null;
+  website_url: string | null; description: string | null; business_type: string | null;
   billing_origin: string | null; shopify_plan_status: string | null; created_at: string;
 }
 interface ConnRaw { brand_id: string; provider: string; status: string }
@@ -177,6 +221,10 @@ interface CampaignRaw {
 }
 interface CreatorRaw {
   id: string; user_id: string | null; handle: string | null;
+  bio: string | null; location: string | null; niche: string[] | null;
+  instagram_handle: string | null; instagram_followers: number | null;
+  tiktok_handle: string | null; tiktok_followers: number | null;
+  youtube_handle: string | null; youtube_subscribers: number | null;
   stripe_account_id: string | null; stripe_payouts_enabled: boolean;
   tax_form_status: string; created_at: string;
 }
@@ -189,8 +237,16 @@ interface EarningRaw {
   commissionable_cents: number; commission_cents: number; platform_fee_cents: number;
   state: string; created_at: string;
 }
-interface RunRaw { brand_id: string; status: string; platform_fee_cents: number }
-interface PayoutRaw { creator_id: string; amount_cents: number; status: string }
+interface RunRaw {
+  id: string; brand_id: string; status: string;
+  commission_cents: number; platform_fee_cents: number; total_cents: number;
+  order_count: number; creator_count: number; method: string | null;
+  authorized_at: string; settled_at: string | null;
+}
+interface PayoutRaw {
+  run_id: string; creator_id: string; amount_cents: number; status: string;
+  paid_at: string | null; failure_reason: string | null;
+}
 
 /**
  * A submission the brand chose to run.
@@ -240,17 +296,17 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
       campaignRes, creatorRes, profileRes, submissionRes,
       earningRes, runRes, payoutRes, orderRes,
     ] = await Promise.all([
-      sb.from('brands').select('id, name, handle, logo_url, owner_user_id, contact_phone, billing_origin, shopify_plan_status, created_at'),
+      sb.from('brands').select('id, name, handle, logo_url, owner_user_id, contact_phone, website_url, description, business_type, billing_origin, shopify_plan_status, created_at'),
       sb.from('brand_connections').select('brand_id, provider, status'),
       sb.from('brand_billing').select('brand_id, stripe_method_type, stripe_method_brand, stripe_method_last4'),
       sb.from('agreements').select('brand_id, signed_at').order('signed_at', { ascending: false }),
       sb.from('campaigns').select('id, brand_id, name, status, commission_rate_bps, platform_fee_bps, created_at'),
-      sb.from('creators').select('id, user_id, handle, stripe_account_id, stripe_payouts_enabled, tax_form_status, created_at'),
+      sb.from('creators').select('id, user_id, handle, bio, location, niche, instagram_handle, instagram_followers, tiktok_handle, tiktok_followers, youtube_handle, youtube_subscribers, stripe_account_id, stripe_payouts_enabled, tax_form_status, created_at'),
       sb.from('profiles').select('id, full_name, email'),
       sb.from('submissions').select('id, campaign_id, creator_id, brand_id, status'),
       sb.from('earnings').select('brand_id, campaign_id, creator_id, order_id, commissionable_cents, commission_cents, platform_fee_cents, state, created_at'),
-      sb.from('payment_runs').select('brand_id, status, platform_fee_cents'),
-      sb.from('payment_run_payouts').select('creator_id, amount_cents, status'),
+      sb.from('payment_runs').select('id, brand_id, status, commission_cents, platform_fee_cents, total_cents, order_count, creator_count, method, authorized_at, settled_at').order('authorized_at', { ascending: false }),
+      sb.from('payment_run_payouts').select('run_id, creator_id, amount_cents, status, paid_at, failure_reason'),
       sb.from('orders').select('id, brand_id'),
     ]);
 
@@ -327,6 +383,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
       bump(byMonth, e.created_at.slice(0, 7));
     }
 
+    const brandsPerCreator = new Map<string, Set<string>>();
     const creatorsPerBrand = new Map<string, Set<string>>();
     const creatorsPerCampaign = new Map<string, Set<string>>();
     const subsPerCampaign = new Map<string, number>();
@@ -342,6 +399,10 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         const set = creatorsPerBrand.get(brandId) ?? new Set();
         set.add(s.creator_id);
         creatorsPerBrand.set(brandId, set);
+
+        const brands = brandsPerCreator.get(s.creator_id) ?? new Set();
+        brands.add(brandId);
+        brandsPerCreator.set(s.creator_id, brands);
       }
 
       const campSet = creatorsPerCampaign.get(s.campaign_id) ?? new Set();
@@ -411,6 +472,9 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         ownerEmail: owner?.email ?? null,
         ownerName: owner?.full_name ?? null,
         contactPhone: b.contact_phone,
+        websiteUrl: b.website_url,
+        description: b.description,
+        businessType: b.business_type,
         campaigns: campaignsPerBrand.get(b.id) ?? 0,
         creators: creatorsPerBrand.get(b.id)?.size ?? 0,
         orders: ordersPerBrand.get(b.id) ?? 0,
@@ -443,6 +507,17 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         name: profile?.full_name || profile?.email || c.handle || 'Unnamed creator',
         handle: c.handle,
         email: profile?.email ?? null,
+        bio: c.bio,
+        location: c.location,
+        niche: c.niche ?? [],
+        socials: [
+          { network: 'Instagram', handle: c.instagram_handle, followers: c.instagram_followers },
+          { network: 'TikTok', handle: c.tiktok_handle, followers: c.tiktok_followers },
+          { network: 'YouTube', handle: c.youtube_handle, followers: c.youtube_subscribers },
+        ].filter((x): x is { network: string; handle: string; followers: number | null } => Boolean(x.handle)),
+        taxFormStatus: c.tax_form_status,
+        brandIds: [...(brandsPerCreator.get(c.id) ?? new Set<string>())],
+        campaignIds: [...(campaignsPerCreator.get(c.id) ?? new Set<string>())],
         campaigns: campaignsPerCreator.get(c.id)?.size ?? 0,
         submissions: subsPerCreator.get(c.id) ?? 0,
         used: usedPerCreator.get(c.id) ?? 0,
@@ -476,6 +551,47 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         createdAt: c.created_at,
       };
     });
+
+    /* Runs, newest first, each carrying the transfers it produced. The
+       processing cost is derived rather than stored: it is whatever the brand
+       paid above the commission and the fee, which is exactly what the
+       processor took. */
+    const payoutsByRun = new Map<string, PayoutRaw[]>();
+    for (const p of payouts) {
+      const list = payoutsByRun.get(p.run_id) ?? [];
+      list.push(p);
+      payoutsByRun.set(p.run_id, list);
+    }
+    const creatorNameById = new Map(
+      creators.map((c) => {
+        const prof = c.user_id ? profileById.get(c.user_id) : undefined;
+        return [c.id, prof?.full_name || prof?.email || c.handle || 'Unnamed creator'];
+      })
+    );
+
+    const runRows: AdminRunRow[] = runs.map((r) => ({
+      id: r.id,
+      brandId: r.brand_id,
+      brandName: brandNameById.get(r.brand_id) ?? 'Unknown brand',
+      status: r.status,
+      commissionCents: r.commission_cents,
+      feeCents: r.platform_fee_cents,
+      totalCents: r.total_cents,
+      processingCents: Math.max(r.total_cents - r.commission_cents - r.platform_fee_cents, 0),
+      orders: r.order_count,
+      creators: r.creator_count,
+      method: r.method,
+      authorizedAt: r.authorized_at,
+      settledAt: r.settled_at,
+      payouts: (payoutsByRun.get(r.id) ?? []).map((p) => ({
+        creatorId: p.creator_id,
+        creatorName: creatorNameById.get(p.creator_id) ?? 'Unknown creator',
+        amountCents: p.amount_cents,
+        status: p.status,
+        paidAt: p.paid_at,
+        failureReason: p.failure_reason,
+      })),
+    }));
 
     const months: AdminMonth[] = [...byMonth.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
@@ -512,6 +628,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
       brands: brandRows.sort((a, b) => b.attributedSalesCents - a.attributedSalesCents),
       creators: creatorRows.sort((a, b) => b.earnedCents - a.earnedCents),
       campaigns: campaignRows.sort((a, b) => b.attributedSalesCents - a.attributedSalesCents),
+      runs: runRows,
       months,
       loadedAt: new Date().toISOString(),
     });
