@@ -71,6 +71,27 @@ export const stripeConfig = () => ({
   refreshUrl: optional('STRIPE_REFRESH_URL') || `${appOrigin()}/?stripe=payouts-retry`,
 });
 
+/**
+ * Which Stripe world this deployment is talking to.
+ *
+ * Every Stripe identifier belongs to the key that made it: an acct_ or cus_
+ * created in test does not exist to a live key, and the only answer Stripe
+ * gives is "no such account". Storing the mode next to the identifier turns
+ * that into something the application can see coming, and stops a preview
+ * deployment holding a test key from overwriting a live customer on a real
+ * brand. Migration 0036 adds the columns.
+ *
+ * Read from the key itself rather than from a second variable, because two
+ * variables that have to agree eventually will not.
+ */
+export type StripeMode = 'test' | 'live';
+
+export function stripeMode(): StripeMode {
+  // sk_live_… and rk_live_… are the two live forms. Anything else, including
+  // every test and sandbox key, is test.
+  return /^[a-z]+_live_/.test(process.env.STRIPE_SECRET_KEY ?? '') ? 'live' : 'test';
+}
+
 export const metaConfig = () => ({
   appId: required('VITE_META_APP_ID'),
   appSecret: required('META_APP_SECRET'),

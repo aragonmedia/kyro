@@ -17,7 +17,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { serviceClient } from './supabase.js';
-import { appOrigin } from './env.js';
+import { appOrigin, stripeMode } from './env.js';
 import { createCustomer, createSetupCheckout } from './stripe-billing.js';
 import { StripeError } from './stripe.js';
 
@@ -65,17 +65,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data: billing } = await sb
       .from('brand_billing')
-      .select('stripe_customer_id')
+      .select('stripe_customer_id, stripe_mode')
       .eq('brand_id', brandId)
       .maybeSingle();
 
     let customerId = (billing?.stripe_customer_id as string | null) ?? null;
+
+    /* A customer from the other Stripe mode does not exist to this key. Going
+       test to live is the switch itself and the brand gets a live customer.
+       Going live to test is a preview deployment pointed at production data,
+       and replacing a real brand's customer id with a sandbox one would lose
+       the only link to their real saved method. */
+    const storedMode = ((billing?.stripe_mode as string | null) ?? 'test');
+    if (customerId && storedMode !== stripeMode()) {
+      if (stripeMode() === 'test') {
+        console.error('[kyro] a test key tried to replace a live brand customer', brandId);
+        return res.status(409).json({
+          error: 'This brand is set up for live payments and cannot be changed from here.',
+        });
+      }
+      customerId = null;
+    }
+
     if (!customerId) {
       const customer = await createCustomer(brandId, brand.name as string, userData.user?.email);
       customerId = customer.id;
       const { error } = await sb
         .from('brand_billing')
-        .update({ stripe_customer_id: customerId })
+        .update({ stripe_customer_id: customerId, stripe_mode: stripeMode() })
         .eq('brand_id', brandId);
       // Losing this write would create a second Customer on the next click,
       // so it stops rather than carrying on.

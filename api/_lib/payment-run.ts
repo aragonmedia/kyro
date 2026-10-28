@@ -16,6 +16,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { stripeMode } from './env.js';
 import { StripeError } from './stripe.js';
 import { availableBalanceCents, transferToCreator } from './stripe-billing.js';
 
@@ -71,8 +72,33 @@ export async function payOutRun(db: SupabaseClient, runId: string): Promise<Payo
   }
 
   const rows = (planned ?? []) as PlannedPayout[];
-  const pending = rows.filter((r) => r.status === 'pending' && r.stripe_account_id);
+  let pending = rows.filter((r) => r.status === 'pending' && r.stripe_account_id);
   summary.skipped = rows.filter((r) => r.status === 'skipped').length;
+
+  /* An account created with the other Stripe key does not exist to this one.
+     Transferring to it would fail with "no such destination", which reads to
+     the creator as a failed payout rather than as what it is: an account that
+     has to be set up again. Hold their share instead, exactly as for a
+     creator who never onboarded. */
+  if (pending.length > 0) {
+    const { data: modes } = await db
+      .from('creators')
+      .select('id, stripe_mode')
+      .in('id', pending.map((r) => r.creator_id));
+
+    const mode = stripeMode();
+    const wrongMode = new Set(
+      ((modes ?? []) as Array<{ id: string; stripe_mode: string | null }>)
+        .filter((m) => (m.stripe_mode ?? 'test') !== mode)
+        .map((m) => m.id)
+    );
+
+    if (wrongMode.size > 0) {
+      console.error('[kyro] holding payouts for accounts from the other Stripe mode', [...wrongMode]);
+      summary.skipped += pending.filter((r) => wrongMode.has(r.creator_id)).length;
+      pending = pending.filter((r) => !wrongMode.has(r.creator_id));
+    }
+  }
 
   if (pending.length === 0) {
     summary.status = await closeRun(db, runId);

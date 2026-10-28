@@ -6,7 +6,8 @@
  *   POST /api/stripe/setup     start a brand's hosted payment-method setup
  *   GET  /api/stripe/method    record the method they just saved
  *   POST /api/stripe/pay       charge a payment run and pay the creators
- *   GET  /api/stripe/settle    finish runs whose bank debit has now cleared
+ *   GET  /api/stripe/settle    finish runs whose bank debit has now cleared,
+ *                              and catch up creators Stripe has since verified
  *
  * One function for six routes, because Vercel's Hobby plan caps a deployment
  * at twelve. The public URLs are unaffected.
@@ -19,7 +20,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { serviceClient } from '../_lib/supabase.js';
-import { stripeConfig } from '../_lib/env.js';
+import { stripeConfig, stripeMode } from '../_lib/env.js';
 import {
   StripeError,
   createAccountLink,
@@ -39,7 +40,21 @@ interface CreatorRow {
   id: string;
   handle: string | null;
   stripe_account_id: string | null;
+  /** Which Stripe key made that account. Null means it predates 0036. */
+  stripe_mode: string | null;
 }
+
+/**
+ * Does a stored Stripe identifier belong to the key this deployment holds?
+ *
+ * A test identifier does not exist to a live key and the reverse is equally
+ * true, so an identifier from the other mode is not a broken account, it is
+ * no account at all, and the honest thing to show is the setup flow rather
+ * than a Stripe error. Null predates migration 0036, and the only key that
+ * could have written it was a test key.
+ */
+const ownMode = (stored: string | null | undefined): boolean =>
+  (stored ?? 'test') === stripeMode();
 
 /**
  * The creator making the request, resolved from their own token rather than
@@ -60,7 +75,7 @@ async function currentCreator(
 
   const { data, error } = await sb
     .from('creators')
-    .select('id, handle, stripe_account_id')
+    .select('id, handle, stripe_account_id, stripe_mode')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -88,6 +103,7 @@ async function recordAccount(sb: Db, creatorId: string, account: StripeAccountV2
     stripe_details_submitted: ready.requirementsDue.length === 0,
     stripe_requirements_due: ready.requirementsDue,
     stripe_checked_at: new Date().toISOString(),
+    stripe_mode: stripeMode(),
   };
 
   const { error } = await sb.from('creators').update(state).eq('id', creatorId);
@@ -189,6 +205,7 @@ async function brandMethod(req: VercelRequest, res: VercelResponse) {
       stripe_method_brand: saved.brand,
       stripe_method_last4: saved.last4,
       stripe_method_at: new Date().toISOString(),
+      stripe_mode: stripeMode(),
     };
     // ach_mandate_ref predates Stripe here and still gates paymentReady for
     // bank methods. Keep it in step rather than leaving it lying.
@@ -254,7 +271,7 @@ async function brandPay(req: VercelRequest, res: VercelResponse) {
   // first would mark earnings paid only to fail on a missing card.
   const { data: billing } = await sb
     .from('brand_billing')
-    .select('stripe_customer_id, stripe_payment_method_id, stripe_method_type')
+    .select('stripe_customer_id, stripe_payment_method_id, stripe_method_type, stripe_mode')
     .eq('brand_id', brandId)
     .maybeSingle();
 
@@ -263,6 +280,15 @@ async function brandPay(req: VercelRequest, res: VercelResponse) {
   const methodType = (billing?.stripe_method_type as string | null) ?? 'card';
   if (!customerId || !methodId) {
     return res.status(400).json({ error: 'Add a payment method before paying a run.' });
+  }
+  /* A saved method from the other Stripe mode would be charged against a
+     customer this key cannot see. Say it is gone, which is what it is, rather
+     than failing at Stripe with the brand's money half committed. */
+  if (!ownMode(billing?.stripe_mode as string | null)) {
+    console.error('[kyro] brand holds a payment method from the other Stripe mode', brandId);
+    return res.status(400).json({
+      error: 'Your saved payment method is no longer valid. Add one again before paying a run.',
+    });
   }
 
   const { data: runId, error: runError } = await sb.rpc('authorize_payment_run_for', {
@@ -445,7 +471,65 @@ async function settleRuns(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  return res.status(200).json(summary);
+  const creators = await refreshPendingCreators(sb);
+
+  return res.status(200).json({
+    ...summary,
+    creatorsChecked: creators.checked,
+    creatorsEnabled: creators.enabled,
+  });
+}
+
+/** How many payout accounts one daily pass re-reads. Bounded on purpose. */
+const REFRESH_BATCH = 25;
+
+/**
+ * Catch up creators Stripe has verified since we last looked.
+ *
+ * Verification finishes on Stripe's clock. A creator who submits their details
+ * at midnight and is approved an hour later is payable from that moment, but
+ * nothing here would know until they next opened the page, so their share sits
+ * held and the admin portal reports a problem that has already resolved
+ * itself. This is the alternative to a webhook, and it is the cheaper one:
+ * no new endpoint, no signature to verify, and the daily pass is already
+ * running for the settlement it was built for.
+ *
+ * Oldest check first, so a creator waiting longest is looked at first, and
+ * only those not yet payable: an account that is already active has nothing
+ * to find out.
+ */
+async function refreshPendingCreators(sb: Db): Promise<{ checked: number; enabled: number }> {
+  const out = { checked: 0, enabled: 0 };
+
+  const { data, error } = await sb
+    .from('creators')
+    .select('id, stripe_account_id, stripe_mode')
+    .not('stripe_account_id', 'is', null)
+    .eq('stripe_payouts_enabled', false)
+    .order('stripe_checked_at', { ascending: true, nullsFirst: true })
+    .limit(REFRESH_BATCH);
+
+  if (error) {
+    console.error('[kyro] settle: could not list payout accounts to refresh', error);
+    return out;
+  }
+
+  for (const row of (data ?? []) as Array<{ id: string; stripe_account_id: string; stripe_mode: string | null }>) {
+    // An account from the other mode is invisible to this key. The creator
+    // sets payouts up again; there is nothing to refresh.
+    if (!ownMode(row.stripe_mode)) continue;
+    try {
+      const account = await fetchAccount(row.stripe_account_id);
+      const state = await recordAccount(sb, row.id, account);
+      out.checked += 1;
+      if (state.payoutsEnabled) out.enabled += 1;
+    } catch (e) {
+      const reason = e instanceof StripeError ? e.message : 'could not be read';
+      console.error('[kyro] settle: payout account refresh failed', row.id, reason);
+    }
+  }
+
+  return out;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -476,7 +560,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.setHeader('Allow', 'POST');
         return res.status(405).json({ error: 'Method not allowed.' });
       }
-      if (!creator.stripe_account_id) {
+      if (!creator.stripe_account_id || !ownMode(creator.stripe_mode)) {
         return res.status(400).json({ error: 'Set up payouts with Stripe first.' });
       }
       const link = await createLoginLink(creator.stripe_account_id);
@@ -488,7 +572,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.setHeader('Allow', 'GET');
         return res.status(405).json({ error: 'Method not allowed.' });
       }
-      if (!creator.stripe_account_id) {
+      if (!creator.stripe_account_id || !ownMode(creator.stripe_mode)) {
+        // Nothing to ask Stripe about: either they have never set up payouts,
+        // or the account on file belongs to the other mode and this key
+        // cannot see it.
         return res.status(200).json({ connected: false, payoutsEnabled: false, requirementsDue: [] });
       }
       // Read from Stripe rather than trusting the stored copy. Verification
@@ -506,12 +593,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let accountId = creator.stripe_account_id;
     let alreadyActive = false;
 
+    /* An account from the other mode. Going test to live is the switch itself
+       and the creator onboards again on a live account. Going live to test is
+       a preview deployment pointed at production data, and it must not
+       replace a real creator's real payout account with a sandbox one. */
+    if (accountId && !ownMode(creator.stripe_mode)) {
+      if (stripeMode() === 'test') {
+        console.error('[kyro] a test key tried to replace a live payout account', creator.id);
+        return res.status(409).json({
+          error: 'This payout account was set up with live payments and cannot be changed from here.',
+        });
+      }
+      accountId = null;
+    }
+
     if (!accountId) {
       const created = await createRecipientAccount(creator.id, who.email, who.handle);
       accountId = created.id;
       const { error } = await sb
         .from('creators')
-        .update({ stripe_account_id: accountId, stripe_checked_at: new Date().toISOString() })
+        .update({
+          stripe_account_id: accountId,
+          stripe_mode: stripeMode(),
+          stripe_checked_at: new Date().toISOString(),
+        })
         .eq('id', creator.id);
       // Losing this write would orphan a Stripe account and make the next
       // click create a second one, so it fails loudly rather than carrying on.
