@@ -55,7 +55,12 @@
  *
  * tax_form_status is the one column here a browser legitimately writes: a
  * creator submitting their details sets it to 'pending' (src/lib/db.ts). It
- * is only 'complete' that releases a payout, so only 'complete' is pinned.
+ * is only 'complete' that releases a payout, so only 'complete' is pinned,
+ * and an admin is let through, because accepting a creator's tax details is
+ * a judgement KYRO makes and the admin portal is where it will be made.
+ * Nothing lets an admin through on the Stripe columns: what Stripe says
+ * about an account is Stripe's to say, and a hand-edit there would only ever
+ * be a lie that money is then moved on.
  */
 create or replace function public.creators_pin_stripe()
 returns trigger
@@ -78,7 +83,7 @@ begin
     new.stripe_requirements_due  := '{}';
     new.stripe_checked_at        := null;
     new.stripe_mode              := null;
-    if new.tax_form_status = 'complete' then
+    if new.tax_form_status = 'complete' and not public.is_admin() then
       new.tax_form_status := 'not_collected';
     end if;
     return new;
@@ -92,8 +97,10 @@ begin
   new.stripe_checked_at        := old.stripe_checked_at;
   new.stripe_mode              := old.stripe_mode;
 
-  -- Submitting details is theirs to do. Declaring them accepted is not.
-  if new.tax_form_status = 'complete' and old.tax_form_status is distinct from 'complete' then
+  -- Submitting details is theirs to do. Declaring them accepted is KYRO's.
+  if new.tax_form_status = 'complete'
+     and old.tax_form_status is distinct from 'complete'
+     and not public.is_admin() then
     new.tax_form_status := old.tax_form_status;
   end if;
 
