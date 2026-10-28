@@ -26,14 +26,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, Building2, CheckCircle2, Clock, DollarSign,
-  Layers, RefreshCw, TrendingUp, Users, Video, Wallet,
+  AlertTriangle, ArrowLeft, Building2, CheckCircle2, Clock, DollarSign, Download,
+  FileText, Layers, RefreshCw, TrendingUp, Users, Video, Wallet,
 } from 'lucide-react';
 import {
   loadAdminOverview,
-  type AdminBrandRow, type AdminCampaignRow, type AdminCreatorRow,
+  type AdminBrandRow, type AdminCampaignRow, type AdminCreatorRow, type AdminDocument,
   type AdminOverview as Overview, type AdminRunRow,
 } from '../../lib/admin';
+import { openSignedCopy } from '../../lib/agreements';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import { RevenueChart } from './RevenueChart';
 import { DataTable, SimpleTable } from './DataTable';
@@ -992,6 +993,74 @@ function ActivityTab({ runs, onBrand, onCreator }: {
   );
 }
 
+/**
+ * What this brand or creator has signed.
+ *
+ * The row is the record; the PDF is the copy of it. Rows written before
+ * migration 0038 have no copy, and say so rather than offering a button that
+ * cannot work.
+ */
+function Documents({ rows, subject }: { rows: AdminDocument[]; subject: string }) {
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const open = async (path: string) => {
+    const failure = await openSignedCopy(path);
+    setProblem(failure);
+  };
+
+  return (
+    <Panel title="Documents" note={`Everything ${subject} has signed, newest first.`}>
+      {rows.length === 0 ? (
+        <EmptyRow>Nothing signed yet.</EmptyRow>
+      ) : (
+        <div className="divide-y divide-line">
+          {rows.map((d) => (
+            <div key={d.id} className="p-4 flex flex-wrap items-center gap-3">
+              <FileText size={16} className="text-body flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-heading">
+                  {TITLES[d.docType] ?? d.docType} <span className="text-faint font-normal">v{d.version}</span>
+                </p>
+                <p className="text-xs text-muted">
+                  {d.signerName ? `Signed by ${d.signerName}` : 'Accepted'}
+                  {d.signerTitle ? `, ${d.signerTitle}` : ''}
+                  {' · '}{day(d.signedAt)}
+                  {d.legalEntityName ? ` · ${d.legalEntityName}` : ''}
+                </p>
+              </div>
+              {d.documentPath ? (
+                <button
+                  type="button"
+                  onClick={() => void open(d.documentPath as string)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-2 border border-line text-xs font-semibold text-body hover:text-heading"
+                >
+                  <Download size={13} /> Signed copy
+                </button>
+              ) : (
+                <span className="text-[11px] text-faint">Recorded before signed copies</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {problem && (
+        <div className="p-4 border-t border-line">
+          <p className="text-xs text-bad">{problem}</p>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/** How each doc_type reads to a person. */
+const TITLES: Record<string, string> = {
+  content_usage_rights: 'Content Usage Rights',
+  creator_agreement: 'Creator Operations and Commission Agreement',
+  campaign_agreement: 'Campaign Agreement',
+  tos: 'Terms of Service',
+  privacy: 'Privacy Policy',
+};
+
 /* ─────────────────────────────────────────────────────────────
    Detail panes
    ───────────────────────────────────────────────────────────── */
@@ -1085,6 +1154,8 @@ function BrandDetail({ brand, data, onBack, onCreator, onCampaign }: {
           empty="This brand has not authorized a payment run yet."
         />
       </Panel>
+
+      <Documents rows={brand.documents} subject={brand.name} />
     </div>
   );
 }
@@ -1160,6 +1231,8 @@ function CreatorDetail({ creator, data, onBack, onBrand, onCampaign }: {
           empty="This creator has not submitted to a campaign yet."
         />
       </Panel>
+
+      <Documents rows={creator.documents} subject={creator.name} />
 
       <Panel title="Transfers" note="Every payment KYRO has sent them.">
         {transfers.length === 0 ? (

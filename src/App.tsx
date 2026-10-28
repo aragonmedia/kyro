@@ -67,6 +67,7 @@ import { AdminPortal } from './components/admin/AdminPortal';
 import { CreatorAnalytics } from './components/CreatorAnalytics';
 import { MotionButton } from './components/MotionButton';
 import { PayoutsPanel } from './components/PayoutsPanel';
+import { SignAgreement } from './components/SignAgreement';
 import { ChatPanel, useUnreadTotal } from './components/Chat';
 import { BrandMark, CampaignDetailModal } from './components/CampaignDetail';
 import { BrandPerformanceCard } from './components/BrandPerformance';
@@ -2468,6 +2469,13 @@ function BrandDashboard({
               {liveMode && brandId ? (
                 <>
                   <BrandProfilePanel brandId={brandId} onSaved={() => void session.refresh()} />
+                  <SignAgreement
+                    docType="content_usage_rights"
+                    brandId={brandId}
+                    subjectName={session.brand?.name}
+                    defaultName={session.fullName}
+                    defaultEmail={session.email}
+                  />
                   <TeamPanel brandId={brandId} ownerEmail={session.email} />
                 </>
               ) : (
@@ -3191,6 +3199,13 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
           <PayoutsPanel creatorId={creatorId} />
           <AffiliateOrdersCard creatorId={creatorId} onOpen={onViewOrders} />
           <PayoutAccountCard />
+          <SignAgreement
+            docType="creator_agreement"
+            userId={session.userId ?? undefined}
+            subjectName={session.displayName}
+            defaultName={session.fullName}
+            defaultEmail={session.email}
+          />
         </div>
       )}
 

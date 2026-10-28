@@ -57,6 +57,20 @@ export interface AdminTotals {
   paidToCreatorsCents: number;
 }
 
+/** A document somebody signed, as the admin portal lists it. */
+export interface AdminDocument {
+  id: string;
+  docType: string;
+  version: string;
+  signedAt: string;
+  signerName: string | null;
+  signerTitle: string | null;
+  signerEmail: string | null;
+  legalEntityName: string | null;
+  /** Null on rows recorded before signed copies existed (migration 0038). */
+  documentPath: string | null;
+}
+
 export interface AdminBrandRow {
   id: string;
   name: string;
@@ -89,6 +103,8 @@ export interface AdminBrandRow {
   createdAt: string;
   /** True when this brand can actually be billed for what it owes. */
   billable: boolean;
+  /** Everything this brand has signed, newest first. */
+  documents: AdminDocument[];
 }
 
 export interface AdminCreatorRow {
@@ -122,6 +138,8 @@ export interface AdminCreatorRow {
   /** Why a payout to this creator would be held right now, or null. */
   heldReason: string | null;
   createdAt: string;
+  /** Everything this creator has signed, newest first. */
+  documents: AdminDocument[];
 }
 
 export interface AdminCampaignRow {
@@ -220,7 +238,12 @@ interface BillingRaw {
   brand_id: string; stripe_method_type: string | null;
   stripe_method_brand: string | null; stripe_method_last4: string | null;
 }
-interface AgreementRaw { brand_id: string | null; signed_at: string }
+interface AgreementRaw {
+  id: string; brand_id: string | null; user_id: string | null;
+  doc_type: string; version: string; signed_at: string;
+  signer_name: string | null; signer_title: string | null; signer_email: string | null;
+  legal_entity_name: string | null; document_path: string | null;
+}
 interface CampaignRaw {
   id: string; brand_id: string; name: string; status: string;
   commission_rate_bps: number | null; platform_fee_bps: number; created_at: string;
@@ -305,7 +328,9 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
       sb.from('brands').select('id, name, handle, logo_url, owner_user_id, contact_phone, website_url, description, business_type, billing_origin, shopify_plan_status, created_at'),
       sb.from('brand_connections').select('brand_id, provider, status'),
       sb.from('brand_billing').select('brand_id, stripe_method_type, stripe_method_brand, stripe_method_last4'),
-      sb.from('agreements').select('brand_id, signed_at').order('signed_at', { ascending: false }),
+      sb.from('agreements')
+        .select('id, brand_id, user_id, doc_type, version, signed_at, signer_name, signer_title, signer_email, legal_entity_name, document_path')
+        .order('signed_at', { ascending: false }),
       sb.from('campaigns').select('id, brand_id, name, status, commission_rate_bps, platform_fee_bps, created_at'),
       sb.from('creators').select('id, user_id, handle, bio, location, niche, instagram_handle, instagram_followers, tiktok_handle, tiktok_followers, youtube_handle, youtube_subscribers, stripe_account_id, stripe_payouts_enabled, tax_form_status, created_at'),
       sb.from('profiles').select('id, full_name, email'),
@@ -349,6 +374,29 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
     const agreementByBrand = new Map<string, string>();
     for (const a of agreements) {
       if (a.brand_id && !agreementByBrand.has(a.brand_id)) agreementByBrand.set(a.brand_id, a.signed_at);
+    }
+
+    /* Signed documents, grouped by whoever they bind. A brand document also
+       carries the signer's user id, so brand_id is checked first: the
+       document belongs to the company, not to the person who typed. */
+    const docsByBrand = new Map<string, AdminDocument[]>();
+    const docsByUser = new Map<string, AdminDocument[]>();
+    for (const a of agreements) {
+      const doc: AdminDocument = {
+        id: a.id,
+        docType: a.doc_type,
+        version: a.version,
+        signedAt: a.signed_at,
+        signerName: a.signer_name,
+        signerTitle: a.signer_title,
+        signerEmail: a.signer_email,
+        legalEntityName: a.legal_entity_name,
+        documentPath: a.document_path,
+      };
+      const into = a.brand_id ? docsByBrand : docsByUser;
+      const key = a.brand_id ?? a.user_id;
+      if (!key) continue;
+      into.set(key, [...(into.get(key) ?? []), doc]);
     }
 
     const connByBrand = new Map<string, { shopify: boolean; meta: boolean }>();
@@ -502,6 +550,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         owedCents: agg.owed,
         createdAt: b.created_at,
         billable,
+        documents: docsByBrand.get(b.id) ?? [],
       };
     });
 
@@ -548,6 +597,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         taxComplete,
         heldReason,
         createdAt: c.created_at,
+        documents: c.user_id ? docsByUser.get(c.user_id) ?? [] : [],
       };
     });
 
