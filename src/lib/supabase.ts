@@ -84,7 +84,12 @@ export function describeAuthError(e: unknown): string {
   if (m.includes('failed to fetch') || m.includes('network')) {
     return "Couldn't reach the server. Check your connection and try again.";
   }
-  return raw;
+  /* Anything unrecognised gets a generic line rather than the backend's own
+     words. A raw auth error can name internal behaviour, and on a sign-in
+     form every distinct message is one more way to learn which accounts
+     exist. The specific text is still in the console for us. */
+  if (typeof console !== 'undefined') console.warn('[kyro] unmapped auth error:', raw);
+  return 'Something went wrong. Please try again.';
 }
 
 /** Where Supabase should send a user back to after they click a reset link. */

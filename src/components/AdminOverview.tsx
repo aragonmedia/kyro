@@ -154,36 +154,86 @@ const MEASURES: Array<{ key: Measure; label: string; note: string }> = [
   { key: 'revenue', label: 'KYRO revenue', note: "Your 1% of those sales, month by month." },
 ];
 
-function MonthsChart({ months, measure }: { months: Overview['months']; measure: Measure }) {
-  if (months.length === 0) {
-    return <p className="p-10 text-center text-sm text-muted">No attributed sales yet.</p>;
-  }
+function MonthsPanel({
+  months, measure, onMeasure, totals,
+}: {
+  months: Overview['months'];
+  measure: Measure;
+  onMeasure: (m: Measure) => void;
+  totals: Overview['totals'];
+}) {
+  const spec = MEASURES.find((m) => m.key === measure) ?? MEASURES[0];
   const valueOf = (m: Overview['months'][number]) =>
     measure === 'revenue' ? m.feeCents : m.attributedSalesCents;
+  const hero = measure === 'revenue' ? totals.feeCents : totals.attributedSalesCents;
   const max = Math.max(...months.map(valueOf), 1);
 
   return (
-    <div className="p-5">
-      <div className="flex items-end gap-2 h-44">
-        {months.map((m) => (
-          <div key={m.month} className="flex-1 min-w-0 flex flex-col items-center gap-2 group">
-            <div className="relative w-full flex-1 flex items-end">
-              {/* The value appears on hover rather than on every bar, so the
-                  chart stays readable at twelve months and still answers
-                  "what exactly was March". */}
-              <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[11px] font-semibold text-heading opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap tabular-nums">
-                {money(valueOf(m))}
-              </span>
-              <div
-                className="w-full bg-gradient-kyro rounded-t group-hover:opacity-80 transition-opacity"
-                style={{ height: `${Math.max((valueOf(m) / max) * 100, 2)}%` }}
-                title={`${monthLabel(m.month)}: ${moneyExact(valueOf(m))} across ${m.orders} orders`}
-              />
-            </div>
-            <span className="text-[11px] text-faint whitespace-nowrap">{monthLabel(m.month)}</span>
-          </div>
-        ))}
+    <div className="bg-surface border border-line rounded-2xl p-5 md:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-muted">{spec.label}</p>
+          <p className="text-4xl font-bold text-heading tabular-nums mt-0.5">{money(hero)}</p>
+          <p className="text-xs text-faint mt-1">{spec.note}</p>
+        </div>
+        <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg">
+          {MEASURES.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => onMeasure(m.key)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded transition ${
+                m.key === measure ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {months.length === 0 ? (
+        <p className="py-12 text-center text-sm text-muted">Nothing attributed yet.</p>
+      ) : (
+        <>
+          {/* Each column is full height with its bar pushed to the bottom.
+              The row used to be items-end, which let every column shrink to
+              its content; a percentage height inside a box with no height
+              resolves to nothing, so the bars were there and measured zero. */}
+          <div className="flex items-end gap-2 h-44 mt-6">
+            {months.map((m) => {
+              const v = valueOf(m);
+              return (
+                <div key={m.month} className="flex-1 min-w-0 h-full flex flex-col justify-end group relative">
+                  {/* On hover rather than on every bar, so twelve months stay
+                      readable and the exact figure is still one point away. */}
+                  <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[11px] font-semibold text-heading opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap tabular-nums">
+                    {moneyExact(v)}
+                  </span>
+                  {v > 0 ? (
+                    <div
+                      className="w-full bg-gradient-kyro rounded-t group-hover:opacity-80 transition-opacity"
+                      style={{ height: `${Math.max((v / max) * 100, 2)}%` }}
+                      title={`${monthLabel(m.month)}: ${moneyExact(v)} across ${m.orders} orders`}
+                    />
+                  ) : (
+                    /* A month with nothing in it gets a baseline mark rather
+                       than empty space, so a gap reads as a real zero instead
+                       of a chart that failed to draw. */
+                    <div className="w-full border-t-2 border-dashed border-line" title={`${monthLabel(m.month)}: nothing attributed`} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Ends only. A label under every bar is noise at this width. */}
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-[11px] text-faint">{monthLabel(months[0].month)}</span>
+            <span className="text-[11px] text-faint">{monthLabel(months[months.length - 1].month)}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -471,6 +521,11 @@ export function AdminOverview() {
         </div>
       )}
 
+      {/* The headline sits first, the way a brand's Revenue driven and a
+          creator's Earnings do. An admin opening this should see the size of
+          the business before the list of everything in it. */}
+      <MonthsPanel months={data.months} measure={measure} onMeasure={setMeasure} totals={t} />
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Tile icon={TrendingUp} label="Attributed sales" value={money(t.attributedSalesCents)}
           sub={`${t.orders} orders`} />
@@ -493,29 +548,6 @@ export function AdminOverview() {
       </div>
 
       <Attention data={data} />
-
-      <Panel
-        title={MEASURES.find((m) => m.key === measure)?.label ?? 'By month'}
-        note={`${MEASURES.find((m) => m.key === measure)?.note ?? ''} Hover a bar for the exact figure.`}
-        right={
-          <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg">
-            {MEASURES.map((m) => (
-              <button
-                key={m.key}
-                type="button"
-                onClick={() => setMeasure(m.key)}
-                className={`text-xs font-semibold px-3 py-1.5 rounded transition ${
-                  m.key === measure ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        }
-      >
-        <MonthsChart months={data.months} measure={measure} />
-      </Panel>
 
       <Panel title="Brands" note="Every brand on KYRO, their connections, how they are billed, and what they owe.">
         <BrandsTable rows={data.brands} />

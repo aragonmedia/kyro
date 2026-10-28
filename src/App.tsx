@@ -65,6 +65,7 @@ import { CampaignCoverControl } from './components/CampaignCover';
 import { SubmissionDetailModal } from './components/SubmissionDetail';
 import { AdminOverview } from './components/AdminOverview';
 import { CreatorAnalytics } from './components/CreatorAnalytics';
+import { MotionButton } from './components/MotionButton';
 import { PayoutsPanel } from './components/PayoutsPanel';
 import { ChatPanel, useUnreadTotal } from './components/Chat';
 import { BrandMark, CampaignDetailModal } from './components/CampaignDetail';
@@ -301,9 +302,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () =>
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button onClick={onGetStarted} className="px-8 py-4 bg-gradient-kyro rounded-full text-white font-semibold flex items-center justify-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105 text-lg">
-              Join KYRO Free <ArrowRight size={20} />
-            </button>
+            <MotionButton onClick={onGetStarted} size="lg">Join KYRO Free</MotionButton>
           </div>
           <div className="flex items-center justify-center gap-8 sm:gap-10 pt-2">
             <div className="text-center"><p className="text-3xl font-bold text-heading">15K+</p><p className="text-muted text-sm mt-0.5">Creators</p></div>
@@ -411,9 +410,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () =>
         <div className="max-w-3xl mx-auto text-center rounded-3xl border border-line bg-surface p-10 md:p-14 space-y-5">
           <h2 className="text-3xl md:text-4xl font-bold text-heading">Ready to scale with KYRO?</h2>
           <p className="text-muted text-lg">Free to join. Brands and creators welcome.</p>
-          <button onClick={onGetStarted} className="px-8 py-3.5 bg-gradient-kyro rounded-full text-white font-semibold inline-flex items-center gap-2 hover:shadow-xl hover:shadow-purple-600/40 transition transform hover:scale-105">
-            Join KYRO Free <ArrowRight size={18} />
-          </button>
+          <MotionButton onClick={onGetStarted}>Join KYRO Free</MotionButton>
         </div>
       </section>
 
@@ -5149,7 +5146,11 @@ function AccountSettings({
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-heading">Account Settings</h1>
-          <p className="text-muted mt-1">Manage your profile, payment, and notifications.</p>
+          <p className="text-muted mt-1">
+            {role === 'admin'
+              ? 'Your own KYRO account. Brand and creator settings live in their own portals.'
+              : 'Manage your profile, payment, and notifications.'}
+          </p>
         </div>
 
         <div className="bg-surface border border-line rounded-2xl p-5">
@@ -5172,17 +5173,25 @@ function AccountSettings({
             <ProfilePanel />
           </SettingsRow>
 
-          <SettingsRow
-            label="Payment Method"
-            sub={role === 'creator' ? 'Payout account' : 'Commission billing'}
-            icon={Wallet}
-            open={open === 'payment'}
-            onToggle={() => toggle('payment')}
-          >
-            {role === 'creator'
-              ? <CreatorPaymentSummary />
-              : <BrandPaymentSummary onOpenFinance={() => onOpenBrandPage('finance')} />}
-          </SettingsRow>
+          {/* Money settings belong to whoever's money it is. The branching
+              here used to be "creator or else brand", which handed an admin
+              the brand's commission billing panel: a Due now figure that is
+              not theirs, a Pay with card they would never add, and a link
+              into a brand portal they do not have. An admin has no payment
+              method on KYRO, so the row is simply absent. */}
+          {role !== 'admin' && (
+            <SettingsRow
+              label="Payment Method"
+              sub={role === 'creator' ? 'Payout account' : 'Commission billing'}
+              icon={Wallet}
+              open={open === 'payment'}
+              onToggle={() => toggle('payment')}
+            >
+              {role === 'creator'
+                ? <CreatorPaymentSummary />
+                : <BrandPaymentSummary onOpenFinance={() => onOpenBrandPage('finance')} />}
+            </SettingsRow>
+          )}
 
           {role === 'brand' && session.brand && (
             <SettingsRow
@@ -5200,9 +5209,14 @@ function AccountSettings({
             <NotificationsPanel />
           </SettingsRow>
 
-          <SettingsRow label="Connected Accounts" sub={role === 'creator' ? 'Instagram and TikTok' : 'Meta and Shopify'} icon={Heart} open={open === 'connected'} onToggle={() => toggle('connected')}>
-            <ConnectedAccountsPanel />
-          </SettingsRow>
+          {/* Same reasoning. Meta and Shopify are connected by the brand
+              that owns them, and an admin connecting their own would mean
+              nothing to anybody. */}
+          {role !== 'admin' && (
+            <SettingsRow label="Connected Accounts" sub={role === 'creator' ? 'Instagram and TikTok' : 'Meta and Shopify'} icon={Heart} open={open === 'connected'} onToggle={() => toggle('connected')}>
+              <ConnectedAccountsPanel />
+            </SettingsRow>
+          )}
 
           <SettingsRow label="Security" sub="Password" icon={ShieldCheck} open={open === 'security'} onToggle={() => toggle('security')}>
             <SecurityPanel />
