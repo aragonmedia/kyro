@@ -1,5 +1,5 @@
 import {
-  Menu, X, ArrowRight, Star, Zap, DollarSign, CheckCircle, Briefcase, Camera, Shield,
+  Menu, X, ArrowRight, Zap, DollarSign, CheckCircle, Briefcase, Camera, Shield,
   ChevronRight, Plus, Upload, Eye, Users, Wallet, FileVideo, AlertCircle, Bell, LogOut, Filter,
   Search, Target, RefreshCw, MessageSquare, Globe, Mail, Trophy, ShieldCheck, Cpu, Layers,
   Heart, ChevronLeft, Sun, Moon, EyeOff, BarChart3, ArrowDownRight, ImagePlus, MessagesSquare,
@@ -67,6 +67,7 @@ import { CreatorAnalytics } from './components/CreatorAnalytics';
 import { MotionButton } from './components/MotionButton';
 import { PayoutsPanel } from './components/PayoutsPanel';
 import { SignAgreement } from './components/SignAgreement';
+import { VslPage } from './components/Vsl';
 import { ChatPanel, useUnreadTotal } from './components/Chat';
 import { BrandMark, CampaignDetailModal } from './components/CampaignDetail';
 import { BrandPerformanceCard } from './components/BrandPerformance';
@@ -165,14 +166,6 @@ type BrandId = keyof typeof BRANDS;
 
 
 
-const testimonials = [
-  { quote: "Kyro completely changed how we run influencer marketing. Our ROAS tripled in the first month.", name: "Jordan Lee", role: "Head of Growth, Bold Buns", avatar: "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=80&h=80&dpr=2", stars: 5 },
-  { quote: "I went from $400/month to over $8K in 60 days. The performance-based model is a game changer.", name: "Maya Chen", role: "Creator, 280K followers", avatar: "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=80&h=80&dpr=2", stars: 5 },
-  { quote: "We scaled our creative output 10x without hiring a single additional team member.", name: "Marcus Reid", role: "CMO, Fuel", avatar: "https://images.pexels.com/photos/2379005/pexels-photo-2379005.jpeg?auto=compress&cs=tinysrgb&w=80&h=80&dpr=2", stars: 5 },
-  { quote: "The transparency into earnings and ad performance is unlike anything else out there.", name: "Priya Sharma", role: "Creator, 140K followers", avatar: "https://images.pexels.com/photos/1181690/pexels-photo-1181690.jpeg?auto=compress&cs=tinysrgb&w=80&h=80&dpr=2", stars: 5 },
-  { quote: "We onboarded 40 creators in a week and had ads running the same day. Nothing else comes close.", name: "Tyler Brooks", role: "Founder, Jaje Health", avatar: "https://images.pexels.com/photos/91227/pexels-photo-91227.jpeg?auto=compress&cs=tinysrgb&w=80&h=80&dpr=2", stars: 5 },
-  { quote: "Kyro's auto-payout system means I focus on creating, not chasing invoices.", name: "Sasha Novak", role: "Creator, 510K followers", avatar: "https://images.pexels.com/photos/1130626/pexels-photo-1130626.jpeg?auto=compress&cs=tinysrgb&w=80&h=80&dpr=2", stars: 5 },
-];
 
 /* ─────────────────────────────────────────────────────────────
    SHARED UI HELPERS
@@ -245,7 +238,13 @@ function BrandAvatar({ name, logoUrl, size = 40 }: { name: string; logoUrl?: str
 /* ─────────────────────────────────────────────────────────────
    LANDING PAGE
    ───────────────────────────────────────────────────────────── */
-function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () => void; onGetStarted: () => void; onAbout: () => void; onLegal: (doc: 'privacy' | 'terms') => void }) {
+function Landing({ onSignIn, onGetStarted, onAbout, onLegal, onAudience }: {
+  onSignIn: () => void;
+  onGetStarted: () => void;
+  onAbout: () => void;
+  onLegal: (doc: 'privacy' | 'terms') => void;
+  onAudience: (who: 'brands' | 'creators') => void;
+}) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   return (
     <div className="min-h-screen bg-app text-body">
@@ -257,8 +256,8 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () =>
             <span className="text-xl font-bold bg-gradient-kyro bg-clip-text text-transparent tracking-tight">KYRO</span>
           </button>
           <div className="hidden md:flex items-center gap-7 text-sm font-medium">
-            <a href="#how-it-works" className="text-body hover:text-heading transition-colors">For Creators</a>
-            <a href="#features" className="text-body hover:text-heading transition-colors">For Brands</a>
+            <button onClick={() => onAudience('creators')} className="text-body hover:text-heading transition-colors">For Creators</button>
+            <button onClick={() => onAudience('brands')} className="text-body hover:text-heading transition-colors">For Brands</button>
             <button onClick={onAbout} className="text-body hover:text-heading transition-colors">About</button>
           </div>
           <div className="hidden md:flex items-center gap-1.5">
@@ -275,8 +274,8 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () =>
         </div>
         {mobileMenuOpen && (
           <div className="md:hidden max-w-5xl mx-auto mt-2 rounded-2xl border border-line bg-surface/95 backdrop-blur-md p-4 space-y-1 shadow-lg">
-            <a href="#how-it-works" className="block py-2.5 text-body hover:text-heading font-medium">For Creators</a>
-            <a href="#features" className="block py-2.5 text-body hover:text-heading font-medium">For Brands</a>
+            <button onClick={() => onAudience('creators')} className="block w-full text-left py-2.5 text-body hover:text-heading font-medium">For Creators</button>
+            <button onClick={() => onAudience('brands')} className="block w-full text-left py-2.5 text-body hover:text-heading font-medium">For Brands</button>
             <button onClick={onAbout} className="block w-full text-left py-2.5 text-body hover:text-heading font-medium">About</button>
             <div className="pt-2 space-y-2">
               <button onClick={onSignIn} className="w-full px-4 py-2.5 border border-line rounded-lg text-heading font-semibold hover:bg-surface-2 transition">Sign In</button>
@@ -302,33 +301,15 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () =>
               Creators scale their performance. Brands scale their impact.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <MotionButton onClick={onGetStarted} size="lg">Join KYRO Free</MotionButton>
+          {/* The fork. A brand and a creator want opposite things from this
+              page, so the page stops trying to be both here. */}
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <MotionButton onClick={() => onAudience('brands')} size="lg">For Brands</MotionButton>
+            <MotionButton onClick={() => onAudience('creators')} size="lg">For Creators</MotionButton>
           </div>
-          <div className="flex items-center justify-center gap-8 sm:gap-10 pt-2">
-            <div className="text-center"><p className="text-3xl font-bold text-heading">15K+</p><p className="text-muted text-sm mt-0.5">Creators</p></div>
-            <div className="w-px h-10 bg-line"></div>
-            <div className="text-center"><p className="text-3xl font-bold text-heading">600+</p><p className="text-muted text-sm mt-0.5">Brands</p></div>
-            <div className="w-px h-10 bg-line"></div>
-            <div className="text-center"><p className="text-3xl font-bold text-heading">$3M+</p><p className="text-muted text-sm mt-0.5">Paid to Creators</p></div>
-          </div>
-        </div>
-      </section>
-
-      {/* Brand row */}
-      <section className="px-4 sm:px-6 lg:px-8 pb-20">
-        <div className="max-w-5xl mx-auto">
-          <p className="text-center text-sm font-semibold text-faint uppercase tracking-widest mb-8">
-            The fastest growing consumer brands choose KYRO
+          <p className="text-sm text-muted">
+            Free to join either way. Creators are never charged. Brands pay 1% of attributed sales.
           </p>
-          <div className="flex items-center gap-10 justify-center flex-wrap">
-            {Object.values(BRANDS).map((b) => (
-              <div key={b.id} className="flex items-center gap-3 opacity-70 hover:opacity-100 transition">
-                <img src={b.logo} alt={b.name} className="h-9 w-9 object-contain rounded-lg bg-surface-2 p-1 border border-line" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                <span className="text-body font-semibold">{b.name}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -385,27 +366,6 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal }: { onSignIn: () =>
       </section>
 
       {/* Testimonials */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-line">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-14 space-y-3">
-            <h2 className="text-4xl md:text-5xl font-bold text-heading">Loved by creators<br />and brands alike</h2>
-            <p className="text-xl text-muted">Real results from real people.</p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {testimonials.map((t, idx) => (
-              <div key={idx} className="flex flex-col gap-4 p-6 bg-surface border border-line rounded-2xl hover:shadow-lg hover:shadow-black/5 transition">
-                <div className="flex gap-1">{[...Array(t.stars)].map((_, i) => (<Star key={i} size={14} className="text-amber-400 fill-amber-400" />))}</div>
-                <p className="text-body leading-relaxed flex-1">"{t.quote}"</p>
-                <div className="flex items-center gap-3 pt-2 border-t border-line">
-                  <img src={t.avatar} alt={t.name} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
-                  <div><p className="text-heading font-semibold text-sm">{t.name}</p><p className="text-muted text-xs">{t.role}</p></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* CTA */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-line">
         <div className="max-w-3xl mx-auto text-center rounded-3xl border border-line bg-surface p-10 md:p-14 space-y-5">
@@ -5295,6 +5255,8 @@ type View =
   | 'onboard'
   | 'app'
   | 'about'
+  | 'vsl-brands'
+  | 'vsl-creators'
   | 'affiliate-orders'
   | 'invite'
   | 'settings';
@@ -5314,6 +5276,8 @@ function readRoute(): { view: View; admin: boolean } {
     if (path === '/signin' || path === '/login') return { view: 'signin', admin: false };
     if (path === '/signup' || path === '/join') return { view: 'signup', admin: false };
     if (path === '/forgot-password') return { view: 'forgot', admin: false };
+    if (path === '/for-brands' || path === '/brands') return { view: 'vsl-brands', admin: false };
+    if (path === '/for-creators' || path === '/creators') return { view: 'vsl-creators', admin: false };
     if (path === '/help' || path === '/faq') return { view: 'help', admin: false };
     if (path === '/privacy' || path === '/privacy-policy') return { view: 'privacy', admin: false };
     if (path === '/terms' || path === '/terms-of-service') return { view: 'terms', admin: false };
@@ -5425,6 +5389,12 @@ function App() {
   const goLanding = () => { setView('landing'); nav('/'); };
   const goForgot = () => { setView('forgot'); nav('/forgot-password'); };
   const goLegal = (d: 'privacy' | 'terms') => { setView(d); nav('/' + d); };
+  const goAudience = (who: 'brands' | 'creators') => {
+    setView(who === 'brands' ? 'vsl-brands' : 'vsl-creators');
+    nav(`/for-${who}`);
+    window.scrollTo({ top: 0 });
+  };
+  const goHome = () => { setView('landing'); nav('/'); window.scrollTo({ top: 0 }); };
 
   /** Real sign-out: end the Supabase session, not just navigate away. */
   const doSignOut = async () => {
@@ -5523,7 +5493,17 @@ function App() {
     }
   }
 
-  if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} onAbout={() => setView('about')} onLegal={goLegal} />;
+  if (view === 'vsl-brands' || view === 'vsl-creators') {
+    return (
+      <VslPage
+        audience={view === 'vsl-brands' ? 'brands' : 'creators'}
+        onGetStarted={goSignUp}
+        onSignIn={() => goSignIn(false)}
+        onHome={goHome}
+      />
+    );
+  }
+  if (view === 'landing') return <Landing onSignIn={() => goSignIn(false)} onGetStarted={goSignUp} onAbout={() => setView('about')} onLegal={goLegal} onAudience={goAudience} />;
   if (view === 'help') return <HelpPage onBack={goLanding} onLegal={goLegal} />;
   if (view === 'privacy') return <LegalPage doc="privacy" onBack={goLanding} onOther={() => goLegal('terms')} />;
   if (view === 'terms') return <LegalPage doc="terms" onBack={goLanding} onOther={() => goLegal('privacy')} />;
