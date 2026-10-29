@@ -19,6 +19,7 @@
  */
 
 import { getSupabase } from './supabase';
+import { AGREEMENTS } from '../../shared/agreements';
 import type {
   Brand,
   Campaign,
@@ -1098,30 +1099,6 @@ export async function getLatestAgreement(
   }
 }
 
-export async function signCampaignAgreement(brandId: string): Promise<Result<string | null>> {
-  const sb = client();
-  if (!sb) return ok(null);
-  try {
-    const { data: auth } = await sb.auth.getUser();
-    const uid = auth.user?.id;
-    if (!uid) return fail(null, 'No active session.');
-    const { data, error } = await sb
-      .from('agreements')
-      .insert({
-        brand_id: brandId,
-        user_id: uid,
-        doc_type: 'campaign_agreement',
-        version: CAMPAIGN_AGREEMENT_VERSION,
-        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 400) : null,
-      })
-      .select('signed_at')
-      .single();
-    if (error) return fail(null, describeError(error, 'Could not record your signature.'));
-    return ok((data as { signed_at: string }).signed_at);
-  } catch (e) {
-    return fail(null, describeError(e, 'Could not record your signature.'));
-  }
-}
 
 /**
  * One round of queries, one answer: may this brand launch a campaign?
@@ -1147,7 +1124,15 @@ export async function getOnboardingStatus(brandId: string): Promise<Result<Onboa
 
   const [connections, agreement, billing, brandRow] = await Promise.all([
     listConnections(brandId),
-    getLatestAgreement(brandId),
+    /* The signature that actually gates a launch. Migration 0039 refuses to
+       take a campaign live without this exact document at this exact
+       version, so the checklist has to ask the same question the database
+       asks, or a brand ticks every box and is still refused. */
+    getLatestAgreement(
+      brandId,
+      AGREEMENTS.content_usage_rights.docType,
+      AGREEMENTS.content_usage_rights.version
+    ),
     ensureBrandBilling(brandId),
     sb.from('brands').select('meta_ad_account_id').eq('id', brandId).maybeSingle(),
   ]);

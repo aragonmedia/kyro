@@ -50,7 +50,6 @@ import {
   getBrandBalance,
   parseMoneyToCents,
   parsePercentToFraction,
-  signCampaignAgreement,
 } from './lib/db';
 import type { BrandBalance, LeaderboardCreator, BrandApplication, RosterCreator, BrandConnection, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
 import { uploadSubmissionVideo, uploadCampaignCover, uploadBrandLogo } from './lib/storage';
@@ -1182,23 +1181,11 @@ function OnboardingGates({
   onChanged: () => void;
 }) {
   const session = useSession();
-  const [agreed, setAgreed] = useState(false);
-  const [signing, setSigning] = useState(false);
-  const [signError, setSignError] = useState<string | null>(null);
   /** Null means "follow the first unfinished step"; a number means the brand chose. */
   const [chosen, setChosen] = useState<number | null>(null);
   /** The other steps stay folded away until asked for. */
   const [showAll, setShowAll] = useState(false);
   const [payWith, setPayWith] = useState<PayMethod | null>(null);
-
-  const sign = async () => {
-    setSignError(null);
-    setSigning(true);
-    const res = await signCampaignAgreement(brandId);
-    setSigning(false);
-    if (res.error) setSignError(res.error);
-    else onChanged();
-  };
 
   const steps = [
     {
@@ -1299,45 +1286,24 @@ function OnboardingGates({
     {
       key: 'agreement',
       icon: ShieldCheck,
-      title: 'Sign the Campaign Agreement',
-      short: 'Campaign Agreement',
-      blurb: 'Covers commission, billing, and the licence you receive to each video you run.',
+      title: 'Sign the Content Usage Rights',
+      short: 'Content Usage Rights',
+      blurb: 'What your brand may and may not do with a creator video it approves. A campaign cannot open to creators until this is signed.',
       done: Boolean(status.agreementSignedAt),
       doneLabel: status.agreementSignedAt
         ? `Signed ${new Date(status.agreementSignedAt).toLocaleDateString()}`
         : undefined,
       optional: false,
       body: !status.agreementSignedAt ? (
-        <div className="space-y-3">
-          {signError && (
-            <div className="flex items-start gap-2 p-2.5 rounded-lg border border-pink-400/30 bg-pink-400/10">
-              <AlertCircle size={14} className="text-pink-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-pink-200">{signError}</p>
-            </div>
-          )}
-          <label className="flex items-start gap-2.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-              className="mt-0.5 w-4 h-4 rounded border-line accent-purple-500 flex-shrink-0"
-            />
-            <span className="text-xs text-muted leading-relaxed">
-              I have read and agree to the{' '}
-              <a href="/terms" target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">Terms of Service</a>
-              {' '}and{' '}
-              <a href="/privacy" target="_blank" rel="noreferrer" className="text-purple-400 hover:text-purple-300 underline underline-offset-2">Privacy Policy</a>.
-            </span>
-          </label>
-          <button
-            onClick={() => void sign()}
-            disabled={!agreed || signing}
-            className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {signing && <RefreshCw size={14} className="animate-spin" />}
-            Sign agreement
-          </button>
-        </div>
+        <SignAgreement
+          bare
+          docType="content_usage_rights"
+          brandId={brandId}
+          subjectName={session.brand?.name}
+          defaultName={session.fullName}
+          defaultEmail={session.email}
+          onSigned={() => onChanged()}
+        />
       ) : null,
     },
   ];

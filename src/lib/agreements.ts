@@ -128,9 +128,16 @@ export async function hasSigned(
     ? query.eq('brand_id', subject.brandId ?? '')
     : query.eq('user_id', subject.userId ?? '');
 
-  const { data, error } = await query.maybeSingle();
-  if (error || !data) return { signedAt: null, documentPath: null };
+  /* Wrapped because the caller is a panel that has to render either way. An
+     unreachable database should show the form, not a spinner that never
+     resolves. */
+  try {
+    const { data, error } = await query.maybeSingle();
+    if (error || !data) return { signedAt: null, documentPath: null };
 
-  const row = data as { signed_at?: string; document_path?: string | null };
-  return { signedAt: row.signed_at ?? null, documentPath: row.document_path ?? null };
+    const row = data as { signed_at?: string; document_path?: string | null };
+    return { signedAt: row.signed_at ?? null, documentPath: row.document_path ?? null };
+  } catch {
+    return { signedAt: null, documentPath: null };
+  }
 }
