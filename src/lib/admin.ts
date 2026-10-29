@@ -23,6 +23,7 @@
  */
 
 import { getSupabase } from './supabase';
+import { AGREEMENTS } from '../../shared/agreements';
 
 export interface Result<T> {
   data: T;
@@ -135,6 +136,8 @@ export interface AdminCreatorRow {
   /** Stripe says transfers can land. Without this a payout is held. */
   payoutsReady: boolean;
   taxComplete: boolean;
+  /** When they signed the current creator agreement, or null. */
+  agreementSignedAt: string | null;
   /** Why a payout to this creator would be held right now, or null. */
   heldReason: string | null;
   createdAt: string;
@@ -371,9 +374,25 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
 
     /* Most recent signature per brand. The query is already ordered newest
        first, so the first one seen wins. */
+    /* The signature that actually gates a launch, which is the current
+       version of the Content Usage Rights and not merely something signed at
+       some point. Migration 0039 enforces exactly this; the registry is where
+       the version is written down. */
+    const usageRights = AGREEMENTS.content_usage_rights;
+    const creatorDoc = AGREEMENTS.creator_agreement;
+
     const agreementByBrand = new Map<string, string>();
     for (const a of agreements) {
-      if (a.brand_id && !agreementByBrand.has(a.brand_id)) agreementByBrand.set(a.brand_id, a.signed_at);
+      if (!a.brand_id) continue;
+      if (a.doc_type !== usageRights.docType || a.version !== usageRights.version) continue;
+      if (!agreementByBrand.has(a.brand_id)) agreementByBrand.set(a.brand_id, a.signed_at);
+    }
+
+    const creatorAgreementByUser = new Map<string, string>();
+    for (const a of agreements) {
+      if (a.brand_id || !a.user_id) continue;
+      if (a.doc_type !== creatorDoc.docType || a.version !== creatorDoc.version) continue;
+      if (!creatorAgreementByUser.has(a.user_id)) creatorAgreementByUser.set(a.user_id, a.signed_at);
     }
 
     /* Signed documents, grouped by whoever they bind. A brand document also
@@ -560,14 +579,19 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
       const payoutsReady = Boolean(c.stripe_account_id) && c.stripe_payouts_enabled;
       const taxComplete = c.tax_form_status === 'complete';
 
-      /* Migration 0032 holds a share unless both are true. Saying which one
-         is missing turns "why has this creator not been paid" from a support
-         conversation into a glance. */
-      const heldReason = payoutsReady && taxComplete
-        ? null
-        : !payoutsReady
-          ? 'Stripe payouts not enabled'
-          : 'Tax details incomplete';
+      const agreementSignedAt = c.user_id ? creatorAgreementByUser.get(c.user_id) ?? null : null;
+
+      /* Migrations 0032 and 0039 hold a share unless all three are true.
+         Saying which one is missing turns "why has this creator not been
+         paid" from a support conversation into a glance, and the order
+         matches the order the planner checks them in. */
+      const heldReason = !payoutsReady
+        ? 'Stripe payouts not enabled'
+        : !taxComplete
+          ? 'Tax details incomplete'
+          : !agreementSignedAt
+            ? 'Agreement not signed'
+            : null;
 
       return {
         id: c.id,
@@ -595,6 +619,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         paidCents: paidPerCreator.get(c.id) ?? 0,
         payoutsReady,
         taxComplete,
+        agreementSignedAt,
         heldReason,
         createdAt: c.created_at,
         documents: c.user_id ? docsByUser.get(c.user_id) ?? [] : [],
@@ -719,4 +744,37 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
   } catch (e) {
     return fail(EMPTY, e instanceof Error ? e.message : 'Could not load the admin overview.');
   }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   The one thing an admin writes
+   ───────────────────────────────────────────────────────────── */
+
+/**
+ * Accept or un-accept a creator's tax details.
+ *
+ * This is the switch that releases a payout. Migration 0032 holds every share
+ * until tax_form_status reads 'complete', and nothing in the product could
+ * set it: the creator submits their details and somebody at KYRO has to look
+ * at them, which is a judgement rather than a form submission.
+ *
+ * Migration 0037 pins that column against every browser session except an
+ * admin's, so this call works for an admin and for nobody else. It is a plain
+ * table write rather than an endpoint for exactly that reason: the database
+ * is already deciding, and a server route would only be restating it.
+ */
+export async function setCreatorTaxStatus(
+  creatorId: string,
+  status: 'complete' | 'pending' | 'not_collected'
+): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'Supabase is not configured.' };
+
+  const { error } = await sb
+    .from('creators')
+    .update({ tax_form_status: status })
+    .eq('id', creatorId);
+
+  if (error) return { error: error.message || 'Could not update the tax status.' };
+  return { error: null };
 }

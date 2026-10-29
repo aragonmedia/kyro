@@ -27,10 +27,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, Building2, CheckCircle2, Clock, DollarSign, Download,
-  FileText, Layers, RefreshCw, TrendingUp, Users, Video, Wallet,
+  FileText, Layers, Loader2, RefreshCw, TrendingUp, Users, Video, Wallet, XCircle,
 } from 'lucide-react';
 import {
-  loadAdminOverview,
+  loadAdminOverview, setCreatorTaxStatus,
   type AdminBrandRow, type AdminCampaignRow, type AdminCreatorRow, type AdminDocument,
   type AdminOverview as Overview, type AdminRunRow,
 } from '../../lib/admin';
@@ -1052,6 +1052,95 @@ function Documents({ rows, subject }: { rows: AdminDocument[]; subject: string }
   );
 }
 
+/**
+ * The three things that have to be true before a creator is paid, and the one
+ * of them KYRO decides.
+ *
+ * Stripe answers the first and the creator answers the third. The second is a
+ * judgement somebody here makes about the details they submitted, and until
+ * this panel existed there was no way to make it: migration 0032 holds every
+ * share until the tax status reads complete, and nothing in the product could
+ * write that word.
+ */
+function PayoutReadiness({ creator, onChanged }: {
+  creator: AdminCreatorRow;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = async (status: 'complete' | 'pending') => {
+    setBusy(true);
+    setError(null);
+    const res = await setCreatorTaxStatus(creator.id, status);
+    setBusy(false);
+    if (res.error) { setError(res.error); return; }
+    onChanged();
+  };
+
+  const rows: Array<{ label: string; ok: boolean; note: string }> = [
+    {
+      label: 'Stripe payouts',
+      ok: creator.payoutsReady,
+      note: creator.payoutsReady ? 'Stripe will accept transfers' : 'Not enabled on their account',
+    },
+    {
+      label: 'Tax details',
+      ok: creator.taxComplete,
+      note: creator.taxFormStatus === 'pending'
+        ? 'Submitted, waiting on you'
+        : creator.taxComplete ? 'Accepted' : 'Not submitted',
+    },
+    {
+      label: 'Creator agreement',
+      ok: Boolean(creator.agreementSignedAt),
+      note: creator.agreementSignedAt ? `Signed ${day(creator.agreementSignedAt)}` : 'Not signed',
+    },
+  ];
+
+  return (
+    <Panel
+      title="Payout readiness"
+      note={creator.heldReason
+        ? 'Their share is held until all three are met.'
+        : 'Nothing is holding their payouts.'}
+    >
+      <div className="divide-y divide-line">
+        {rows.map((r) => (
+          <div key={r.label} className="p-4 flex flex-wrap items-center gap-3">
+            {r.ok
+              ? <CheckCircle2 size={16} className="text-good flex-shrink-0" />
+              : <XCircle size={16} className="text-warn flex-shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-heading">{r.label}</p>
+              <p className="text-xs text-muted">{r.note}</p>
+            </div>
+            {r.label === 'Tax details' && (
+              <button
+                type="button"
+                disabled={busy || (!creator.taxComplete && creator.taxFormStatus === 'not_collected')}
+                onClick={() => void set(creator.taxComplete ? 'pending' : 'complete')}
+                title={!creator.taxComplete && creator.taxFormStatus === 'not_collected'
+                  ? 'Nothing has been submitted to accept yet'
+                  : undefined}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-xs font-semibold text-body hover:text-heading disabled:opacity-40"
+              >
+                {busy && <Loader2 size={13} className="animate-spin" />}
+                {creator.taxComplete ? 'Put back to pending' : 'Accept tax details'}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {error && (
+        <div className="p-4 border-t border-line">
+          <p className="text-xs text-bad">{error}</p>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 /** How each doc_type reads to a person. */
 const TITLES: Record<string, string> = {
   content_usage_rights: 'Content Usage Rights',
@@ -1160,9 +1249,10 @@ function BrandDetail({ brand, data, onBack, onCreator, onCampaign }: {
   );
 }
 
-function CreatorDetail({ creator, data, onBack, onBrand, onCampaign }: {
+function CreatorDetail({ creator, data, onBack, onBrand, onCampaign, onChanged }: {
   creator: AdminCreatorRow; data: Overview; onBack: () => void;
   onBrand: (id: string) => void; onCampaign: (id: string) => void;
+  onChanged: () => void;
 }) {
   const campaigns = data.campaigns.filter((c) => creator.campaignIds.includes(c.id));
   const brands = data.brands.filter((b) => creator.brandIds.includes(b.id));
@@ -1231,6 +1321,8 @@ function CreatorDetail({ creator, data, onBack, onBrand, onCampaign }: {
           empty="This creator has not submitted to a campaign yet."
         />
       </Panel>
+
+      <PayoutReadiness creator={creator} onChanged={onChanged} />
 
       <Documents rows={creator.documents} subject={creator.name} />
 
@@ -1395,7 +1487,7 @@ export function AdminPortal() {
   ) : creator ? (
     <CreatorDetail
       creator={creator} data={data} onBack={() => setCreatorId(null)}
-      onBrand={openBrand} onCampaign={openCampaign}
+      onBrand={openBrand} onCampaign={openCampaign} onChanged={() => void load()}
     />
   ) : campaign ? (
     <CampaignDetail
