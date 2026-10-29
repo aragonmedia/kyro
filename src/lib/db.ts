@@ -579,10 +579,14 @@ export interface NewCampaignInput {
 /**
  * Create a campaign for a brand the signed-in user owns.
  *
- * New campaigns start as `pending_fund` with a zero balance: the pool target is
- * what the brand intends to spend, the balance is what has actually been paid
- * in. Square funding (Phase 2) is what credits the balance and flips it to
- * `live`, so nothing here should pretend money has arrived.
+ * New campaigns start as `draft`: made, not launched. They used to start as
+ * `pending_fund`, which meant "waiting for the brand to fund the pool" in a
+ * model that no longer exists, since a brand is now charged per payment run
+ * rather than depositing up front. Migration 0040 retired that state and
+ * forbids writing it.
+ *
+ * The pool columns are still written as zero because the columns are still
+ * there. Nothing reads them.
  */
 export async function createCampaign(
   brandId: string,
@@ -601,7 +605,7 @@ export async function createCampaign(
         brand_id: brandId,
         name,
         brief: input.brief?.trim() || null,
-        status: 'pending_fund' as CampaignStatus,
+        status: 'draft' as CampaignStatus,
         intake_paths: input.intakePaths ?? ['marketplace'],
         commission_type: input.commissionType,
         commission_percent_spend: input.commissionPercentSpend ?? null,
@@ -1222,7 +1226,7 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
       .select(
         'id, name, brand_id, status, cover_url, deliverable_spec, brief, content_style, commission_rate_bps, clearing_days, brands(name, logo_url)'
       )
-      .in('status', ['live', 'pending_fund', 'draft'])
+      .in('status', ['live', 'draft'])
       .order('created_at', { ascending: false });
 
     if (error) return fail([], describeError(error, 'Could not load campaigns.'));

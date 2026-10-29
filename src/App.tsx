@@ -185,7 +185,8 @@ function StatusPill({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
     live: { label: 'Live', cls: 'bg-emerald-400/15 text-emerald-300 border-emerald-400/30' },
     in_review: { label: 'In Review', cls: 'bg-amber-400/15 text-amber-300 border-amber-400/30' },
-    pending_fund: { label: 'Awaiting Funding', cls: 'bg-blue-400/15 text-blue-300 border-blue-400/30' },
+    // Retired by migration 0040. Kept so a historical row never renders blank.
+    pending_fund: { label: 'Legacy', cls: 'bg-line text-muted border-line' },
     draft: { label: 'Draft', cls: 'bg-line text-muted border-line' },
     paused: { label: 'Paused', cls: 'bg-amber-400/15 text-amber-300 border-amber-400/30' },
     complete: { label: 'Complete', cls: 'bg-purple-400/15 text-purple-300 border-purple-400/30' },
@@ -1895,7 +1896,7 @@ function BrandDashboard({
   }, [requestedPage]);
   const [showCreate, setShowCreate] = useState(false);
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'draft' | 'ended' | 'pending_fund'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'draft' | 'ended'>('all');
   // Result of a Shopify install, read off the query string the callback
   // redirected back with. Read once on mount and stripped from the URL there,
   // so a refresh does not replay a stale banner.
@@ -2285,7 +2286,6 @@ function BrandDashboard({
                         <option value="all">All</option>
                         <option value="live">Live</option>
                         <option value="draft">Draft</option>
-                        <option value="pending_fund">Pending</option>
                         <option value="ended">Ended</option>
                       </select>
                     </div>
@@ -2376,7 +2376,7 @@ function BrandDashboard({
                                 onChanged={() => void reload()}
                               />
                             )}
-                            {(c.status === 'pending_fund' || c.status === 'draft') && (
+                            {c.status === 'draft' && (
                               <ActivateCampaignRow
                                 campaignId={c.id}
                                 status={c.status}
@@ -2571,9 +2571,9 @@ function NeedsBrand({ what }: { what: string }) {
  * workspace, and falls back to the logged mock in demo mode so the public demo
  * keeps working without keys.
  *
- * New campaigns are created as `pending_fund` with a zero balance on purpose:
- * the pool target is an intent, the balance is money that actually arrived, and
- * only Square (Phase 2) may credit it.
+ * New campaigns are created as `draft`: made, not launched. Taking one live
+ * is a separate, deliberate act, and migration 0039 will not allow it until
+ * the brand has signed the Content Usage Rights.
  */
 /* One product in the create-campaign form. */
 interface ProductDraft {

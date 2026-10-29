@@ -293,8 +293,9 @@ const isUsed = (status: string) => status === 'approved' || status === 'live';
 /**
  * A campaign that is running.
  *
- * `live` is the active state. `pending_fund` is a leftover from the funded
- * pool model and should never be set again, but historical rows carry it.
+ * `live` is the active state. `pending_fund` was a leftover from the funded
+ * pool model; migration 0040 turned the last of those into drafts and now
+ * forbids the state entirely.
  */
 const isLive = (status: string) => status === 'live';
 
