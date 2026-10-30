@@ -1,5 +1,5 @@
 /**
- * KYRO — Shopify OAuth helpers
+ * KYRO: Shopify OAuth helpers
  */
 
 import crypto from 'node:crypto';

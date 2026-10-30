@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0005: attribution plumbing
+-- KYRO: 0005: attribution plumbing
 --
 -- Closes the gap between docs (the "tracking token" the attribution model
 -- describes) and the schema (which had nowhere to put one). The token is the

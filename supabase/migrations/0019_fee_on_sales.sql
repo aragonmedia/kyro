@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- KYRO — 0019 — the fee is 1% of attributed sales
+-- KYRO: 0019: the fee is 1% of attributed sales
 --
 -- Two sources disagreed. The Terms of Service said 1% of Attributed Sales;
 -- the seed computed 1% of creator commission. On a 15% campaign those differ
@@ -22,7 +22,7 @@
 -- ── Say what the columns mean, so the next person does not have to guess ──
 
 comment on column public.earnings.platform_fee_bps is
-  'KYRO fee in basis points, applied to commissionable_cents (attributed sales) — NOT to commission_cents. 100 = 1%.';
+  'KYRO fee in basis points, applied to commissionable_cents (attributed sales), NOT to commission_cents. 100 = 1%.';
 
 comment on column public.earnings.platform_fee_cents is
   'KYRO fee for this order: platform_fee_bps of commissionable_cents. Stored per row so a later change to the rate cannot rewrite what a brand was already charged.';

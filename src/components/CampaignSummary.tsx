@@ -228,7 +228,7 @@ export function CampaignSummarySheet({
                 {orders.map((o) => (
                   <div key={o.earningId} className="p-4 flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-heading">{o.orderNumber ?? '—'}</p>
+                      <p className="text-sm font-semibold text-heading">{o.orderNumber ?? '-'}</p>
                       <p className="text-xs text-muted truncate">
                         @{o.creatorHandle.replace(/^@+/, '')} · {day(o.placedAt)}
                       </p>

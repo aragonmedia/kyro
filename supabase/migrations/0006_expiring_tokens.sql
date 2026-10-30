@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0006: expiring Shopify offline tokens
+-- KYRO: 0006: expiring Shopify offline tokens
 --
 -- Shopify stopped accepting non-expiring offline tokens on the Admin API.
 -- Every call made with one returns:

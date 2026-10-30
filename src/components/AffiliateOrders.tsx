@@ -1,5 +1,5 @@
 /**
- * Affiliate orders — the receipt behind a creator's balance.
+ * Affiliate orders, the receipt behind a creator's balance.
  *
  * Two exports, because a creator wants two different things at two different
  * moments:
@@ -14,7 +14,7 @@
  *
  * Every row is a real `earnings` row joined to its order, so the list and the
  * balance are the same numbers and cannot drift apart. Filtering happens in the
- * browser against one fetch rather than a query per filter change — at a few
+ * browser against one fetch rather than a query per filter change, at a few
  * hundred orders that is instant, and it keeps the summary figures consistent
  * with what is on screen.
  */
@@ -310,7 +310,7 @@ export function AffiliateOrdersPage({
                           <p className="text-heading font-semibold">{fullDate(r.placedAt)}</p>
                         </td>
                         <td className="p-4">
-                          <p className="text-body font-mono text-xs">{r.orderNumber ?? '—'}</p>
+                          <p className="text-body font-mono text-xs">{r.orderNumber ?? '-'}</p>
                         </td>
                         <td className="p-4">
                           <p className="text-body truncate max-w-[200px]">{r.campaignName}</p>

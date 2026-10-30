@@ -175,7 +175,7 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
               <p className="text-sm font-semibold text-muted">Earned, waiting on the brand</p>
             </div>
             <p className="text-4xl font-bold text-heading mt-1">
-              {loading ? '—' : money(available)}
+              {loading ? '-' : money(available)}
             </p>
             <p className="text-xs text-faint mt-1">
               {payoutsReady

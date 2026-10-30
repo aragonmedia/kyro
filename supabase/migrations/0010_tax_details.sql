@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0010: creator tax details
+-- KYRO: 0010: creator tax details
 --
 -- What KYRO needs to issue a 1099-NEC, and nothing more.
 --

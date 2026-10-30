@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- 0028 — How a brand pays KYRO
+-- 0028: How a brand pays KYRO
 --
 -- The other half of the money flow. Creators receive through Connect
 -- (migration 0027); brands pay in through an ordinary Stripe Customer with a

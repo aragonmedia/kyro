@@ -1,10 +1,10 @@
 /**
- * Kyro — Theme Provider
+ * Kyro, Theme Provider
  *
  * Light / dark theming backed by CSS variables (see index.css).
  * Dark is the default. Adding the `.light` class on <html> flips the
  * token palette. Choice is persisted to localStorage so it survives
- * reloads. Exposed via the `useTheme()` hook — consumed by the landing
+ * reloads. Exposed via the `useTheme()` hook, consumed by the landing
  * nav toggle and Account Settings.
  */
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
@@ -48,7 +48,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {
-      /* storage unavailable — ignore */
+      /* storage unavailable, ignore */
     }
   }, [theme]);
 

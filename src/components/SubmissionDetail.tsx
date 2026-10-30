@@ -144,7 +144,7 @@ export function SubmissionDetailModal({
                 <Stat label="You earned" value={money(data.commissionCents)} hint="Commission" />
                 <Stat
                   label="Impressions"
-                  value={data.impressions ? data.impressions.toLocaleString() : '—'}
+                  value={data.impressions ? data.impressions.toLocaleString() : '-'}
                   hint={data.impressions ? 'From Meta' : 'Needs Meta access'}
                 />
               </div>

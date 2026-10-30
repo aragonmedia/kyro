@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- KYRO — 0014 — campaign products, content direction, and chat
+-- KYRO: 0014: campaign products, content direction, and chat
 --
 -- Three things a campaign has been missing:
 --
@@ -13,8 +13,8 @@
 --      the part creators actually get wrong.
 --
 --   3. Chat, in two shapes that are deliberately not the same thing:
---        · a campaign thread — the brand and every accepted creator, together
---        · a submission thread — one creator and the brand, about one video
+--        · a campaign thread, the brand and every accepted creator, together
+--        · a submission thread, one creator and the brand, about one video
 --      A creator whose video was passed on should be able to ask why without
 --      the rest of the roster reading it, which is why the second exists.
 --
@@ -31,7 +31,7 @@
 alter table public.campaigns add column if not exists content_style text;
 
 comment on column public.campaigns.content_style is
-  'What the video should feel like — setting, tone, language, pacing. Distinct from deliverable_spec, which is format only.';
+  'What the video should feel like, setting, tone, language, pacing. Distinct from deliverable_spec, which is format only.';
 
 /* ─────────────────────────────────────────────────────────────
    2. Products
@@ -114,7 +114,7 @@ create unique index if not exists threads_submission_uniq
  * Who may see a thread.
  *
  * security definer so the policies below can ask this question without every
- * caller needing read access to applications, submissions and brands — and so
+ * caller needing read access to applications, submissions and brands, and so
  * the messages policy does not recurse back through threads' own policy.
  */
 create or replace function public.can_see_thread(t_id uuid)

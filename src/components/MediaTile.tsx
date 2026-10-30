@@ -91,7 +91,7 @@ export function VideoTile({
   /**
    * Whether to draw the play button.
    *
-   * Off when the image already carries one — a frame captured from a player
+   * Off when the image already carries one, a frame captured from a player
    * has it baked in, and stacking ours on top produces two concentric rings.
    */
   showPlay = true,

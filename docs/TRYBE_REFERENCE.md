@@ -1,21 +1,21 @@
-# Trybe Reference — Design System & IA
+# Trybe Reference, Design System & IA
 
-Captured from Trybe (jointrybe.com) — Kyro's prime inspiration / #1 replication target.
+Captured from Trybe (jointrybe.com), Kyro's prime inspiration / #1 replication target.
 Reviewed live: marketing landing + logged-in Partner Portal (account: "Kyvo", Partner • Owner).
 
 ## Overall look & feel
 - **Theme: LIGHT.** White cards on a light gray (~#f4f4f7) background. Lots of whitespace.
-  - NOTE: Kyro currently ships a **dark slate** theme. Open decision — move Kyro to Trybe's light theme, or keep dark. (Kevin to confirm.)
+  - NOTE: Kyro currently ships a **dark slate** theme. Open decision, move Kyro to Trybe's light theme, or keep dark. (Kevin to confirm.)
 - **Primary accent: violet/purple**, used as a gradient (~`#7c5cff` → `#6d28d9`). Primary buttons are **rounded-full pills**, purple gradient fill, white text, small leading icon.
 - **Typography:** clean geometric sans (Inter/Geist-like). Headlines are **very large, bold, tight tracking, near-black**. Body is muted gray.
-- **Corners:** generous rounding — cards ~`rounded-2xl`, buttons `rounded-full`.
+- **Corners:** generous rounding, cards ~`rounded-2xl`, buttons `rounded-full`.
 - **Voice:** friendly + direct. "Welcome back, Kevin!", "The New Way for Creators To Make Money."
 
 ## Marketing landing page (jointrybe.com)
 - **Nav:** floating **white rounded-full pill** bar near top-center. Links: `For Creators`, `For Brands`, `For Agencies`; `Sign In` on the right.
 - **Hero:** centered. Huge 2-line headline **"The New Way for Creators To Make Money."** One-line subtext: *"Creators earn based on performance. Brands scale their creative engine with ease."* Single purple gradient CTA pill: **"Get Started For Free"**.
 - Background: light with a subtle texture/gradient.
-- (Full-page lower sections not captured — marketing site redirects to the portal when logged in.)
+- (Full-page lower sections not captured, marketing site redirects to the portal when logged in.)
 
 ## Partner Portal (app shell)
 - **Top bar:** left = Trybe logo + "Partner Portal" pill. Right = help `?` icon + user chip (avatar initials + name + chevron).

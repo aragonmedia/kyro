@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- KYRO — 0018 — paying creators
+-- KYRO: 0018: paying creators
 --
 -- A brand owes creator commission on attributed orders, plus KYRO's fee. This
 -- is the record of that money actually moving.
@@ -79,7 +79,7 @@ revoke insert, update, delete on public.payment_run_items from anon, authenticat
  * Authorise payment of everything currently due.
  *
  * Due means `available`: the order was fulfilled and has cleared its window.
- * Pending and clearing earnings are deliberately excluded — a brand should
+ * Pending and clearing earnings are deliberately excluded, a brand should
  * not be asked to pay for an order that could still be refunded.
  *
  * The amounts are summed here, from the rows, inside the transaction that

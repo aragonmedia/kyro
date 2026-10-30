@@ -23,7 +23,7 @@ Drop six 9:16 images in here named `1.jpg` through `6.jpg`, then run
 
 These get committed to the repo and deployed to itskyro.com, which is public.
 A screenshot of another creator's video is their footage and, usually, their
-face — shown inside KYRO as if it were work submitted to one of these
+face, shown inside KYRO as if it were work submitted to one of these
 campaigns.
 
 Use frames from content you or Aragon Media own, content a creator has given

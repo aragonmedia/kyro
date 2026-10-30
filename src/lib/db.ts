@@ -1,8 +1,8 @@
 /**
- * Kyro — Database Layer (Phase 1)
+ * Kyro, Database Layer (Phase 1)
  *
  * The typed boundary between the UI and Postgres. Nothing in App.tsx should
- * ever touch `supabase.from(...)` directly — it goes through here so that:
+ * ever touch `supabase.from(...)` directly, it goes through here so that:
  *
  *   1. snake_case DB rows are mapped to the camelCase shapes in `types.ts`,
  *      which stays the single source of truth for entity shape.
@@ -14,7 +14,7 @@
  *
  * RLS note: these queries are written to satisfy the policies in
  * `supabase/migrations/0002_core_schema.sql`. In particular a brand user cannot
- * write a campaign until a `brands` row owned by their auth.uid() exists —
+ * write a campaign until a `brands` row owned by their auth.uid() exists,
  * that is what `ensureMyBrand()` is for.
  */
 
@@ -31,7 +31,7 @@ import type {
 } from './types';
 
 /* ─────────────────────────────────────────────────────────────
-   Result envelope — no-throw contract
+   Result envelope, no-throw contract
    ───────────────────────────────────────────────────────────── */
 
 export interface Result<T> {
@@ -69,7 +69,7 @@ function client() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Money — dollars in the UI, integer cents in the DB
+   Money, dollars in the UI, integer cents in the DB
    ───────────────────────────────────────────────────────────── */
 
 export const dollarsToCents = (dollars: number): Cents => Math.round(dollars * 100);
@@ -100,7 +100,7 @@ export function parsePercentToFraction(input: string): number | null {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Row types — mirror the Postgres tables exactly (snake_case)
+   Row types, mirror the Postgres tables exactly (snake_case)
    ───────────────────────────────────────────────────────────── */
 
 export interface BrandRow {
@@ -182,7 +182,7 @@ export interface SubmissionCountsRow {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Mappers — row → domain shape from types.ts
+   Mappers, row → domain shape from types.ts
    ───────────────────────────────────────────────────────────── */
 
 export function toBrand(row: BrandRow): Brand {
@@ -300,7 +300,7 @@ const EMPTY_STATS: CampaignStats = {
 };
 
 /* ─────────────────────────────────────────────────────────────
-   Handles — brands.handle and creators.handle are UNIQUE
+   Handles, brands.handle and creators.handle are UNIQUE
    ───────────────────────────────────────────────────────────── */
 
 export function slugify(input: string): string {
@@ -421,7 +421,7 @@ export async function createAnotherBrand(name: string): Promise<Result<Brand | n
 
 /**
  * Get the signed-in user's brand, creating a starter row if they don't have
- * one. This has to run before a brand user can create a campaign — the RLS
+ * one. This has to run before a brand user can create a campaign, the RLS
  * policy on `campaigns` checks ownership through `brands`.
  */
 export async function ensureMyBrand(opts?: {
@@ -444,7 +444,7 @@ export async function ensureMyBrand(opts?: {
     const displayName = (opts?.name || email.split('@')[0] || 'My Brand').trim();
     const base = slugify(displayName);
 
-    // handle is UNIQUE — retry with a random suffix on collision.
+    // handle is UNIQUE: retry with a random suffix on collision.
     for (let attempt = 0; attempt < 4; attempt++) {
       const handle = attempt === 0 ? base : `${base}-${suffix()}`;
       const { data, error } = await sb
@@ -521,7 +521,7 @@ export async function getMyCreator(): Promise<Result<Creator | null>> {
   }
 }
 
-/** Creator equivalent of ensureMyBrand — needed before applying or submitting. */
+/** Creator equivalent of ensureMyBrand, needed before applying or submitting. */
 export async function ensureMyCreator(opts?: {
   handle?: string;
   email?: string | null;
@@ -681,7 +681,7 @@ export async function listCampaignsWithStats(
         .eq('status', 'accepted'),
       // Orders and commission come from `earnings`, not from the counters on
       // `submissions`. Those counters are only as current as whatever last
-      // wrote them, and nothing does — which is how the dashboard could show
+      // wrote them, and nothing does, which is how the dashboard could show
       // zero orders while eighteen earning rows existed.
       sb
         .from('earnings')
@@ -797,7 +797,7 @@ export function totalsFor(campaigns: CampaignWithStats[]): BrandTotals {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Brand onboarding — connections, billing, agreement
+   Brand onboarding, connections, billing, agreement
    A brand cannot launch a campaign until the gates in
    docs/KYRO_MODEL.md §4 are satisfied. This is where that is enforced
    in data rather than in the UI, so the check can't be skipped by
@@ -1402,7 +1402,7 @@ export interface CampaignSubmission {
   submittedAt: string;
   /** A frame from the video, when there is one. */
   thumbnailUrl: string | null;
-  /** The campaign's product image — the fallback when there is no frame. */
+  /** The campaign's product image, the fallback when there is no frame. */
   coverUrl: string | null;
   /** The code that credits an order to this video, carried in utm_content. */
   trackingToken: string | null;
@@ -1502,7 +1502,7 @@ export async function setSubmissionUsage(
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Applications — creators joining campaigns
+   Applications, creators joining campaigns
    ───────────────────────────────────────────────────────────── */
 
 export interface MyApplication {
@@ -1715,7 +1715,7 @@ export async function saveTaxDetails(
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Campaign roster — who is on a campaign
+   Campaign roster, who is on a campaign
    ───────────────────────────────────────────────────────────── */
 
 export interface RosterCreator {
@@ -2338,8 +2338,8 @@ export async function addCampaignProducts(
 
    Two thread shapes, deliberately different:
 
-     campaign   — the brand and every accepted creator, together
-     submission — one creator and the brand, about one video
+     campaign  , the brand and every accepted creator, together
+     submission, one creator and the brand, about one video
 
    Both are reached through database functions rather than direct inserts.
    Membership is checked server side, so a thread id guessed by a client is
@@ -2617,7 +2617,7 @@ export async function completeBrandSetup(
 
 export interface BrandPerformance {
   windowDays: number;
-  /** Commission earned by creators in the window — what the brand owes. */
+  /** Commission earned by creators in the window, what the brand owes. */
   windowCents: Cents;
   series: EarningsPoint[];
   orders: number;
@@ -2641,7 +2641,7 @@ const emptyBrandPerformance = (windowDays: number): BrandPerformance => ({
 /**
  * Daily commission across a brand's campaigns, shaped like the creator chart.
  *
- * Same source rows as the creator side reads — `earnings` — so a brand and a
+ * Same source rows as the creator side reads, `earnings`, so a brand and a
  * creator looking at the same campaign are looking at the same numbers. The
  * series is zero-filled so an empty day is a gap rather than a compression.
  */
@@ -2825,7 +2825,7 @@ export interface LeaderboardCreator {
  *
  * Submissions come from `submissions` and money from `earnings`, joined in
  * memory. A creator who has sent videos but driven no orders still appears,
- * at the bottom — they are doing the work and the brand should see them,
+ * at the bottom, they are doing the work and the brand should see them,
  * which a query driven off earnings alone would hide.
  */
 export async function listBrandLeaderboard(
@@ -2998,7 +2998,7 @@ export interface CreatorSummary {
  * A creator's profile, for a brand looking at someone already on a campaign.
  *
  * `creators` is readable by any signed-in user, so this needs no special
- * grant — but it deliberately returns nothing from `profiles`, which is
+ * grant, but it deliberately returns nothing from `profiles`, which is
  * private. A brand sees the public creator identity, not the person's email.
  */
 export async function getCreatorSummary(creatorId: string): Promise<Result<CreatorSummary | null>> {
@@ -3291,7 +3291,7 @@ export async function authorizePaymentRun(
    Brand teams
 
    Stores who has been invited and what they may do. It does not yet grant
-   access to brand data — see migration 0020 — so nothing here should be read
+   access to brand data, see migration 0020: so nothing here should be read
    as "this person can now see the brand".
    ───────────────────────────────────────────────────────────── */
 

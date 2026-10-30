@@ -1,9 +1,9 @@
 /**
- * Kyro — API Surface
+ * Kyro, API Surface
  *
  * Every button-handler in App.tsx routes through here. Currently routes to
  * mock implementations (mockApi). When V1 wiring lands, the same function
- * signatures point to real Supabase + serverless API calls — UI doesn't change.
+ * signatures point to real Supabase + serverless API calls, UI doesn't change.
  *
  * Pattern: optimistic UI, console.log every event, no-throw fallbacks so the
  * demo never breaks.
@@ -21,14 +21,14 @@ import type {
 } from './types';
 
 /* ─────────────────────────────────────────────────────────────
-   Event logger — visible in browser console during demo
+   Event logger, visible in browser console during demo
    ───────────────────────────────────────────────────────────── */
 function event(name: string, payload?: unknown) {
   console.log(`[kyro:event] ${name}`, payload ?? '');
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Mock API — used in demo mode (no Supabase keys)
+   Mock API: used in demo mode (no Supabase keys)
    ───────────────────────────────────────────────────────────── */
 export const mockApi = {
   logEvent: (name: string, payload?: unknown) => event(name, payload),
@@ -124,7 +124,7 @@ export const mockApi = {
 };
 
 /* ─────────────────────────────────────────────────────────────
-   Real API (Supabase-backed) — used when keys are configured
+   Real API (Supabase-backed), used when keys are configured
    ───────────────────────────────────────────────────────────── */
 export const realApi = {
   isConfigured: () => isSupabaseConfigured(),
@@ -189,7 +189,7 @@ export const realApi = {
 };
 
 /* ─────────────────────────────────────────────────────────────
-   Unified entry point — picks real or mock based on config
+   Unified entry point, picks real or mock based on config
    ───────────────────────────────────────────────────────────── */
 export const api = {
   ...mockApi,

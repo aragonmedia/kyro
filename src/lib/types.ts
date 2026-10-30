@@ -1,5 +1,5 @@
 /**
- * Kyro — Shared Type Definitions
+ * Kyro, Shared Type Definitions
  *
  * These types describe the shape of every entity that flows through Kyro.
  * Used by App UI, lib/api.ts, lib/meta.ts, lib/supabase.ts, and the future
@@ -130,7 +130,7 @@ export interface Submission {
   status: SubmissionStatus;
   metaAdId?: string;            // populated once pushed to Meta
   metaCreativeId?: string;
-  aiTags: string[];             // angle, persona, creative DNA — populated by AI tagging job
+  aiTags: string[];             // angle, persona, creative DNA: populated by AI tagging job
   submittedAt: string;
   approvedAt?: string;
 }
@@ -184,7 +184,7 @@ export interface MetaInsightsSnapshot {
   cpa: number;                   // spend / conversions
 }
 
-/** Notification surface — both email and in-app. */
+/** Notification surface, both email and in-app. */
 export interface Notification {
   id: string;
   userId: string;

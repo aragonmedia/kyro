@@ -1,4 +1,4 @@
-# KYRO — Commercial Model (settled)
+# KYRO: Commercial Model (settled)
 
 _Last updated: 2026-09-09. This is the source of truth for how money moves through KYRO.
 `docs/legal/TERMS_OF_SERVICE.md` is this document written in legal language; if the two
@@ -18,7 +18,7 @@ KYRO connects Shopify brands with vetted creators, turns approved creator video 
 orders those ads drive through the brand's Shopify store, and settles commission between
 brand and creator.
 
-**Scope boundary:** KYRO is off-platform only — Meta ads plus Shopify. TikTok Shop is
+**Scope boundary:** KYRO is off-platform only, Meta ads plus Shopify. TikTok Shop is
 Kyvo's lane, as a registered TikTok Shop partner. Keep the products, the data and the
 compliance surfaces separate.
 
@@ -62,7 +62,7 @@ their media and are annoyed when Meta bills them separately.
 
 For reference, Trybe's published rack rate is 1.5% / 1.25% / 1.5% on the same three bases.
 
-### Commissionable value — define it once, use it everywhere
+### Commissionable value, define it once, use it everywhere
 
 > **Commissionable value = product subtotal, after discounts, excluding shipping, taxes
 > and duties, net of refunds and chargebacks.**
@@ -119,7 +119,7 @@ Four states. The creator sees all of them, live, and each is labelled distinctly
 Notes:
 - Shopify reliably reports *fulfilled*. Carrier *delivered* events are patchy, so
   eligibility keys off fulfilled + 30 days rather than delivery confirmation.
-- Pending updates live and is shown prominently — that immediacy is the point — but it is
+- Pending updates live and is shown prominently, that immediacy is the point, but it is
   never presented as money the creator has.
 - **Reversals are shown explicitly, never silently decremented.** A creator who watches a
   number drop with no explanation is a creator who stops trusting the platform.
@@ -143,7 +143,7 @@ not on "sales the video caused".
 ### The hinge
 Approved videos run as Partnership Ads **inside the brand's own ad account**, billed
 by Meta to the brand, published under the creator's handle. KYRO creates the ad, so
-**KYRO controls its destination URL** — which is where the token goes. If a brand
+**KYRO controls its destination URL**, which is where the token goes. If a brand
 built the ad themselves there would be nowhere to inject an identifier and the whole
 chain would not exist.
 
@@ -160,7 +160,7 @@ chain would not exist.
 ### Reading it back from Shopify
 **`landing_site` is deprecated** (REST Admin API retired 1 Oct 2024). Use the GraphQL
 `customerJourneySummary` / `customerVisit` objects, which expose `utmParameters`,
-`source` and `referrerUrl` **per visit** — multiple touchpoints, not just the last.
+`source` and `referrerUrl` **per visit**, multiple touchpoints, not just the last.
 
 > **Dependency:** customer journey data is customer browsing behaviour and sits behind
 > Shopify's **protected customer data** approval. Attribution does not work until that
@@ -199,21 +199,21 @@ The commercial protection lives here, not in damages clauses.
 - The creator grants **KYRO** a license broad enough to sublicense to the brand and to
   enforce against misuse. Without this, KYRO is only a witness to someone else's claim.
 - KYRO grants the **brand** a license that is:
-  - **limited** — paid advertising only
-  - **scoped** — the *connected* Meta ad account, measured through the *connected* Shopify
+  - **limited**, paid advertising only
+  - **scoped**, the *connected* Meta ad account, measured through the *connected* Shopify
     store, and nowhere else
   - **non-exclusive, non-transferable, no sublicensing**
-  - **time-bound** — campaign term plus a stated tail
+  - **time-bound**, campaign term plus a stated tail
   - **conditioned on payment in full**
 - Anything wider (organic reposting, other paid channels, email, marketplaces, extended
   term, exclusivity) is a **separate paid license**. This is a real upsell, not a
-  restriction — and giving it away free means giving away the usage KYRO cannot measure.
+  restriction, and giving it away free means giving away the usage KYRO cannot measure.
 
 ### Enforcement, in order of what actually works
-1. **Already holding the money** — ACH auto-charge before a dispute exists.
-2. **Revoke Meta partnership permissions** — their ads stop serving. Immediate and free.
-3. **Suspend the integration** — creative pipeline and dashboard go away.
-4. **Terminate the license, then issue takedowns** — post-termination use is copyright
+1. **Already holding the money**, ACH auto-charge before a dispute exists.
+2. **Revoke Meta partnership permissions**, their ads stop serving. Immediate and free.
+3. **Suspend the integration**, creative pipeline and dashboard go away.
+4. **Terminate the license, then issue takedowns**, post-termination use is copyright
    infringement, which is real law.
 5. **Collections for unpaid amounts** plus interest, costs and attorneys' fees.
 
@@ -227,7 +227,7 @@ attorneys'-fees clause is worth far more, because it makes small claims worth pu
 ## 9. Creator roster and matching
 
 - Creators **apply and are accepted** into a campaign. Gated, not an open marketplace.
-- The brand sees a **niche-filtered roster**, not the whole network — only creators
+- The brand sees a **niche-filtered roster**, not the whole network, only creators
   plausibly relevant to their product.
 - The brand **approves or denies each creator** before the campaign starts, then approves
   or rejects each submitted video.
@@ -267,12 +267,12 @@ defining the deal so they aren't KYRO's problem.
       moves funds, not KYRO
 - [ ] Confirm Vercel plan permits commercial use (currently Hobby)
 - [ ] Decide the extended-usage-rights price list (the licensing upsell in §8)
-- [x] Migration `0003_commercial_model.sql` written — connections, orders, attributions,
+- [x] Migration `0003_commercial_model.sql` written, connections, orders, attributions,
       earnings state machine, billing runs, licences and agreements
 
 ---
 
-## 12. Choice of law — resolved, with one open question
+## 12. Choice of law, resolved, with one open question
 
 The entity is a **Delaware** company at a Delaware registered address, and the Terms name
 Delaware law and Delaware as the forum. Law and entity now match, which is the normal,
@@ -282,7 +282,7 @@ gone.
 **Still worth one question to counsel:** the forum clause is *exclusive*, so KYRO has to
 litigate in Delaware, including when chasing an unpaid brand, while the operator is in
 Washington. That is standard for a Delaware company and not a defect, but it does make a
-small collections claim uneconomic to pursue in person — which is the case the
+small collections claim uneconomic to pursue in person, which is the case the
 attorneys'-fees clause in §8 exists to make viable.
 
 A common fix is to keep Delaware law and the Delaware forum for substantive disputes, and

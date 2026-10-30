@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — Core schema (Pillar 3)
+-- KYRO: Core schema (Pillar 3)
 -- brands · creators · campaigns · applications · submissions ·
 -- ledger_entries · payouts · meta_insights · notifications
 -- Run AFTER 0001_profiles.sql. Money is always integer cents (bigint).

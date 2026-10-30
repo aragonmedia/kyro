@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0011: brand ACH billing accounts
+-- KYRO: 0011: brand ACH billing accounts
 --
 -- Commission is billed to a brand's bank account by ACH, not to a card, so
 -- card processing fees do not eat the 1% KYRO fee. This is where those bank

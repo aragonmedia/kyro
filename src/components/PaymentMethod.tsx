@@ -3,7 +3,7 @@
  *
  * KYRO charges the brand once per payment run and transfers each creator
  * their share, which is Stripe's "separate charges and transfers" model. That
- * means the brand side is an ordinary Stripe Customer with a payment method —
+ * means the brand side is an ordinary Stripe Customer with a payment method,
  * no Connect account needed on this side. Connect accounts are for the
  * creators receiving money, not the brands sending it.
  *

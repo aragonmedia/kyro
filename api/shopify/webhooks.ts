@@ -1,5 +1,5 @@
 /**
- * KYRO — Shopify webhook receiver
+ * KYRO: Shopify webhook receiver
  *
  * One endpoint, every topic. Shopify posts here; nothing else may.
  *
@@ -290,7 +290,7 @@ async function handleUninstall(
 }
 
 /**
- * shop/redact — Shopify asks us to erase a shop's data, 48h after uninstall.
+ * shop/redact, Shopify asks us to erase a shop's data, 48h after uninstall.
  *
  * Orders are cascaded away with the connection. Attributions and earnings
  * survive only where a creator is owed money for them, which is a legal

@@ -1,23 +1,23 @@
-# KYRO — Full Handoff Document
+# KYRO: Full Handoff Document
 
 _Last updated: 2026-09-08. Written for another Claude (Cowork) picking up this project cold. Read this top to bottom before touching anything._
 
 ---
 
-## 0. TL;DR — what KYRO is and where it stands
+## 0. TL;DR, what KYRO is and where it stands
 
 **KYRO** is a creator-marketing / Meta-ads performance platform for Aragon Media (owner: Kevin Aragon). Brands fund campaigns, creators submit short-form UGC, approved videos run as **whitelisted Meta ads**, and everyone is paid on **real performance** (ROAS, orders). **Trybe (jointrybe.com) is the #1 reference/replication target.**
 
 **Current state:** Live on Vercel with **email + password auth** (Supabase), a profiles/onboarding system, admin gating, light/dark theming, a deployed 10-table Postgres schema with RLS, and the **Brand dashboard reading real campaign rows from Postgres**. Creator and Admin dashboards still render mock `SEED_*` data. Creator-side apply/upload is the next chunk.
 
-The user (Kevin) is **not a developer** — he handles dashboard clicks (Supabase, Vercel, GitHub Desktop) with clear step-by-step guidance, and Claude does all the code. Be concrete and patient with dashboard instructions.
+The user (Kevin) is **not a developer**, he handles dashboard clicks (Supabase, Vercel, GitHub Desktop) with clear step-by-step guidance, and Claude does all the code. Be concrete and patient with dashboard instructions.
 
 ---
 
-## 1. Workflow, repo & deployment (CRITICAL — read first)
+## 1. Workflow, repo & deployment (CRITICAL: read first)
 
 ### The folder
-- **Local working folder:** `~/Desktop/Kyro` (the connected Cowork folder — edit files here).
+- **Local working folder:** `~/Desktop/Kyro` (the connected Cowork folder, edit files here).
 - This folder **is** the git repo, connected via the **GitHub Desktop app** on Kevin's Mac.
 
 ### The push flow (Claude does NOT push)
@@ -43,7 +43,7 @@ rm -rf $HOME/kyrobuild/src && cp -R $HOME/mnt/Kyro/src $HOME/kyrobuild/src
 cd $HOME/kyrobuild && npx tsc --noEmit -p tsconfig.app.json && npx vite build && npx eslint src
 ```
 
-**Never** run `npm install` inside `~/Desktop/Kyro` from the device shell — it is a Linux VM, and esbuild/rollup ship platform-specific binaries that would break nothing locally but pollute the repo folder.
+**Never** run `npm install` inside `~/Desktop/Kyro` from the device shell, it is a Linux VM, and esbuild/rollup ship platform-specific binaries that would break nothing locally but pollute the repo folder.
 
 ### Network from the shells
 The device shell and the cloud container are both **blocked from `*.supabase.co`** by egress policy. To inspect the live database, drive Kevin's Chrome (`mcp__claude-in-chrome__*`) and `fetch()` from a page already on the Supabase origin.
@@ -58,16 +58,16 @@ The device shell and the cloud container are both **blocked from `*.supabase.co`
 
 ## 2. Tech stack & codebase map
 
-- **Vite + React 18 + TypeScript + Tailwind CSS.** No backend server — Supabase is the backend.
+- **Vite + React 18 + TypeScript + Tailwind CSS.** No backend server, Supabase is the backend.
 - **Single-file app:** almost everything is in **`src/App.tsx`** (~2,500 lines): landing, auth screens, onboarding, app shell, brand/creator/admin dashboards, public profiles, about, settings.
 - **`src/lib/`:**
-  - `theme.tsx` — ThemeProvider + `useTheme()` (light/dark).
-  - `supabase.ts` — client + **email/password auth**: `signInWithPassword`, `signUpWithPassword`, `sendPasswordReset`, `updatePassword`, `describeAuthError`, `getMyProfile`, `saveMyProfile`, `signOut`, `getCurrentUser`, `isSupabaseConfigured`.
-  - `session.tsx` — `SessionProvider` / `useSession()`. Restores the persisted session on load, exposes `{ready, configured, userId, email, role, brand, creator, workspaceLoading, workspaceError, refresh, adoptRole, signOut}`, and **provisions the `brands`/`creators` row** a user needs before RLS will let them write. Every boot-path call is time-boxed (8s) so a dead backend can't hang the app on the loading screen.
-  - `db.ts` — the typed DB boundary. Row types mirroring Postgres, snake_case↔camelCase mappers, and no-throw `{data, error}` on every call. **Nothing in App.tsx touches `supabase.from(...)` directly.** Money converts cents↔dollars here and nowhere else.
-  - `api.ts` — `mockApi` (demo event logger) + `realApi` (partly superseded by `db.ts`).
-  - `meta.ts` — Meta Marketing API **stubs** for Phase 2.
-  - `types.ts` — **single source of truth for entity shapes.** Money is integer **cents**.
+  - `theme.tsx`, ThemeProvider + `useTheme()` (light/dark).
+  - `supabase.ts`, client + **email/password auth**: `signInWithPassword`, `signUpWithPassword`, `sendPasswordReset`, `updatePassword`, `describeAuthError`, `getMyProfile`, `saveMyProfile`, `signOut`, `getCurrentUser`, `isSupabaseConfigured`.
+  - `session.tsx`, `SessionProvider` / `useSession()`. Restores the persisted session on load, exposes `{ready, configured, userId, email, role, brand, creator, workspaceLoading, workspaceError, refresh, adoptRole, signOut}`, and **provisions the `brands`/`creators` row** a user needs before RLS will let them write. Every boot-path call is time-boxed (8s) so a dead backend can't hang the app on the loading screen.
+  - `db.ts`, the typed DB boundary. Row types mirroring Postgres, snake_case↔camelCase mappers, and no-throw `{data, error}` on every call. **Nothing in App.tsx touches `supabase.from(...)` directly.** Money converts cents↔dollars here and nowhere else.
+  - `api.ts`, `mockApi` (demo event logger) + `realApi` (partly superseded by `db.ts`).
+  - `meta.ts`, Meta Marketing API **stubs** for Phase 2.
+  - `types.ts`, **single source of truth for entity shapes.** Money is integer **cents**.
 - **Routing:** hand-rolled path router in `App.tsx` (`readRoute()`), no react-router. Paths: `/`, `/signin`, `/login`, `/signup`, `/join`, `/forgot-password`, `/reset-password`, `/admin`.
 
 ### Design tokens / theming
@@ -92,7 +92,7 @@ UI components in `App.tsx`: `AuthShell`, `SignIn`, `SignUp`, `ForgotPassword`, `
 
 ### Required Supabase dashboard settings
 - **Authentication → URL Configuration → Site URL** = `https://itskyro.com`
-- **Redirect URLs** must include `https://itskyro.com/reset-password` — without it the reset link dead-ends.
+- **Redirect URLs** must include `https://itskyro.com/reset-password`, without it the reset link dead-ends.
 - **Email Templates → Reset Password** = `email-templates/kyro-reset-password.html`, subject `Reset your KYRO password`.
 - **"Confirm email" stays OFF** (sign-up returns a live session immediately). If it is ever switched on, `SignUp` already handles it with a "check your inbox" state.
 
@@ -112,13 +112,13 @@ One email = one role (single `role` column). Use 3 emails + 3 Chrome profiles:
 - **Project ref:** `blmsjeniotlkpsslfrrl` · **URL:** `https://blmsjeniotlkpsslfrrl.supabase.co`
 - **Anon key** in `~/Desktop/Kyro/.env.local` (gitignored) and in Vercel env (Production + Preview): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
 - **Custom SMTP = Resend.** Sender `kyro@kyvoco.com`, host `smtp.resend.com`, port `465`, user `resend`.
-- **Resend account `kyvoco`** — only `kyvoco.com` is verified there, so Kyro's sender must be `@kyvoco.com`.
-- **Email template:** `email-templates/kyro-reset-password.html` → Auth → Email Templates → **Reset Password**. `kyro-signin-code.html` is **retired** (OTP is gone), kept for reference only — do not paste it.
+- **Resend account `kyvoco`**, only `kyvoco.com` is verified there, so Kyro's sender must be `@kyvoco.com`.
+- **Email template:** `email-templates/kyro-reset-password.html` → Auth → Email Templates → **Reset Password**. `kyro-signin-code.html` is **retired** (OTP is gone), kept for reference only, do not paste it.
 
-### Database — DEPLOYED (all 10 tables live, verified Sept 2026)
-- `supabase/migrations/0001_profiles.sql` — `profiles` (1:1 with `auth.users`), auto-create trigger, RLS, `role` enum (brand/creator/admin), `onboarded`.
-- `supabase/migrations/0002_core_schema.sql` — `brands, creators, campaigns, applications, submissions, ledger_entries, payouts, meta_insights, notifications` + enums + FKs/indexes + **RLS** + `is_admin()`. Money = `bigint` cents.
-- `supabase/make-admin.sql` — grants admin by email (applied for `aragonkevin239@gmail.com`).
+### Database, DEPLOYED (all 10 tables live, verified Sept 2026)
+- `supabase/migrations/0001_profiles.sql`, `profiles` (1:1 with `auth.users`), auto-create trigger, RLS, `role` enum (brand/creator/admin), `onboarded`.
+- `supabase/migrations/0002_core_schema.sql`, `brands, creators, campaigns, applications, submissions, ledger_entries, payouts, meta_insights, notifications` + enums + FKs/indexes + **RLS** + `is_admin()`. Money = `bigint` cents.
+- `supabase/make-admin.sql`, grants admin by email (applied for `aragonkevin239@gmail.com`).
 
 **RLS summary:** brand owners manage their brands/campaigns; creators manage own profile/applications/submissions; any signed-in user browses the marketplace; ledger/meta_insights admin-only; notifications per-user; `is_admin()` overrides.
 
@@ -139,7 +139,7 @@ The dashboard renders black in automated screenshots and clicks miss the Monaco 
 | Var | Where | Notes |
 |---|---|---|
 | `VITE_SUPABASE_URL` | Vercel (Prod+Preview) + `.env.local` | Must include `https://`. `getSupabase()` normalizes defensively. |
-| `VITE_SUPABASE_ANON_KEY` | Vercel (Prod+Preview) + `.env.local` | Public/anon key only — never service_role in a `VITE_` var. |
+| `VITE_SUPABASE_ANON_KEY` | Vercel (Prod+Preview) + `.env.local` | Public/anon key only, never service_role in a `VITE_` var. |
 
 **Redeploy after any env change** (Vite build-time embedding).
 
@@ -152,7 +152,7 @@ Full capture in **`docs/TRYBE_REFERENCE.md`**. Key points:
 - **Look:** light/white theme, violet-purple accent, floating rounded-pill nav, huge bold near-black hero type, generous whitespace. Kyro supports light **and** dark.
 - **Auth pages** (`/auth/login`, `/auth/signup`): centered logo over a white card, pill-shaped grey inputs with placeholder-only labels, violet pill CTA, "Forgot your password?" left-aligned above the button, role segmented control on sign-up (Brand / Agency, with Creator as a text link), terms checkbox gating the button. Kyro's auth screens now mirror this.
 - **Partner Portal IA** to mirror as Kyro's app nav: **Dashboard · Submissions · Chat · Brands · Campaigns · Creators · Finance · Settings.**
-- Their privacy policy (checked Sept 2026) names only **Trybe Tech, Inc.**; third parties are infrastructure vendors (Cloudflare, Stripe, Meta, Resend, Supabase, Shopify). Notably it contains **no content-usage or whitelisting rights language at all** — if Kyro copies their structure, don't copy that gap.
+- Their privacy policy (checked Sept 2026) names only **Trybe Tech, Inc.**; third parties are infrastructure vendors (Cloudflare, Stripe, Meta, Resend, Supabase, Shopify). Notably it contains **no content-usage or whitelisting rights language at all**, if Kyro copies their structure, don't copy that gap.
 - Kevin has a live Trybe **partner** login (org "Kyvo") and will screen-share pages for reference.
 
 ---
@@ -161,12 +161,12 @@ Full capture in **`docs/TRYBE_REFERENCE.md`**. Key points:
 
 Full detail in **`docs/ROADMAP.md`**. Snapshot:
 
-- **Phase 0 — DONE:** themed demo, landing, auth, profiles, onboarding, admin gating.
-- **Phase 1 — IN PROGRESS:**
+- **Phase 0, DONE:** themed demo, landing, auth, profiles, onboarding, admin gating.
+- **Phase 1, IN PROGRESS:**
   - DONE: `lib/db.ts` data layer; `lib/session.tsx` (restore + workspace provisioning); Brand dashboard reads real campaigns with loading/empty/error states; Create Campaign writes a real `campaigns` row; email+password auth with reset.
   - NEXT: **Creator → browse, apply & upload** (writes `applications` + `submissions`, video to Supabase Storage), then **Brand → review/approve submissions**.
-- **Phase 2 — Money & ads:** Meta OAuth + whitelisting + push-to-ad + insights; Square (brand pool funding) + Trolley (creator payouts) + double-entry ledger.
-- **Phase 3 — Scale:** chat + notifications, server-side attribution, live leaderboards, moderation, compliance.
+- **Phase 2, Money & ads:** Meta OAuth + whitelisting + push-to-ad + insights; Square (brand pool funding) + Trolley (creator payouts) + double-entry ledger.
+- **Phase 3, Scale:** chat + notifications, server-side attribution, live leaderboards, moderation, compliance.
 
 ---
 
@@ -195,18 +195,18 @@ Full detail in **`docs/ROADMAP.md`**. Snapshot:
 2. **`VITE_SUPABASE_URL` must be a full `https://…` URL.**
 3. **Resend sender must be `@kyvoco.com`** (only verified domain in that Resend account).
 4. **Do NOT mention "Aragon Media" in Kyro's UI/copy/email.** Kevin asked for it removed. Keep it out.
-5. **Claude CAN build** (Section 1) and MUST, because **Kevin never builds or runs the app locally** — he only reviews the deployed site.
+5. **Claude CAN build** (Section 1) and MUST, because **Kevin never builds or runs the app locally**, he only reviews the deployed site.
 6. **Supabase dashboard automation** renders black + flaky; use the `monaco…setValue()` + `cmd+Return` + DOM-read method.
-7. **Claude never pushes** — Kevin pushes from GitHub Desktop.
+7. **Claude never pushes**, Kevin pushes from GitHub Desktop.
 8. Money is **integer cents** everywhere. `db.ts` is the only place cents↔dollars conversion happens.
 9. **Supabase Free auto-pauses** after ~1 week idle. It happened Sept 2026: the project ref stopped resolving in DNS and the live site's sign-in broke silently. Restoring from the dashboard fixes it and keeps the same ref/URL/keys. Upgrade to Pro if it keeps biting before demos.
-10. **The mounted repo blocks file deletes** from the device shell (`rm` → "Operation not permitted"). `git status` can leave a stale `.git/index.lock` that then blocks commits in GitHub Desktop — `mv` it out of `.git` rather than deleting. Prefer `git --no-optional-locks status`.
+10. **The mounted repo blocks file deletes** from the device shell (`rm` → "Operation not permitted"). `git status` can leave a stale `.git/index.lock` that then blocks commits in GitHub Desktop, `mv` it out of `.git` rather than deleting. Prefer `git --no-optional-locks status`.
 11. **RLS keys off ownership:** a brand user cannot insert a campaign until a `brands` row with their `auth.uid()` exists. `session.tsx` guarantees it before any write. Same for creators.
-12. Both shells are **egress-blocked from supabase.co** — inspect the live DB through Kevin's Chrome (Section 4).
+12. Both shells are **egress-blocked from supabase.co**, inspect the live DB through Kevin's Chrome (Section 4).
 13. React **StrictMode double-invokes effects**, which would double-insert a brand row. `session.tsx` dedupes provisioning on a module-level in-flight promise. Don't remove that.
 
 ---
 
 ## 10. How to resume in one paragraph
 
-KYRO is live at itskyro.com on Supabase (project `blmsjeniotlkpsslfrrl`), with **email + password auth** (sign in, sign up with a Brand/Creator toggle, forgot password, reset), a deployed 10-table Postgres schema with RLS, and a **Brand dashboard that reads real campaign rows** through `src/lib/db.ts`. `src/lib/session.tsx` restores the session on reload and provisions the `brands`/`creators` row RLS requires before any write. Creator and Admin dashboards still render `SEED_*` mock data. The next job is the **creator side**: browse live campaigns, apply (writes `applications`), upload video to Supabase Storage (writes `submissions`), then Brand review/approve. Edit in `~/Desktop/Kyro`; **always typecheck and build first** (Section 1) because Kevin never runs the app locally — he reviews the deployed site. Kevin reviews and pushes from GitHub Desktop; Claude never pushes.
+KYRO is live at itskyro.com on Supabase (project `blmsjeniotlkpsslfrrl`), with **email + password auth** (sign in, sign up with a Brand/Creator toggle, forgot password, reset), a deployed 10-table Postgres schema with RLS, and a **Brand dashboard that reads real campaign rows** through `src/lib/db.ts`. `src/lib/session.tsx` restores the session on reload and provisions the `brands`/`creators` row RLS requires before any write. Creator and Admin dashboards still render `SEED_*` mock data. The next job is the **creator side**: browse live campaigns, apply (writes `applications`), upload video to Supabase Storage (writes `submissions`), then Brand review/approve. Edit in `~/Desktop/Kyro`; **always typecheck and build first** (Section 1) because Kevin never runs the app locally, he reviews the deployed site. Kevin reviews and pushes from GitHub Desktop; Claude never pushes.

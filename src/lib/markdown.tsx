@@ -1,9 +1,9 @@
 /**
- * Kyro — Minimal markdown renderer
+ * Kyro, Minimal markdown renderer
  *
  * Just enough to render the legal documents faithfully: headings, paragraphs,
  * lists, tables, blockquotes, rules, bold, inline code and links. Deliberately
- * not a general-purpose markdown library — pulling one in for two documents
+ * not a general-purpose markdown library, pulling one in for two documents
  * would add a dependency and a bundle for no gain.
  *
  * Everything renders through the app's theme tokens so the pages work in light

@@ -1,9 +1,9 @@
 /**
- * KYRO — service-role Supabase client
+ * KYRO: service-role Supabase client
  *
  * Bypasses row-level security, so it is the only way to write `orders`,
  * `order_attributions`, `earnings` and `platform_credentials`. It must never
- * be imported by anything under src/ — that code ships to the browser.
+ * be imported by anything under src/, that code ships to the browser.
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';

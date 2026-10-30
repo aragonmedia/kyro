@@ -1,5 +1,5 @@
 /**
- * KYRO — Shopify Admin GraphQL
+ * KYRO: Shopify Admin GraphQL
  *
  * One job: ask a store how a customer arrived, so an order can be traced back
  * to the creator video that earned it.

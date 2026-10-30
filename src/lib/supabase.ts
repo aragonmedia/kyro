@@ -1,11 +1,11 @@
 /**
- * Kyro — Supabase Client + Auth
+ * Kyro, Supabase Client + Auth
  *
  * Auth is email + password (Supabase GoTrue). The earlier 6-digit email OTP
  * flow has been removed: one password field beats waiting on an inbox, and it
  * matches how the rest of the category signs people in.
  *
- * The service_role key MUST NEVER be referenced from this file — it only
+ * The service_role key MUST NEVER be referenced from this file, it only
  * lives in server-side functions.
  */
 
@@ -28,7 +28,7 @@ export function getSupabase(): SupabaseClient | null {
   const rawUrl = import.meta.env.VITE_SUPABASE_URL;
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   if (!rawUrl || !anonKey) {
-    // Demo mode — no keys configured. Caller should fall back to the demo flow.
+    // Demo mode, no keys configured. Caller should fall back to the demo flow.
     return null;
   }
   if (!_client) {
@@ -41,7 +41,7 @@ export function getSupabase(): SupabaseClient | null {
         },
       });
     } catch (e) {
-      console.error('[kyro] Supabase client init failed — check VITE_SUPABASE_URL', e);
+      console.error('[kyro] Supabase client init failed: check VITE_SUPABASE_URL', e);
       return null;
     }
   }
@@ -99,7 +99,7 @@ function resetRedirectUrl(): string {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Auth — email + password
+   Auth, email + password
    ───────────────────────────────────────────────────────────── */
 
 export interface AuthResult {

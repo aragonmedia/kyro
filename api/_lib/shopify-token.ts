@@ -1,5 +1,5 @@
 /**
- * KYRO — getting a usable Shopify access token for a stored connection.
+ * KYRO: getting a usable Shopify access token for a stored connection.
  *
  * This is the ONLY supported way to obtain a token for an Admin API call.
  * Nothing else should unseal platform_credentials directly.

@@ -8,18 +8,18 @@ from your own domain. If the deploy hasn't landed the database is correct but
 the browser shows nothing, which looks exactly like failed SQL.
 
 Every file is safe to run twice. Lost your place? Run
-`supabase/diagnose.sql` — it reports which steps have run.
+`supabase/diagnose.sql`, it reports which steps have run.
 
 ---
 
 ## Already done
 
-1. `migrations/0014_products_and_chat.sql` — products, content direction, chat
-2. `seed/set_demo_covers.sql` — campaign cover images
-3. `seed/seed_products.sql` — content direction and product listings
-4. `seed/set_brand_logos.sql` — brand logos
-5. `seed/set_submission_thumbs.sql` — video frames on the six submissions
-6. `migrations/0015_brand_setup.sql` — brand setup columns
+1. `migrations/0014_products_and_chat.sql`, products, content direction, chat
+2. `seed/set_demo_covers.sql`, campaign cover images
+3. `seed/seed_products.sql`, content direction and product listings
+4. `seed/set_brand_logos.sql`, brand logos
+5. `seed/set_submission_thumbs.sql`, video frames on the six submissions
+6. `migrations/0015_brand_setup.sql`, brand setup columns
 
 ---
 
@@ -38,7 +38,7 @@ brand a user owns, and the auto-provisioned one predates the seed. Setting
 It deliberately leaves `brand_connections` alone, so Shopify and Meta stay
 unconnected and the live connect demo still works.
 
-**You should see:** one row — Bold Buns, handle `bold-buns`, `setup_complete`
+**You should see:** one row, Bold Buns, handle `bold-buns`, `setup_complete`
 true, with 1 campaign, 2 submissions, and a non-zero order and earning count.
 
 ### 8. `seed/seed_chat.sql`
@@ -49,12 +49,12 @@ brand passed on.
 
 ⚠ This **disables the `messages_stamp_sender` trigger** for the length of the
 insert, then turns it back on in the same transaction. That trigger is what
-stops a client posting as someone else — the SQL editor has no `auth.uid()`,
+stops a client posting as someone else, the SQL editor has no `auth.uid()`,
 so seeded messages can't be stamped. The last query in the file proves the
 trigger is back on.
 
 **You should see:** two result tables. First: `campaign 4`, `submission 3`.
-Second: the trigger with verdict **"ON — senders are stamped from the
+Second: the trigger with verdict **"ON, senders are stamped from the
 session"**. If that second one says OFF, stop and tell me.
 
 ---

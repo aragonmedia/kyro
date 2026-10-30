@@ -2,7 +2,7 @@
  * What a campaign actually is, before a creator commits to making anything.
  *
  * Browse gives a name and a brand. That is not enough to decide with. This is
- * the product being sold, the rate, and the direction the brand wants — the
+ * the product being sold, the rate, and the direction the brand wants, the
  * three things a creator weighs, in one place.
  */
 
@@ -236,7 +236,7 @@ export function CampaignDetailModal({
               </button>
             ) : status === 'pending' ? (
               <span className="px-4 py-2.5 rounded-lg border border-line bg-surface-2 text-sm font-semibold text-muted">
-                Applied — waiting on the brand
+                Applied, waiting on the brand
               </span>
             ) : (
               <button

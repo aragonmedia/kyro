@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- 0027 — Stripe Connect: where a creator's payout account lives
+-- 0027: Stripe Connect: where a creator's payout account lives
 --
 -- Creators are Express connected accounts. Stripe hosts their onboarding,
 -- verifies their identity and files their 1099, and the money moves from

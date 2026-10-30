@@ -20,7 +20,7 @@
   money and advances none (§14, §15).
 -->
 
-# KYRO — Terms of Service
+# KYRO: Terms of Service
 
 **Effective date:** October 23, 2026
 
@@ -33,7 +33,7 @@ Part D applies to everyone.
 
 ---
 
-## Part A — General
+## Part A, General
 
 ### 1. What KYRO does
 
@@ -54,29 +54,29 @@ per account unless we agree otherwise in writing.
 
 ### 3. Definitions
 
-- **Campaign** — a Brand's program with a stated commission rate, brief and deliverables.
-- **Submission** — a video a Creator uploads to a Campaign.
-- **Approved Video** — a Submission the Brand has accepted.
-- **Connected Accounts** — the Brand's Meta ad account and Shopify store, linked to KYRO.
-- **Attributed Order** — an order recorded in the Connected Shopify store that KYRO
+- **Campaign**, a Brand's program with a stated commission rate, brief and deliverables.
+- **Submission**, a video a Creator uploads to a Campaign.
+- **Approved Video**, a Submission the Brand has accepted.
+- **Connected Accounts**, the Brand's Meta ad account and Shopify store, linked to KYRO.
+- **Attributed Order**, an order recorded in the Connected Shopify store that KYRO
   attributes to an Approved Video under the attribution rule published for that Campaign.
-- **Commissionable Value** — product subtotal, after discounts, **excluding** shipping,
+- **Commissionable Value**, product subtotal, after discounts, **excluding** shipping,
   taxes and duties, and **net of** refunds and chargebacks.
-- **Creator Commission** — the percentage or amount the Brand sets for a Campaign, applied
+- **Creator Commission**, the percentage or amount the Brand sets for a Campaign, applied
   to Commissionable Value (or to ad spend or a flat fee, where the Campaign says so).
-- **KYRO Fee** — 1%, as described in §8.
-- **Payment Run** — one authorised payment covering every Attributed Order that has
+- **KYRO Fee**, 1%, as described in §8.
+- **Payment Run**, one authorised payment covering every Attributed Order that has
   reached Available and not yet been paid for. One charge to the Brand, one transfer to
   each Creator it covers.
-- **Due Date** — the date Creator Commission on an Attributed Order becomes payable, being
+- **Due Date**, the date Creator Commission on an Attributed Order becomes payable, being
   30 days after that Order reaches Available.
-- **Processing Cost** — the fee the payment processor charges to take a payment by the
+- **Processing Cost**, the fee the payment processor charges to take a payment by the
   method you chose. It is added to the amount charged and paid to the processor in full.
   KYRO retains no part of it and adds no margin to it.
 
 ---
 
-## Part B — Brand Terms
+## Part B, Brand Terms
 
 ### 4. Required connections
 
@@ -169,7 +169,7 @@ to KYRO by installing it from the Shopify App Store, no KYRO Fee is charged on o
 in your first 30 days. The KYRO Fee applies as described above to orders placed after that.
 Creator Commission is payable throughout.
 
-### 9. Content license — scope, term and conditions
+### 9. Content license, scope, term and conditions
 
 **The Creator owns their video.** Nothing here transfers ownership to you or to KYRO.
 
@@ -199,8 +199,8 @@ licence the period in between.
 required by the ad placement. You may not create other derivative works, and you may not
 remove or alter any disclosure.
 
-Anything outside this scope — organic reposting, other paid channels, other ad accounts,
-longer terms, exclusivity, whitelisting beyond the Campaign — requires a **separate paid
+Anything outside this scope, organic reposting, other paid channels, other ad accounts,
+longer terms, exclusivity, whitelisting beyond the Campaign, requires a **separate paid
 licence**. Ask us; these are available.
 
 You will not download, copy, retain or archive an Approved Video except as needed to run
@@ -234,7 +234,7 @@ Termination does not relieve you of amounts accrued before it.
 
 ---
 
-## Part C — Creator Terms
+## Part C, Creator Terms
 
 ### 12. Applying and producing
 
@@ -250,7 +250,7 @@ it complies with applicable advertising and disclosure rules.
 
 **You keep ownership of your video.** You grant KYRO a non-exclusive, worldwide licence to
 host your Submissions, to sublicense Approved Videos to the Brand strictly within the
-scope in §9, and to enforce that scope against misuse — including bringing or joining a
+scope in §9, and to enforce that scope against misuse, including bringing or joining a
 claim where a Brand uses your work outside it.
 
 You also grant KYRO a limited right to show your Submissions and profile to Brands within
@@ -314,7 +314,7 @@ We may withhold or reverse earnings obtained this way, and close accounts for it
 
 ---
 
-## Part D — General
+## Part D, General
 
 ### 17. Privacy and data protection
 
@@ -326,8 +326,8 @@ customer-journey data from that store. As to that data the Brand is the controll
 "business") and KYRO is a processor (or "service provider") acting on the Brand's
 instructions. We agree that we:
 
-- process that data only to provide KYRO — matching orders to Approved Videos, computing
-  Commissionable Value, and settling amounts between Brand and Creator — and for no other
+- process that data only to provide KYRO: matching orders to Approved Videos, computing
+  Commissionable Value, and settling amounts between Brand and Creator, and for no other
   purpose;
 - do not sell it, do not share it for cross-context behavioural advertising, and do not
   combine it with data from other sources except as permitted by law;

@@ -1,5 +1,5 @@
 /**
- * KYRO — video uploads.
+ * KYRO: video uploads.
  *
  * Videos go into a PRIVATE Supabase Storage bucket. Creator work is licensed
  * to a brand for a campaign, so it must not sit on a public URL that keeps

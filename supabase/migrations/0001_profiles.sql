@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — profiles table, auto-provisioning trigger, and RLS
+-- KYRO: profiles table, auto-provisioning trigger, and RLS
 -- Run this in Supabase → SQL Editor (or via the Supabase CLI).
 -- Backs the auth workflow: every auth user gets a profile row; the
 -- app checks `role`/`onboarded` after OTP verify to decide whether to

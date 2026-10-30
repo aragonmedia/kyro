@@ -9,7 +9,7 @@
 -- the brand test account already owns, then deletes the now-empty demo row.
 -- Moving rather than reassigning ownership matters because getMyBrand() takes
 -- the OLDEST brand a user owns, and the auto-provisioned one predates the seed
--- — so simply setting owner_user_id on the demo row would have done nothing
+--, so simply setting owner_user_id on the demo row would have done nothing
 -- visible.
 --
 -- Deliberately NOT touched: brand_connections. Shopify and Meta stay

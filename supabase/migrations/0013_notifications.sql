@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0013: email notification preference
+-- KYRO: 0013: email notification preference
 --
 -- One switch, on the account's registered email. There is no second address
 -- to manage: the email a creator or brand signed up with is the one KYRO can

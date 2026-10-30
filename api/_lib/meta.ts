@@ -1,5 +1,5 @@
 /**
- * KYRO — Meta Graph API.
+ * KYRO: Meta Graph API.
  *
  * Only the pieces the connection needs: send a brand to Meta's login dialog,
  * trade the code for a long-lived token, and list the ad accounts that token

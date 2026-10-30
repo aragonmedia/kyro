@@ -3,9 +3,9 @@
  *
  * Two kinds of conversation, deliberately not the same thing:
  *
- *   campaign   — the brand and every accepted creator, in one room. This is
+ *   campaign  , the brand and every accepted creator, in one room. This is
  *                where a creator meets the others working the same product.
- *   submission — one creator and the brand, about one video. This is what the
+ *   submission, one creator and the brand, about one video. This is what the
  *                "Message brand" button on a passed-over video opens, because
  *                nobody wants their feedback read by the whole roster.
  *

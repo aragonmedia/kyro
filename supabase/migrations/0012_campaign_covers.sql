@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0012: campaign cover images
+-- KYRO: 0012: campaign cover images
 --
 -- campaigns.cover_url has existed since 0002 and nothing ever wrote to it, so
 -- every campaign card on the creator side fell back to a stock photo that had

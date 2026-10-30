@@ -1,13 +1,13 @@
 /**
- * Connect Shopify — as close to one click as Shopify allows.
+ * Connect Shopify, as close to one click as Shopify allows.
  *
  * Shopify has two install paths, and only one of them can start without
  * knowing the store:
  *
  *   · App Store listing. The merchant is already signed in to Shopify, so
  *     Shopify knows the store and handles the pick. Truly one click.
- *   · OAuth from KYRO. The authorize URL is per store —
- *     https://{store}.myshopify.com/admin/oauth/authorize — so there is
+ *   · OAuth from KYRO. The authorize URL is per store,
+ *     https://{store}.myshopify.com/admin/oauth/authorize, so there is
  *     nothing to redirect to until the store is named.
  *
  * So: when VITE_SHOPIFY_INSTALL_URL is set to the listing, the button goes

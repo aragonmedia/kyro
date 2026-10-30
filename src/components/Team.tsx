@@ -6,7 +6,7 @@
  * most common real request and a fixed role list cannot express it.
  *
  * ⚠ Invites are real and stored, but they do not yet grant access to brand
- *   data — see migration 0020. The panel says so, so nobody is told a
+ *   data, see migration 0020. The panel says so, so nobody is told a
  *   teammate can see the brand when they cannot.
  */
 

@@ -1,8 +1,8 @@
 /**
- * Kyro — Meta Marketing API Client
+ * Kyro, Meta Marketing API Client
  *
  * Server-side functions that wrap Meta's Graph API. These should never be
- * called from the browser directly — the Meta App Secret would leak. Instead,
+ * called from the browser directly, the Meta App Secret would leak. Instead,
  * the React app calls /api/meta/* (Vercel serverless), which calls these.
  *
  * Status: STUBS. Each function returns mocked data and logs intent. Replace
@@ -89,7 +89,7 @@ export async function fetchAdInsights(
 }
 
 /**
- * Pause an ad — used when its campaign's pool is depleted.
+ * Pause an ad, used when its campaign's pool is depleted.
  * V1: POST /{ad_id}?status=PAUSED
  */
 export async function pauseAd(_credentials: MetaCredentials, metaAdId: string): Promise<void> {
@@ -108,7 +108,7 @@ export async function resumeAd(_credentials: MetaCredentials, metaAdId: string):
 export function buildOAuthUrl(redirectUri: string, state: string): string {
   const appId = import.meta.env.VITE_META_APP_ID;
   if (!appId) {
-    console.warn('[meta:stub] VITE_META_APP_ID not set — OAuth url is a placeholder');
+    console.warn('[meta:stub] VITE_META_APP_ID not set: OAuth url is a placeholder');
     return '#meta-oauth-not-configured';
   }
   const scope = [

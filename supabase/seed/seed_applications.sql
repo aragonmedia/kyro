@@ -7,7 +7,7 @@
 -- These creators have no login (user_id is null). They exist only so a brand
 -- has someone to accept or decline. They are marked with stats.demo = true,
 -- which is what the cleanup at the top keys off, so re-running replaces them
--- rather than doubling them — and nothing real is ever deleted.
+-- rather than doubling them, and nothing real is ever deleted.
 --
 -- Safe to run more than once.
 -- ═══════════════════════════════════════════════════════════════

@@ -5,7 +5,7 @@
  * KPI on the dashboard is a button, and this is what it opens: the rows the
  * figure was computed from, filterable by campaign.
  *
- * Also holds the creator profile a brand reaches from the leaderboard — same
+ * Also holds the creator profile a brand reaches from the leaderboard, same
  * shape of question ("who is this, really"), same shape of answer.
  */
 
@@ -297,7 +297,7 @@ export function BrandDrilldown({
             {orders.map((o) => (
               <div key={o.earningId} className="p-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-semibold text-heading">{o.orderNumber ?? '—'}</p>
+                  <p className="font-semibold text-heading">{o.orderNumber ?? '-'}</p>
                   <p className="text-xs text-muted truncate">
                     @{o.creatorHandle.replace(/^@+/, '')} · {o.campaignName}
                   </p>
@@ -324,7 +324,7 @@ export function BrandDrilldown({
       <Empty
         icon={Eye}
         line="KYRO can't see impressions yet."
-        hint="Impressions come from your Meta ad account. Connect it from Settings and this fills in for every video running as a partnership ad. Orders and commission do not depend on it — those come from Shopify."
+        hint="Impressions come from your Meta ad account. Connect it from Settings and this fills in for every video running as a partnership ad. Orders and commission do not depend on it, those come from Shopify."
       />
     </Sheet>
   );

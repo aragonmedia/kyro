@@ -1,5 +1,5 @@
 /**
- * KYRO — encryption and signing helpers
+ * KYRO: encryption and signing helpers
  *
  * Two separate jobs, deliberately not sharing a key:
  *   • sealing OAuth tokens before they touch the database (AES-256-GCM)

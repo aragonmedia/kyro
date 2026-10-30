@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0007: creator video uploads and payout details
+-- KYRO: 0007: creator video uploads and payout details
 --
 -- Two things the creator side needs before it can do anything real:
 --

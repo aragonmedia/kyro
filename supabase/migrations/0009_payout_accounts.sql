@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0009: creator payout bank accounts
+-- KYRO: 0009: creator payout bank accounts
 --
 -- Full routing and account numbers, for ACH or wire.
 --

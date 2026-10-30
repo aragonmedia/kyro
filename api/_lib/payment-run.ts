@@ -1,5 +1,5 @@
 /**
- * KYRO — settling a payment run
+ * KYRO: settling a payment run
  *
  * One run means one charge to the brand and one transfer per creator. This is
  * the second half: the charge has gone through, and each creator's share has

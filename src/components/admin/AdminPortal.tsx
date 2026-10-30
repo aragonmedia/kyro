@@ -261,15 +261,15 @@ const BRAND_COLUMNS: Column<AdminBrandRow>[] = [
   },
   {
     id: 'owner', label: 'Owner', sort: (b) => b.ownerName ?? b.ownerEmail ?? '',
-    render: (b) => <span className="text-body">{b.ownerName ?? b.ownerEmail ?? '—'}</span>,
+    render: (b) => <span className="text-body">{b.ownerName ?? b.ownerEmail ?? '-'}</span>,
   },
   {
     id: 'email', label: 'Email', off: true, sort: (b) => b.ownerEmail ?? '',
-    render: (b) => <span className="text-body">{b.ownerEmail ?? '—'}</span>,
+    render: (b) => <span className="text-body">{b.ownerEmail ?? '-'}</span>,
   },
   {
     id: 'phone', label: 'Phone', off: true, sort: (b) => b.contactPhone ?? '',
-    render: (b) => <span className="text-body">{b.contactPhone ?? '—'}</span>,
+    render: (b) => <span className="text-body">{b.contactPhone ?? '-'}</span>,
   },
   {
     id: 'connections', label: 'Connections',
@@ -306,7 +306,7 @@ const BRAND_COLUMNS: Column<AdminBrandRow>[] = [
     sort: (b) => b.owedCents, csv: (b) => usd(b.owedCents),
     render: (b) => (b.owedCents > 0
       ? <span className={b.billable ? 'text-heading font-semibold' : 'text-bad font-semibold'}>{money(b.owedCents)}</span>
-      : <span className="text-faint">—</span>),
+      : <span className="text-faint">-</span>),
   },
   {
     id: 'joined', label: 'Joined', off: true, right: true,
@@ -331,11 +331,11 @@ const CREATOR_COLUMNS: Column<AdminCreatorRow>[] = [
   },
   {
     id: 'email', label: 'Email', off: true, sort: (c) => c.email ?? '',
-    render: (c) => <span className="text-body">{c.email ?? '—'}</span>,
+    render: (c) => <span className="text-body">{c.email ?? '-'}</span>,
   },
   {
     id: 'location', label: 'Location', off: true, sort: (c) => c.location ?? '',
-    render: (c) => <span className="text-body">{c.location ?? '—'}</span>,
+    render: (c) => <span className="text-body">{c.location ?? '-'}</span>,
   },
   { id: 'campaigns', label: 'Campaigns', right: true, sort: (c) => c.campaigns, render: (c) => <span className="text-body">{c.campaigns}</span> },
   { id: 'videos', label: 'Videos', right: true, sort: (c) => c.submissions, render: (c) => <span className="text-body">{c.submissions}</span> },
@@ -377,7 +377,7 @@ const PAYOUT_COLUMNS: Column<AdminCreatorRow>[] = [
     sort: (c) => c.owedCents, csv: (c) => usd(c.owedCents),
     render: (c) => (c.owedCents > 0
       ? <span className="text-heading font-semibold">{moneyExact(c.owedCents)}</span>
-      : <span className="text-faint">—</span>),
+      : <span className="text-faint">-</span>),
   },
   {
     id: 'paid', label: 'Paid to date', right: true,
@@ -386,7 +386,7 @@ const PAYOUT_COLUMNS: Column<AdminCreatorRow>[] = [
   },
   {
     id: 'email', label: 'Email', off: true, sort: (c) => c.email ?? '',
-    render: (c) => <span className="text-body">{c.email ?? '—'}</span>,
+    render: (c) => <span className="text-body">{c.email ?? '-'}</span>,
   },
 ];
 
@@ -467,7 +467,7 @@ const RUN_COLUMNS: Column<AdminRunRow>[] = [
     id: 'method', label: 'Method', sort: (r) => r.method ?? '',
     render: (r) => (
       <span className="text-body">
-        {r.method ? (r.method === 'us_bank_account' ? 'bank debit' : r.method) : '—'}
+        {r.method ? (r.method === 'us_bank_account' ? 'bank debit' : r.method) : '-'}
       </span>
     ),
   },
@@ -496,7 +496,7 @@ const RUN_COLUMNS: Column<AdminRunRow>[] = [
   {
     id: 'settled', label: 'Settled', right: true, off: true,
     sort: (r) => r.settledAt ?? '', csv: (r) => r.settledAt?.slice(0, 10) ?? '',
-    render: (r) => <span className="text-body">{r.settledAt ? day(r.settledAt) : '—'}</span>,
+    render: (r) => <span className="text-body">{r.settledAt ? day(r.settledAt) : '-'}</span>,
   },
 ];
 

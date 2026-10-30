@@ -1,5 +1,5 @@
 /**
- * KYRO — turning a typed name into a signed document
+ * KYRO: turning a typed name into a signed document
  *
  * The blank agreements are PDFs exported from a word processor. They carry no
  * form fields, so there is nowhere to type into them: filling one in means
@@ -108,7 +108,7 @@ export async function buildSignedPdf(template: Uint8Array, record: SignatureReco
   for (const [name, value] of record.fields) {
     label(page, bold, name, y);
     y -= 14;
-    page.drawText(value || '—', { x: MARGIN, y, size: 11, font: body, color: INK });
+    page.drawText(value || '-', { x: MARGIN, y, size: 11, font: body, color: INK });
     y -= 22;
   }
 

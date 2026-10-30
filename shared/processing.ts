@@ -1,5 +1,5 @@
 /**
- * KYRO — what the processor costs, passed through at cost
+ * KYRO: what the processor costs, passed through at cost
  *
  * Shared deliberately. The server computes what is charged and the brand's
  * screen shows what will be charged, and those two numbers disagreeing is the

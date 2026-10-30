@@ -5,7 +5,7 @@
  * whoever opens it.
  *
  * The landing page renders for someone who is not signed in, which is the
- * whole point of an off-platform invite — the brand sends it to a creator who
+ * whole point of an off-platform invite, the brand sends it to a creator who
  * has never heard of KYRO. So the pitch comes first and the account comes
  * second, rather than a sign-in wall in front of a campaign they cannot see.
  */
@@ -72,7 +72,7 @@ export function CreatorInviteCard({ campaigns }: { campaigns: OpenCampaign[] }) 
           <h2 className="text-lg font-bold text-heading">Invite a creator</h2>
         </div>
         <p className="text-sm text-muted mt-0.5">
-          For creators you already know. This link skips the application queue — whoever opens it
+          For creators you already know. This link skips the application queue, whoever opens it
           and signs up is on the campaign.
         </p>
       </div>

@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0003: commercial model
+-- KYRO: 0003: commercial model
 --
 -- Moves the schema off the original prefunded-escrow design onto the model
 -- settled in docs/KYRO_MODEL.md:
@@ -84,7 +84,7 @@ create table if not exists public.brand_connections (
 create index if not exists brand_connections_brand_idx on public.brand_connections(brand_id);
 
 -- ─────────────────────────────────────────────────────────────
--- Brand billing profile — deposit, ACH mandate, accrual cap
+-- Brand billing profile, deposit, ACH mandate, accrual cap
 -- No token, PAN or bank number is ever stored here; only processor refs.
 -- ─────────────────────────────────────────────────────────────
 create table if not exists public.brand_billing (
@@ -125,7 +125,7 @@ create index if not exists agreements_brand_idx on public.agreements(brand_id);
 create index if not exists agreements_user_idx  on public.agreements(user_id);
 
 -- ─────────────────────────────────────────────────────────────
--- Content licences — one per approved video, per brand
+-- Content licences, one per approved video, per brand
 -- Scope is deliberately narrow: the CONNECTED Meta ad account only.
 -- Anything wider is a separate paid licence.
 -- ─────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ create index if not exists orders_placed_idx    on public.orders(placed_at);
 create index if not exists orders_fulfilled_idx on public.orders(fulfilled_at);
 
 -- ─────────────────────────────────────────────────────────────
--- Attribution — which submission earned which order
+-- Attribution, which submission earned which order
 -- The join KYRO owns: submission → meta ad id → order.
 -- ─────────────────────────────────────────────────────────────
 create table if not exists public.order_attributions (
@@ -205,7 +205,7 @@ create index if not exists order_attr_submission_idx on public.order_attribution
 create index if not exists order_attr_creator_idx    on public.order_attributions(creator_id);
 
 -- ─────────────────────────────────────────────────────────────
--- Billing runs — what the brand is actually charged
+-- Billing runs, what the brand is actually charged
 -- ─────────────────────────────────────────────────────────────
 create table if not exists public.billing_runs (
   id                 uuid primary key default gen_random_uuid(),
@@ -224,7 +224,7 @@ create table if not exists public.billing_runs (
 create index if not exists billing_runs_brand_idx on public.billing_runs(brand_id, created_at desc);
 
 -- ─────────────────────────────────────────────────────────────
--- Earnings — the four-state machine creators watch
+-- Earnings, the four-state machine creators watch
 --
 -- pending    order placed
 -- clearing   order fulfilled
@@ -281,7 +281,7 @@ create trigger earnings_touch_state before update on public.earnings
   for each row execute function public.touch_earning_state();
 
 -- ─────────────────────────────────────────────────────────────
--- Creator balance view — exactly what the withdraw screen needs
+-- Creator balance view, exactly what the withdraw screen needs
 -- ─────────────────────────────────────────────────────────────
 create or replace view public.creator_balances as
 select
@@ -295,7 +295,7 @@ select
 from public.earnings
 group by creator_id;
 
--- Brand exposure view — drives the deposit usage progress bar
+-- Brand exposure view, drives the deposit usage progress bar
 create or replace view public.brand_unbilled as
 select
   e.brand_id,
@@ -371,7 +371,7 @@ create policy billing_runs_write on public.billing_runs for all
   using (public.is_admin()) with check (public.is_admin());
 
 -- Earnings: creators see their own, brands see what they owe, admins see all.
--- Writes are service-role only — an earning is derived from an order, never
+-- Writes are service-role only, an earning is derived from an order, never
 -- something a user may assert.
 drop policy if exists earnings_read on public.earnings;
 create policy earnings_read on public.earnings for select

@@ -1,5 +1,5 @@
 /**
- * Kyro — Session Context
+ * Kyro, Session Context
  *
  * Holds "who is signed in, and what workspace do they own" for the whole app.
  *
@@ -123,7 +123,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
 }
 
 /**
- * Provisioning is not idempotent across concurrent callers — two simultaneous
+ * Provisioning is not idempotent across concurrent callers, two simultaneous
  * ensureMyBrand() calls would each see "no brand" and insert one. React
  * StrictMode double-invokes effects in development, which is exactly that race.
  * Deduping on a module-level promise keeps it to a single insert.
@@ -142,7 +142,7 @@ function readActiveBrand(): string | null {
   try {
     return localStorage.getItem(ACTIVE_BRAND_KEY);
   } catch {
-    return null; // private mode, blocked storage — fall back to the default brand
+    return null; // private mode, blocked storage, fall back to the default brand
   }
 }
 
@@ -277,7 +277,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setCreator(null);
       }
     } catch {
-      // A failed restore must not trap the user on a blank screen — fall
+      // A failed restore must not trap the user on a blank screen, fall
       // through to the signed-out state and let them sign in again.
       if (alive.current) {
         setUserId(null);

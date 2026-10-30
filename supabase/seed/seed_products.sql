@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- KYRO — demo campaign content direction and product listings
+-- KYRO: demo campaign content direction and product listings
 --
 -- Run AFTER 0014 and after seed_creator.sql. Idempotent: it clears the demo
 -- brands' products before reinserting, so re-running replaces rather than
@@ -69,12 +69,12 @@ select c.id, b.id, x.name, x.description, x.image_url, x.price_cents, x.position
   join public.campaigns c on c.brand_id = b.id
   join (values
     ('demo-bold-buns', 'Creatine Boost',            'Daily wellness and performance support. 5g creatine, 2.5g collagen peptides, BCAA and L-glutamine. Unflavoured, 30 servings.', '/campaign-covers/bold-buns.jpg',   4999, 0),
-    ('demo-bold-buns', 'Creatine Boost — 3 Pack',   '90 servings. The subscribe-and-save bundle most repeat customers land on.',                                                   '/campaign-covers/bold-buns.jpg',  11999, 1),
+    ('demo-bold-buns', 'Creatine Boost, 3 Pack',   '90 servings. The subscribe-and-save bundle most repeat customers land on.',                                                   '/campaign-covers/bold-buns.jpg',  11999, 1),
     ('demo-jaje-health', '10EX Gut Support Gummies','Berberine, apple cider vinegar and akkermansia in a 10x extract. 100 billion CFU, 20+ digestive enzymes, sugar-free, strawberry.', '/campaign-covers/jaje-health.jpg', 3499, 0),
-    ('demo-jaje-health', '10EX Gummies — 2 Month',  'Two pouches. The pack size that matches the 60-day routine the brief talks about.',                                            '/campaign-covers/jaje-health.jpg', 5999, 1),
+    ('demo-jaje-health', '10EX Gummies, 2 Month',  'Two pouches. The pack size that matches the 60-day routine the brief talks about.',                                            '/campaign-covers/jaje-health.jpg', 5999, 1),
     ('demo-fuel', 'Beauty+ 24-in-One',              '60 capsules. Biotin, keratin, hyaluronic acid, MSM, saw palmetto, collagen support and vitamin complex in one daily capsule.',  '/campaign-covers/fuel.jpg',        3999, 0),
     ('demo-fuel', 'Beauty+ Buy 1 Get 1',            'The running offer: second bottle at 50% off, two in the cart.',                                                                '/campaign-covers/fuel.jpg',        5999, 1),
-    ('demo-lebanta', 'Wonder Growth Oil — 2 Pack',  'Batana, coconut, castor, pumpkin seed and rosemary oils. 4 fl oz (120 ml) each, for all hair types, with applicator combs included.', '/campaign-covers/lebanta.jpg',     2999, 0)
+    ('demo-lebanta', 'Wonder Growth Oil, 2 Pack',  'Batana, coconut, castor, pumpkin seed and rosemary oils. 4 fl oz (120 ml) each, for all hair types, with applicator combs included.', '/campaign-covers/lebanta.jpg',     2999, 0)
   ) as x(handle, name, description, image_url, price_cents, position)
     on x.handle = b.handle
  where b.handle like 'demo-%';

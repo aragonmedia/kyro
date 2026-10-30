@@ -86,7 +86,7 @@ import { PaymentMethodSheet, type PayMethod } from './components/PaymentMethod';
 import { Markdown } from './lib/markdown';
 
 /* ─────────────────────────────────────────────────────────────
-   THEME TOGGLE — shared control (landing nav + settings)
+   THEME TOGGLE: shared control (landing nav + settings)
    ───────────────────────────────────────────────────────────── */
 function ThemeToggle({ className = '' }: { className?: string }) {
   const { theme, toggle } = useTheme();
@@ -127,7 +127,7 @@ function ThemeSegmented() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   KYRO LOGO — image-based, matches uploaded asset
+   KYRO LOGO: image-based, matches uploaded asset
    ───────────────────────────────────────────────────────────── */
 function KyroLogo({ size = 36, className = '' }: { size?: number; className?: string }) {
   return (
@@ -146,7 +146,7 @@ function KyroLogo({ size = 36, className = '' }: { size?: number; className?: st
 }
 
 /* ─────────────────────────────────────────────────────────────
-   SEED DATA — Real partner brands + creator/brand profiles
+   SEED DATA: Real partner brands + creator/brand profiles
    ───────────────────────────────────────────────────────────── */
 
 type Role = 'brand' | 'creator' | 'admin';
@@ -248,7 +248,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal, onAudience }: {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   return (
     <div className="min-h-screen bg-app text-body">
-      {/* Floating pill nav — Trybe-style */}
+      {/* Floating pill nav, Trybe-style */}
       <nav className="fixed inset-x-0 top-4 z-50 px-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4 rounded-full border border-line bg-surface/80 backdrop-blur-md pl-5 pr-3 py-2.5 shadow-lg shadow-black/5">
           <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="flex items-center gap-2.5 shrink-0">
@@ -291,7 +291,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal, onAudience }: {
           <div className="space-y-6">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-surface-2 border border-line rounded-full">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-              <span className="text-sm text-muted font-medium">Now live — join for free</span>
+              <span className="text-sm text-muted font-medium">Now live, join for free</span>
             </div>
             <h1 className="text-6xl md:text-7xl lg:text-8xl font-bold leading-[1.05] tracking-tight">
               <span className="bg-gradient-kyro bg-clip-text text-transparent">The New Way</span><br />
@@ -320,7 +320,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal, onAudience }: {
           <div className="grid md:grid-cols-3 gap-5">
             {[
               { num: '01', id: 'creators', title: 'Creators join brands', desc: 'Creators discover brands they love and join their creator program in one tap.', icon: Heart },
-              { num: '02', id: 'brands', title: 'Brands launch on Meta', desc: 'Approved creator videos run as whitelisted Meta ads — at scale, in minutes.', icon: Zap },
+              { num: '02', id: 'brands', title: 'Brands launch on Meta', desc: 'Approved creator videos run as whitelisted Meta ads, at scale and in minutes.', icon: Zap },
               { num: '03', id: 'earn', title: 'Performance pays out', desc: 'Real-time analytics track every order. Creators are paid through Stripe the moment a brand settles.', icon: DollarSign },
             ].map((s) => (
               <div key={s.num} id={s.id} className="relative overflow-hidden rounded-3xl border border-line bg-surface p-8 space-y-4">
@@ -341,7 +341,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal, onAudience }: {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14 space-y-3">
             <h2 className="text-4xl md:text-5xl font-bold text-heading">The operating system for creator programs</h2>
-            <p className="text-lg text-muted max-w-2xl mx-auto">Submissions, whitelisting, ad launching, payouts, performance — all in one streamlined workflow.</p>
+            <p className="text-lg text-muted max-w-2xl mx-auto">Submissions, whitelisting, ad launching, payouts and performance. All in one streamlined workflow.</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
@@ -351,7 +351,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal, onAudience }: {
               { icon: ShieldCheck, title: 'Server-side attribution', desc: 'Track conversions at the order level with last-click attribution.', color: 'text-emerald-500' },
               { icon: Cpu, title: 'AI angle & persona tagging', desc: 'Every submission auto-tagged by angle, persona, and creative DNA.', color: 'text-pink-500' },
               { icon: Bell, title: 'Creator earning notifications', desc: 'Creators get notified the moment a sale hits their account.', color: 'text-purple-500' },
-              { icon: MessageSquare, title: 'Built-in chats & channels', desc: 'Talk to creators 1:1 or in channels — no Slack, no email threads.', color: 'text-blue-500' },
+              { icon: MessageSquare, title: 'Built-in chats & channels', desc: 'Talk to creators 1:1 or in channels. No Slack, no email threads.', color: 'text-blue-500' },
               { icon: Wallet, title: 'Auto payouts & smart contracts', desc: 'Commission rules execute automatically, and creators are paid through Stripe.', color: 'text-emerald-500' },
               { icon: Target, title: 'Spot and scale winners', desc: 'Surface the winning ads instantly and double down.', color: 'text-pink-500' },
             ].map((f, i) => (
@@ -418,7 +418,7 @@ function Landing({ onSignIn, onGetStarted, onAbout, onLegal, onAudience }: {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   AUTH — email + password (sign in, sign up, forgot, reset)
+   AUTH: email + password (sign in, sign up, forgot, reset)
    ───────────────────────────────────────────────────────────── */
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -662,7 +662,7 @@ function SignUp({
         return;
       }
       if (!res.session) {
-        // Email confirmation is switched on in Supabase — no session yet.
+        // Email confirmation is switched on in Supabase, no session yet.
         setCheckInbox(true);
         setLoading(false);
         return;
@@ -972,7 +972,7 @@ function RolePicker({
             </button>
           ))}
         </div>
-        <p className="text-center text-xs text-faint mt-10">Demo environment — real Supabase auth, Meta integration and Stripe payments.</p>
+        <p className="text-center text-xs text-faint mt-10">Demo environment with real Supabase auth, Meta integration and Stripe payments.</p>
       </div>
     </div>
   );
@@ -1461,14 +1461,14 @@ function CampaignRowSkeleton() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   BRAND — NAVIGATION
+   BRAND: NAVIGATION
 
    A brand's work is seven different jobs, not one scroll. The sidebar names
    them so the brand can go straight to the one they came for, and so a page
    can be deep without burying everything under it.
 
    Desktop gets a fixed rail. A phone gets a floating bar with the four things
-   a brand touches daily, and everything else behind the menu — a seven-item
+   a brand touches daily, and everything else behind the menu, a seven-item
    rail on a phone is a wall.
    ───────────────────────────────────────────────────────────── */
 
@@ -1486,7 +1486,7 @@ const BRAND_NAV: Array<{ id: BrandPage; label: string; icon: typeof Users; prima
 /**
  * Brand switcher.
  *
- * One account can run several brands — an agency managing clients, or a
+ * One account can run several brands, an agency managing clients, or a
  * company with separate labels. Each gets its own portal: own campaigns, own
  * creators, own Shopify store, own money.
  *
@@ -1605,7 +1605,7 @@ function BrandSwitcher({ brandName, logoUrl }: { brandName: string; logoUrl: str
                 className="w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-sm text-heading placeholder-faint focus:outline-none focus:border-purple-500"
               />
               <p className="text-xs text-faint leading-relaxed">
-                You'll be taken through setup for it — logo, profile, then its own Shopify and Meta
+                You'll be taken through setup for it: logo, profile, then its own Shopify and Meta
                 connections. Your current brand stays exactly as it is.
               </p>
               {error && <p className="text-xs text-pink-300">{error}</p>}
@@ -1812,7 +1812,7 @@ function BrandDashboard({
 
   const [page, setPage] = useState<BrandPage>(requestedPage ?? 'dashboard');
 
-  // Another screen asked for a specific page — honour it once, then let the
+  // Another screen asked for a specific page, honour it once, then let the
   // brand navigate freely.
   useEffect(() => {
     if (!requestedPage) return;
@@ -1996,7 +1996,7 @@ function BrandDashboard({
     { kind: 'campaigns', label: 'Campaigns', value: allCards.filter((c) => c.status === 'live').length.toString(), sub: `of ${plural(allCards.length, 'campaign')} total`, icon: Layers, color: 'text-blue-400', bg: 'bg-blue-400/10 border-blue-400/20' },
     { kind: 'videos', label: 'Videos submitted', value: totalSubs.toLocaleString(), sub: 'across every campaign', icon: FileVideo, color: 'text-purple-400', bg: 'bg-purple-400/10 border-purple-400/20' },
     { kind: 'orders', label: 'Attributed orders', value: totalOrders.toLocaleString(), sub: 'bought from creator content', icon: Target, color: 'text-emerald-400', bg: 'bg-emerald-400/10 border-emerald-400/20' },
-    { kind: 'impressions', label: 'Impressions', value: totalImpr > 0 ? fmtK(totalImpr) : '—', sub: totalImpr > 0 ? 'from live ads' : 'needs Meta access', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
+    { kind: 'impressions', label: 'Impressions', value: totalImpr > 0 ? fmtK(totalImpr) : '-', sub: totalImpr > 0 ? 'from live ads' : 'needs Meta access', icon: Eye, color: 'text-pink-400', bg: 'bg-pink-400/10 border-pink-400/20' },
   ];
 
   if (liveMode && brand && brandId && !brand.setupComplete) {
@@ -2476,7 +2476,7 @@ function BrandDashboard({
 }
 
 /**
- * Shown where a page needs a real brand workspace and there isn't one — the
+ * Shown where a page needs a real brand workspace and there isn't one, the
  * public demo, or a session still provisioning. Says which, rather than
  * rendering an empty panel that reads as broken.
  */
@@ -2872,7 +2872,7 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
 
           <div>
             <label className={label}>Deliverable</label>
-            <input value={deliverable} onChange={(e) => setDeliverable(e.target.value)} className={`${field} ${borderFor('deliverable')}`} placeholder="1 vertical video, 15–30s" />
+            <input value={deliverable} onChange={(e) => setDeliverable(e.target.value)} className={`${field} ${borderFor('deliverable')}`} placeholder="1 vertical video, 15-30s" />
           </div>
 
           <div>
@@ -2894,11 +2894,11 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
 }
 
 /* ─────────────────────────────────────────────────────────────
-   CREATOR DASHBOARD — with earning notifications + AI tags
+   CREATOR DASHBOARD: with earning notifications + AI tags
    ───────────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────
-   CREATOR DASHBOARD — with earning notifications + AI tags
+   CREATOR DASHBOARD: with earning notifications + AI tags
    ───────────────────────────────────────────────────────────── */
 function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
   const session = useSession();
@@ -3381,7 +3381,7 @@ function ActivateCampaignRow({
 }
 
 /* ─────────────────────────────────────────────────────────────
-   CREATOR — BROWSE AND APPLY
+   CREATOR: BROWSE AND APPLY
    ───────────────────────────────────────────────────────────── */
 function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (campaignId: string) => void }) {
   const [campaigns, setCampaigns] = useState<OpenCampaign[] | null>(null);
@@ -3579,7 +3579,7 @@ function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (ca
 }
 
 /* ─────────────────────────────────────────────────────────────
-   CREATOR — APPLY TO A CAMPAIGN
+   CREATOR: APPLY TO A CAMPAIGN
    Applying used to be a single click with no confirmation and nothing shown
    about what was being agreed to. This is the form: the terms on one side,
    an optional note to the brand on the other, and an explicit send.
@@ -3745,7 +3745,7 @@ function ApplyModal({
           <div className="p-3 rounded-lg border border-line bg-surface-2">
             <p className="text-xs text-muted leading-relaxed">
               The brand reviews applications. Once you're on, you can upload videos whenever you
-              like — no per-video approval, and you keep the full commission on every order.
+              like. No per-video approval, and you keep the full commission on every order.
             </p>
           </div>
 
@@ -3782,7 +3782,7 @@ function ApplyModal({
 }
 
 /* ─────────────────────────────────────────────────────────────
-   BRAND — CAMPAIGN ROSTER
+   BRAND: CAMPAIGN ROSTER
    Who is actually on each campaign, and whether they are producing.
    ───────────────────────────────────────────────────────────── */
 function CampaignRoster({
@@ -3956,7 +3956,7 @@ function CampaignRoster({
 }
 
 /* ─────────────────────────────────────────────────────────────
-   BRAND — CREATOR APPLICATIONS
+   BRAND: CREATOR APPLICATIONS
    ───────────────────────────────────────────────────────────── */
 function ApplicationsPanel({ brandId }: { brandId: string }) {
   const [rows, setRows] = useState<BrandApplication[] | null>(null);
@@ -4141,7 +4141,7 @@ function ApplicationsPanel({ brandId }: { brandId: string }) {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   BRAND — CREATOR VIDEOS
+   BRAND: CREATOR VIDEOS
    Creators post without waiting. The brand decides what runs, and owes a
    reason when it does not.
    ───────────────────────────────────────────────────────────── */
@@ -4279,7 +4279,7 @@ function SubmissionReviewCard({
 }
 
 /* ─────────────────────────────────────────────────────────────
-   CREATOR — SUBMIT A VIDEO
+   CREATOR: SUBMIT A VIDEO
    Upload to private storage, then record the submission. The brand still
    approves it before anything runs as an ad.
    ───────────────────────────────────────────────────────────── */
@@ -4414,7 +4414,7 @@ function SubmitVideoModal({
 }
 
 /* ─────────────────────────────────────────────────────────────
-   CREATOR — PAYOUT ACCOUNT AND TAX FORM
+   CREATOR: PAYOUT ACCOUNT AND TAX FORM
    ───────────────────────────────────────────────────────────── */
 /**
  * Tax details, and nothing else.
@@ -4427,8 +4427,12 @@ function SubmitVideoModal({
  * the wrong account. Changing it belongs on Stripe, behind Manage on Stripe
  * in the Payouts panel.
  *
- * Tax details stay here because they are KYRO's obligation, not Stripe's:
- * KYRO issues the 1099-NEC.
+ * Tax details stay here because KYRO has to accept them before a payout is
+ * released, which is a judgement made in the admin portal. They are not a
+ * W-9 and they are not what produces a tax form: Stripe collects the
+ * creator's tax information during Express onboarding and files for
+ * connected accounts. KYRO deliberately never holds a TIN, because holding
+ * one is a compliance burden that buys nothing.
  */
 function PayoutAccountCard() {
   const session = useSession();
@@ -4462,11 +4466,11 @@ function PayoutAccountCard() {
 
   return (
     <div className="grid gap-5 md:max-w-xl">
-      {/* 1099 tax info */}
+      {/* Tax details */}
       <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
         <div className="flex items-center gap-2">
           <ShieldCheck size={16} className="text-body" />
-          <h3 className="font-semibold text-heading">1099 tax info</h3>
+          <h3 className="font-semibold text-heading">Tax details</h3>
         </div>
 
         <div className={`flex items-start gap-3 p-3 rounded-xl border ${taxDone ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-400/30 bg-amber-400/10'}`}>
@@ -4475,7 +4479,7 @@ function PayoutAccountCard() {
             : <AlertCircle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />}
           <div className="space-y-0.5">
             <p className={`text-sm font-semibold ${taxDone ? 'text-emerald-200' : 'text-amber-200'}`}>
-              {taxDone ? 'Tax info on file' : creator.taxFormStatus === 'pending' ? 'Tax info in review' : 'Tax info needed'}
+              {taxDone ? 'Tax details accepted' : creator.taxFormStatus === 'pending' ? 'Tax details in review' : 'Tax details needed'}
             </p>
             {taxDone && creator.taxFormSubmittedAt && (
               <p className="text-xs text-emerald-200/70">Submitted {new Date(creator.taxFormSubmittedAt).toLocaleDateString()}</p>
@@ -4486,7 +4490,9 @@ function PayoutAccountCard() {
         {!taxEditing && (
           <>
             <p className="text-sm text-muted leading-relaxed">
-              Earn $600 or more in a calendar year and KYRO issues you a 1099-NEC. We need your tax details on file before any money is sent to you.
+              KYRO needs these on file before any money is sent to you. Your tax forms come from
+              Stripe, who collect your tax information when you set up payouts and file for
+              connected accounts.
             </p>
             {creator.taxLegalName && (
               <p className="text-xs text-faint">On file for {creator.taxLegalName}{creator.taxCountry ? ` · ${creator.taxCountry}` : ''}</p>
@@ -4497,22 +4503,7 @@ function PayoutAccountCard() {
                 onClick={() => setTaxEditing(true)}
                 className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold"
               >
-                {creator.taxLegalName ? 'Update tax info' : 'Submit tax info'}
-              </button>
-              {/* A 1099-NEC only exists once KYRO has issued one, which happens
-                  after the calendar year closes and only past $600. Disabled
-                  with the reason on it, rather than a button that 404s. */}
-              <button
-                type="button"
-                disabled
-                title={
-                  taxDone
-                    ? 'Your 1099-NEC is issued after the calendar year closes, once you have earned $600 or more.'
-                    : 'Submit your tax info first.'
-                }
-                className="px-4 py-2 rounded-lg border border-line bg-surface-2 text-sm font-semibold text-faint cursor-not-allowed"
-              >
-                View tax form
+                {creator.taxLegalName ? 'Update tax details' : 'Submit tax details'}
               </button>
             </div>
           </>
@@ -4609,14 +4600,14 @@ function AboutPage({ onBack, onSignIn, onGetStarted }: { onBack: () => void; onS
           <KyroLogo size={80} className="mx-auto" />
           <h1 className="text-5xl md:text-6xl font-bold tracking-tight bg-gradient-kyro bg-clip-text text-transparent">About KYRO</h1>
           <p className="text-xl text-body max-w-2xl mx-auto leading-relaxed">
-            We're building the operating system for creator programs — where brands and creators grow together, paid on real performance.
+            We're building the operating system for creator programs, where brands and creators grow together, paid on real performance.
           </p>
         </div>
 
         <section className="space-y-5">
           <h2 className="text-3xl font-bold text-heading">Our mission</h2>
           <p className="text-lg text-body leading-relaxed">
-            Creator marketing has always promised performance, and rarely delivered it. Flat fees, dark attribution, late invoices — the model was built for a media landscape that no longer exists. KYRO is what creator marketing looks like when you build it around the actual economics: creators earn from what their content actually drives, brands pay for outcomes, and a platform connects the two with the trust and transparency both sides need.
+            Creator marketing has always promised performance, and rarely delivered it. Flat fees, dark attribution, late invoices. The model was built for a media landscape that no longer exists. KYRO is what creator marketing looks like when you build it around the actual economics: creators earn from what their content actually drives, brands pay for outcomes, and a platform connects the two with the trust and transparency both sides need.
           </p>
           <p className="text-lg text-body leading-relaxed">
             KYRO is the creator growth portal for the next decade of consumer brands.
@@ -4643,7 +4634,7 @@ function AboutPage({ onBack, onSignIn, onGetStarted }: { onBack: () => void; onS
         <section className="space-y-5">
           <h2 className="text-3xl font-bold text-heading">Built for the creator economy</h2>
           <p className="text-lg text-body leading-relaxed">
-            KYRO is built by a team obsessed with performance marketing — giving creators and the brands they love the tools to grow together, paid on real results.
+            KYRO is built by a team obsessed with performance marketing, giving creators and the brands they love the tools to grow together, paid on real results.
           </p>
           <div className="flex flex-wrap gap-3 pt-3">
             <a href="mailto:contact@itskyro.com" className="flex items-center gap-2 px-4 py-2 bg-surface border border-line rounded-lg text-body hover:text-heading transition"><Mail size={16} /> contact@itskyro.com</a>
@@ -5172,12 +5163,12 @@ function AccountSettings({
    ROOT APP
    ───────────────────────────────────────────────────────────── */
 /* ─────────────────────────────────────────────────────────────
-   LEGAL PAGES — /privacy and /terms
+   LEGAL PAGES: /privacy and /terms
    Rendered from the markdown in docs/legal/, so the published page and the
    document counsel reviews can never drift apart.
    ───────────────────────────────────────────────────────────── */
 /**
- * /help — getting started for brands and creators, pricing, and how
+ * /help, getting started for brands and creators, pricing, and how
  * attribution works. Linked from the Shopify listing, so it has to stand on
  * its own for someone who has never seen KYRO.
  */
@@ -5372,9 +5363,9 @@ function App() {
   }, [session.ready, session.userId, session.role, restored]);
 
   /**
-   * /orders belongs to a creator. Anyone else who lands on it — a signed-out
+   * /orders belongs to a creator. Anyone else who lands on it, a signed-out
    * visitor with the link, a brand account, a refresh that outran the session
-   * restore — gets moved on once we actually know who they are, rather than
+   * restore, gets moved on once we actually know who they are, rather than
    * being left on a page with nothing to show.
    */
   useEffect(() => {
@@ -5419,7 +5410,7 @@ function App() {
         return;
       }
       // Correct password, wrong privileges. Don't leave them holding a session
-      // on the admin route — drop it, then surface the refusal.
+      // on the admin route, drop it, then surface the refusal.
       try { await session.signOut(); } catch { /* noop */ }
       throw new Error("This account doesn't have admin access.");
     }
@@ -5475,7 +5466,7 @@ function App() {
     nav('/');
   };
 
-  // Hold the first paint until we know whether someone is signed in — otherwise
+  // Hold the first paint until we know whether someone is signed in, otherwise
   // a returning user sees the marketing page flash before their dashboard.
   if (!session.ready) return <BootScreen />;
 
@@ -5526,7 +5517,7 @@ function App() {
     <RolePicker
       roles={['brand', 'creator']}
       heading="Welcome to KYRO"
-      sub="One last step — how will you use KYRO?"
+      sub="One last step: how will you use KYRO?"
       badge="Set up"
       cta="Continue"
       onPick={finishOnboarding}
@@ -5585,7 +5576,7 @@ export default App;
  *
  * The same fields the setup wizard collected, so a brand can change what
  * creators see without going back through onboarding. Writes through the same
- * function, which already marks setup complete — harmless here, since it
+ * function, which already marks setup complete, harmless here, since it
  * already is.
  */
 function BrandProfilePanel({ brandId, onSaved }: { brandId: string; onSaved: () => void }) {
@@ -5774,7 +5765,7 @@ function BrandProfilePanel({ brandId, onSaved }: { brandId: string; onSaved: () 
 /**
  * A brand's creators, ranked.
  *
- * Ranked by revenue driven, not by video count — posting a lot is not the
+ * Ranked by revenue driven, not by video count, posting a lot is not the
  * same as selling. But the video counts are shown alongside, because a
  * creator sending work that is not converting is a conversation the brand
  * should have rather than a row that quietly disappears.
@@ -5933,7 +5924,7 @@ function BrandPaymentSummary({ onOpenFinance }: { onOpenFinance: () => void }) {
         <div className="p-4 rounded-xl border border-line bg-surface-2">
           <p className="text-xs text-faint">Due now</p>
           <p className="text-lg font-bold text-emerald-400 tabular-nums mt-0.5">
-            {balance ? fmt(centsToDollars(due)) : '—'}
+            {balance ? fmt(centsToDollars(due)) : '-'}
           </p>
           <p className="text-[11px] text-faint">
             Commission plus KYRO's 1%
@@ -5942,7 +5933,7 @@ function BrandPaymentSummary({ onOpenFinance }: { onOpenFinance: () => void }) {
         <div className="p-4 rounded-xl border border-line bg-surface-2">
           <p className="text-xs text-faint">Paid to date</p>
           <p className="text-lg font-bold text-heading tabular-nums mt-0.5">
-            {balance ? fmt(centsToDollars(balance.paidCommissionCents)) : '—'}
+            {balance ? fmt(centsToDollars(balance.paidCommissionCents)) : '-'}
           </p>
           <p className="text-[11px] text-faint">Released to creators</p>
         </div>

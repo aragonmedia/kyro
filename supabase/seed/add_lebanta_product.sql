@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- Lebanta — real product, and the cover image that was missing.
+-- Lebanta, real product, and the cover image that was missing.
 --
 -- Replaces the placeholder "Repair + Shine Treatment" that seed_products.sql
 -- invented, rather than sitting beside it. One product, and it is the real
@@ -24,7 +24,7 @@ insert into public.campaign_products
   (campaign_id, brand_id, name, description, image_url, price_cents, position)
 select c.id,
        b.id,
-       'Wonder Growth Oil — 2 Pack',
+       'Wonder Growth Oil, 2 Pack',
        'Batana, coconut, castor, pumpkin seed and rosemary oils. 4 fl oz (120 ml) each, for all hair types, with applicator combs included. Buy one get one free, TikTok exclusive.',
        '/campaign-covers/lebanta.jpg',
        2999,

@@ -7,7 +7,7 @@
  * Money rules worth stating once:
  *
  *   · Only `available` earnings are payable. Pending and clearing are
- *     excluded on purpose — a brand should not be asked to pay for an order
+ *     excluded on purpose, a brand should not be asked to pay for an order
  *     that could still be refunded.
  *   · Nothing multiplies a total by a fee rate. `platform_fee_cents` is
  *     written per earning when the order lands, so changing the fee rule
@@ -506,7 +506,7 @@ export function BrandFinance({
                 {shown.map((r) => (
                   <tr key={r.earningId} className="hover:bg-surface-2 transition">
                     <td className="p-4 whitespace-nowrap text-body">{day(r.placedAt)}</td>
-                    <td className="p-4 font-mono text-xs text-body">{r.orderNumber ?? '—'}</td>
+                    <td className="p-4 font-mono text-xs text-body">{r.orderNumber ?? '-'}</td>
                     <td className="p-4">
                       <p className="text-body truncate max-w-[140px]">@{r.creatorHandle.replace(/^@+/, '')}</p>
                       <p className="text-xs text-faint truncate max-w-[140px]">{r.campaignName}</p>

@@ -1,6 +1,6 @@
-# KYRO — Build Roadmap & Pillars
+# KYRO: Build Roadmap & Pillars
 
-**Vision:** KYRO is the operating system for creator programs — brands fund campaigns, creators submit UGC, approved videos run as whitelisted Meta ads, and everyone is paid on real performance. Trybe is the reference build.
+**Vision:** KYRO is the operating system for creator programs, brands fund campaigns, creators submit UGC, approved videos run as whitelisted Meta ads, and everyone is paid on real performance. Trybe is the reference build.
 
 **Legend:** ✅ done · 🔨 in progress · ⬜ not started
 
@@ -56,15 +56,15 @@
 
 ### 7. Meta Ads Engine  *(core differentiator)*
 - ✅ API client stubs (`lib/meta.ts`)
-- ⬜ Meta OAuth — connect brand ad account
+- ⬜ Meta OAuth, connect brand ad account
 - ⬜ Creator whitelisting / partnership-ad permissions
 - ⬜ Push approved submission → live Meta ad
 - ⬜ Pull Ad Insights (spend, ROAS, conversions) per creator
 - ⬜ Pause / scale winning ads
 
 ### 8. Payments & Ledger
-- ⬜ Square — brand pool funding + webhooks
-- ⬜ Trolley — creator payouts + tax forms (W-9/W-8)
+- ⬜ Square, brand pool funding + webhooks
+- ⬜ Trolley, creator payouts + tax forms (W-9/W-8)
 - ⬜ Double-entry ledger (money as integer cents)
 - ⬜ Automated reconciliation + payout scheduling
 
@@ -92,16 +92,16 @@
 
 ## Suggested phasing
 
-**Phase 0 — Demo & foundation** ✅ *(done)*
+**Phase 0, Demo & foundation** ✅ *(done)*
 Themed demo, landing, OTP auth, profiles, onboarding, admin gating.
 
-**Phase 1 — Real data MVP** 🔨 *(next)*
+**Phase 1, Real data MVP** 🔨 *(next)*
 Full Supabase schema (Pillar 3) → brands create & fund campaigns (mock payment ok), creators apply & upload, dashboards render from the database, Storage for video. This turns the demo into a working product for a pilot brand + creators.
 
-**Phase 2 — Money & ads**
+**Phase 2, Money & ads**
 Meta OAuth + whitelisting + push-to-ad + insights (Pillar 7); Square funding + Trolley payouts + ledger (Pillar 8). This is where KYRO becomes performance-based for real.
 
-**Phase 3 — Scale & polish**
+**Phase 3, Scale & polish**
 Chat + notifications (Pillar 10), attribution + live leaderboards (Pillar 11), moderation/curation, compliance (Pillar 12), analytics depth.
 
 ---

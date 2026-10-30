@@ -1,5 +1,5 @@
 /**
- * KYRO — the documents people sign
+ * KYRO: the documents people sign
  *
  * One registry, read by the signing screen and by the server that renders the
  * signed copy. If these two ever disagreed about which version is current,

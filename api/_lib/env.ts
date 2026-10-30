@@ -1,5 +1,5 @@
 /**
- * KYRO — server environment
+ * KYRO: server environment
  *
  * These run in Vercel serverless functions, never in the browser. Anything
  * read here is server-only by definition; nothing in this file may ever be

@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- KYRO — put the signature and tax flows back to the start
+-- KYRO: put the signature and tax flows back to the start
 --
 -- NOT a migration. This is an operational script for rehearsing the brand
 -- and creator journeys on real accounts, and it is destructive on purpose.

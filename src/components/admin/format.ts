@@ -12,10 +12,10 @@ export const moneyExact = (cents: number) =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
 export const pct = (bps: number | null) =>
-  bps === null ? '—' : `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 1)}%`;
+  bps === null ? '-' : `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 1)}%`;
 
 export const day = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-';
 
 export const monthLabel = (m: string) => {
   const [y, mo] = m.split('-');

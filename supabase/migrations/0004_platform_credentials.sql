@@ -1,11 +1,11 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0004: platform credentials
+-- KYRO: 0004: platform credentials
 --
 -- Where OAuth access tokens live after a brand connects Shopify or Meta.
 --
 -- Deliberately NOT a column on brand_connections. That table is readable by
 -- the brand that owns it (see 0003 RLS), and a brand must never be able to
--- read the token KYRO holds for their store — nor anyone else's. This table
+-- read the token KYRO holds for their store, nor anyone else's. This table
 -- has RLS enabled with NO policies at all, which denies every request that
 -- arrives with an anon or authenticated key. Only the service_role key, used
 -- exclusively by the serverless endpoints under /api, bypasses RLS and can

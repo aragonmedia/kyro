@@ -7,8 +7,8 @@
  *
  * Three steps, in the order that a brand can actually answer them: what the
  * business is, what the brand looks like, and then the connections KYRO needs
- * before anything can run. The third step is the one that matters — a brand
- * with no Shopify store connected cannot be paid attribution on anything —
+ * before anything can run. The third step is the one that matters, a brand
+ * with no Shopify store connected cannot be paid attribution on anything,
  * so it is last, where the wizard has already earned some momentum.
  *
  * Step one is skippable and step three can be finished later. Step two is not:

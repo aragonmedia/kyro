@@ -1,5 +1,5 @@
 /**
- * KYRO — Stripe billing for brands
+ * KYRO: Stripe billing for brands
  *
  * The paying side. A brand is an ordinary Stripe Customer with a saved payment
  * method; KYRO charges that Customer once per payment run and transfers each
@@ -251,7 +251,7 @@ interface IntentResponse {
  * `off_session` is the whole point: the brand saved the method once and is not
  * sitting in front of the screen when a run is charged, so the mandate has to
  * carry the authorisation. A card may still come back needing authentication,
- * which is a real answer and not an error — the caller reads `status`.
+ * which is a real answer and not an error, the caller reads `status`.
  *
  * The idempotency key is the run id. A retried request gets the same
  * PaymentIntent back rather than a second charge, which is what makes it safe

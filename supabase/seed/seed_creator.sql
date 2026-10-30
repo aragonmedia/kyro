@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- KYRO — creator-side demo data
+-- KYRO: creator-side demo data
 --
 -- Creates four demo brands with live campaigns, puts the test creator on
 -- three of them, and generates 90 days of attributed orders with earnings in
@@ -95,7 +95,7 @@ begin
     )
     values (
       v_brand_id,
-      brand_spec[i][1] || ' — Always On',
+      brand_spec[i][1] || ', Always On',
       'Ongoing performance campaign. Post what works, we run what converts.',
       'live',
       '9:16 video, 15-30s, hook in the first 2 seconds, show the product in use.',

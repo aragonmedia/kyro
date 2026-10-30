@@ -398,7 +398,7 @@ export function Pager({
         >
           {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
-        <span className="text-faint">Showing {from}–{to} of {total}</span>
+        <span className="text-faint">Showing {from}-{to} of {total}</span>
       </div>
 
       <div className="flex items-center gap-1">

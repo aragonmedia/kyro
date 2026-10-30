@@ -1,5 +1,5 @@
 <!--
-  DRAFT — NOT YET REVIEWED BY COUNSEL. Do not publish as-is.
+  DRAFT: NOT YET REVIEWED BY COUNSEL. Do not publish as-is.
   Placeholders filled: Kyvo LLC, itskyro.com, contact@itskyro.com
   131 Continental Drive, Suite 305, Newark, DE 19713 August 31, 2026
   Note: §4 (order data) and §12 (Shopify) exist because KYRO receives end-customer
@@ -7,7 +7,7 @@
   both check for this. Do not delete them to make the document shorter.
 -->
 
-# KYRO — Privacy Policy
+# KYRO: Privacy Policy
 
 **Effective date:** August 31, 2026
 
@@ -25,8 +25,8 @@ Brand's Shopify connection. If you are a Customer, §4 and §9 are the parts abo
 **Everyone:** name, email address, password (stored hashed, never in readable form),
 and anything you write to us in support conversations.
 
-**Creators:** profile details you choose to provide — handle, bio, location, niche, social
-handles and follower counts — the videos and images you upload, and the tax and payout
+**Creators:** profile details you choose to provide, handle, bio, location, niche, social
+handles and follower counts, the videos and images you upload, and the tax and payout
 information required to pay you (see §5).
 
 **Brands:** company name, brand profile, campaign briefs and settings, and billing details
@@ -136,7 +136,7 @@ to be discriminated against for exercising them. We do not sell personal informa
 share it for cross-context behavioral advertising, so there is no opt-out to offer. You may
 designate an authorized agent to make a request on your behalf.
 
-**Customers of connected stores.** See §4 — direct requests to the store you bought from,
+**Customers of connected stores.** See §4, direct requests to the store you bought from,
 or contact us and we will coordinate.
 
 Some information is retained after a deletion request where we are required to keep it, for

@@ -34,7 +34,7 @@ export function SupportWidget({ context }: { context?: string }) {
     };
   }, [open]);
 
-  const subject = encodeURIComponent(context ? `KYRO support — ${context}` : 'KYRO support');
+  const subject = encodeURIComponent(context ? `KYRO support: ${context}` : 'KYRO support');
   const body = encodeURIComponent(
     `\n\n---\nSent from ${typeof window !== 'undefined' ? window.location.pathname : ''}${context ? ` (${context})` : ''}`
   );

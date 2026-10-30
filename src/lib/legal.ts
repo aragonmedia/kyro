@@ -1,5 +1,5 @@
 /**
- * Kyro — Legal document content
+ * Kyro, Legal document content
  *
  * The Privacy Policy and Terms of Service are imported straight from the
  * markdown in `docs/legal/` rather than duplicated as JSX. That keeps one

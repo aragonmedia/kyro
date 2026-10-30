@@ -1,5 +1,5 @@
 /**
- * KYRO — signing, and reading back what was signed
+ * KYRO: signing, and reading back what was signed
  *
  * The browser's half of the signature flow. It sends a typed name and gets
  * back a path; it never produces the document, because a document a browser

@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- 0026 — Shopify managed pricing: which plan the store is on
+-- 0026: Shopify managed pricing: which plan the store is on
 --
 -- App Store rule 1.2.1 requires app charges to run through Shopify. KYRO's
 -- plan and its usage meter are configured in the Dev Dashboard, and the

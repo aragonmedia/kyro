@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- KYRO — 0015 — brand setup
+-- KYRO: 0015: brand setup
 --
 -- A brand row is created the moment someone picks the brand role, with
 -- nothing in it but a name. That is why a new brand lands on an empty
@@ -22,7 +22,7 @@ alter table public.brands add column if not exists setup_complete boolean not nu
 comment on column public.brands.business_type is
   'ecommerce | mobile_app | saas | other. Shapes nothing yet; collected so the marketplace can segment later.';
 comment on column public.brands.currency is
-  'ISO 4217. Display only today — money is stored in cents and settled in USD.';
+  'ISO 4217. Display only today, money is stored in cents and settled in USD.';
 comment on column public.brands.setup_complete is
   'True once the brand has been through the setup wizard. Set explicitly, not inferred, so skipping an optional step still counts as done.';
 

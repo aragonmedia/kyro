@@ -86,7 +86,7 @@ export function EarningsCard({ creatorId }: { creatorId: string }) {
               gives every digit the width of a zero, which reads loose at
               display sizes; it belongs in columns, not here. */}
           <p className="text-4xl md:text-5xl font-bold text-heading mt-1">
-            {loading ? '—' : money(data?.windowCents ?? 0)}
+            {loading ? '-' : money(data?.windowCents ?? 0)}
           </p>
         </div>
 

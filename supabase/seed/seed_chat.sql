@@ -3,7 +3,7 @@
 --
 -- Two threads, matching the two shapes the product has:
 --
---   · the Bold Buns campaign room — brand and creator, together
+--   · the Bold Buns campaign room, brand and creator, together
 --   · a private thread about the video the brand passed on
 --
 -- ⚠ This disables `messages_stamp_sender` for the length of the insert.
@@ -12,7 +12,7 @@
 -- sender_user_id with auth.uid() and derives the name server-side. The SQL
 -- editor has no auth.uid(), so with the trigger on, every seeded message would
 -- be stamped with a null sender and fail. Turning it off here is safe because
--- this runs as the database owner, not as a client — but it is turned back on
+-- this runs as the database owner, not as a client, but it is turned back on
 -- in the same transaction, and the last query below proves it.
 --
 -- Run AFTER adopt_bold_buns.sql. Safe to run more than once.
@@ -120,7 +120,7 @@ select t.kind,
  group by t.kind;
 
 select tgname as trigger, tgenabled as enabled_flag,
-       case when tgenabled = 'O' then 'ON — senders are stamped from the session'
-            else 'OFF — FIX THIS before anyone uses chat' end as verdict
+       case when tgenabled = 'O' then 'ON, senders are stamped from the session'
+            else 'OFF: FIX THIS before anyone uses chat' end as verdict
   from pg_trigger
  where tgrelid = 'public.messages'::regclass and not tgisinternal;

@@ -29,8 +29,8 @@ select p.email,
 -- every campaign, submission, order, earning and thread comes with it.
 --
 -- The brand row that account currently owns is left in place but renamed, so
--- nothing is destroyed and getMyBrand() — which takes the OLDEST brand a user
--- owns — still lands on Bold Buns.
+-- nothing is destroyed and getMyBrand(), which takes the OLDEST brand a user
+-- owns, still lands on Bold Buns.
 
 /*
 do $$

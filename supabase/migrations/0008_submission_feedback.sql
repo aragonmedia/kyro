@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- KYRO — 0008: usage signal and brand feedback on submissions
+-- KYRO: 0008: usage signal and brand feedback on submissions
 --
 -- Changes what a submission means.
 --

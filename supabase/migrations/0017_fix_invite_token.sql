@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- KYRO — 0017 — fix invite token generation
+-- KYRO: 0017: fix invite token generation
 --
 -- 0016 built the token with gen_random_bytes(), which lives in pgcrypto.
 -- Supabase installs pgcrypto into the `extensions` schema, and the function
@@ -9,7 +9,7 @@
 --
 -- Fixed by dropping the dependency rather than widening the search path.
 -- gen_random_uuid() is core PostgreSQL, always present, and two of them give
--- 256 bits of randomness — more than enough for a link that can be rotated.
+-- 256 bits of randomness, more than enough for a link that can be rotated.
 -- Widening search_path to reach pgcrypto would have loosened a
 -- security-definer function to fix a formatting problem, which is a bad trade.
 --

@@ -1,5 +1,5 @@
 /**
- * KYRO — starting and finishing a platform OAuth install, from the browser.
+ * KYRO: starting and finishing a platform OAuth install, from the browser.
  *
  * Deliberately separate from db.ts. That file is the typed Supabase boundary;
  * this one talks to KYRO's own serverless endpoints, which is a different kind
@@ -374,7 +374,7 @@ export async function saveBrandBankAccount(input: BrandBankInput): Promise<BankA
  * Start Stripe setup for a brand's payment method.
  *
  * KYRO charges the brand and transfers to creators, which is Stripe's
- * "separate charges and transfers" model — so the brand side is an ordinary
+ * "separate charges and transfers" model, so the brand side is an ordinary
  * Customer with a SetupIntent, not a Connect account. Connect accounts belong
  * to the creators receiving money.
  *
@@ -742,7 +742,7 @@ export async function claimShopifyInstall(
 }
 
 /* ─────────────────────────────────────────────────────────────
-   STRIPE — creator payouts
+   STRIPE: creator payouts
 
    Creators are Express connected accounts. Stripe hosts their onboarding and
    is the only thing that decides whether somebody can be paid, so the app asks

@@ -9,8 +9,8 @@
  * Deliberately no KYRO fee here. The fee belongs on the invoice, not on the
  * screen a brand opens every morning.
  *
- * Chart conventions match the creator card on purpose — one hue, no legend, a
- * direct label on the peak only — so the two sides of the product read as one
+ * Chart conventions match the creator card on purpose, one hue, no legend, a
+ * direct label on the peak only, so the two sides of the product read as one
  * product.
  */
 
@@ -59,7 +59,7 @@ export function BrandPerformanceCard({
   brandId: string;
   /** For the campaign filter. Empty means the filter is hidden. */
   campaigns: Array<{ id: string; name: string }>;
-  /** Pins the chart to one campaign and hides the picker — for a campaign's own page. */
+  /** Pins the chart to one campaign and hides the picker, for a campaign's own page. */
   lockedCampaignId?: string;
 }) {
   const [windowDays, setWindowDays] = useState<number>(30);
@@ -109,7 +109,7 @@ export function BrandPerformanceCard({
               gives every digit the width of a zero, which reads loose at
               display sizes; it belongs in columns, not here. */}
           <p className="text-4xl md:text-5xl font-bold text-heading mt-1">
-            {loading ? '—' : money(data?.revenueCents ?? 0)}
+            {loading ? '-' : money(data?.revenueCents ?? 0)}
           </p>
         </div>
 

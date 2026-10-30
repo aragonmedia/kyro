@@ -1,10 +1,10 @@
 -- ═══════════════════════════════════════════════════════════════
--- KYRO — 0016 — campaign invite links
+-- KYRO: 0016: campaign invite links
 --
 -- Two ways onto a campaign, which is the point:
 --
---   · Browse — a creator finds the campaign and applies, brand reviews
---   · Invite link — the brand already knows the creator and sends a link
+--   · Browse, a creator finds the campaign and applies, brand reviews
+--   · Invite link, the brand already knows the creator and sends a link
 --
 -- The second path skips the queue. A brand who went and found someone has
 -- already made the decision an application exists to support, so the invite
@@ -13,7 +13,7 @@
 -- The landing page has to render for someone who is not signed in yet, and
 -- `campaigns` is readable only by signed-in users. So the lookup is a
 -- security-definer function that returns the handful of public-facing fields
--- and nothing else — not the brand's id, not its connections, not its other
+-- and nothing else, not the brand's id, not its connections, not its other
 -- campaigns.
 --
 -- Run in the Supabase SQL editor. Idempotent.
@@ -108,7 +108,7 @@ $$;
  *
  * Creates an accepted application for the calling creator. Upserts, so a
  * creator who opens the same link twice does not get an error, and a creator
- * who had previously been declined is accepted by the invite — the brand has
+ * who had previously been declined is accepted by the invite, the brand has
  * just changed its mind in the most explicit way available.
  */
 create or replace function public.accept_campaign_invite(p_token text)

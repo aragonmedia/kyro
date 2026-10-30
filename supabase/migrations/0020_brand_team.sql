@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- KYRO — 0020 — brand teams
+-- KYRO: 0020: brand teams
 --
 -- A brand is rarely one person. This lets the owner invite teammates and say
 -- exactly what each can do: reach out to creators, give notes on videos, run
@@ -9,7 +9,7 @@
 --   member access to any brand data. Access is gated by row-level security on
 --   around fifteen tables, all of which check `owner_user_id = auth.uid()`.
 --   Widening those is deliberately a separate migration (0021), so it can be
---   reviewed on its own and applied when it is safe to test — not bundled into
+--   reviewed on its own and applied when it is safe to test, not bundled into
 --   a change whose job is to record who has been invited.
 --
 --   The UI says so. Nobody is told a teammate has access when they do not.

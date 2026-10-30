@@ -1,5 +1,5 @@
 /**
- * KYRO — Stripe, Accounts v2
+ * KYRO: Stripe, Accounts v2
  *
  * Only what creator payout onboarding needs: create a creator's connected
  * account, send them to Stripe's hosted flow, and read back whether Stripe
