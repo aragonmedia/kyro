@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, Building2, CheckCircle2, Clock, DollarSign, Download,
-  FileText, Layers, Loader2, RefreshCw, TrendingUp, Users, Video, Wallet, XCircle,
+  FileText, Layers, Loader2, MessagesSquare, RefreshCw, TrendingUp, Users, Video, Wallet, XCircle,
 } from 'lucide-react';
 import {
   loadAdminOverview, setCreatorTaxStatus,
@@ -35,6 +35,7 @@ import {
   type AdminOverview as Overview, type AdminRunRow,
 } from '../../lib/admin';
 import { openSignedCopy } from '../../lib/agreements';
+import { ChatPanel } from '../Chat';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import { RevenueChart } from './RevenueChart';
 import { DataTable, SimpleTable } from './DataTable';
@@ -42,7 +43,7 @@ import { useCrmTable, type Column, type FilterField } from './TableView';
 import { CallButton, EmptyRow, ExportButton, Field, MailButton, Panel, Pill, Tile } from './shared';
 import { count, day, money, moneyExact, monthLabel, pct, stamp, usd } from './format';
 
-type Page = 'overview' | 'brands' | 'creators' | 'campaigns' | 'finance';
+type Page = 'overview' | 'brands' | 'creators' | 'campaigns' | 'finance' | 'messages';
 
 const NAV: Array<{ id: Page; label: string; icon: typeof Users }> = [
   { id: 'overview', label: 'Overview', icon: TrendingUp },
@@ -50,6 +51,7 @@ const NAV: Array<{ id: Page; label: string; icon: typeof Users }> = [
   { id: 'creators', label: 'Creators', icon: Users },
   { id: 'campaigns', label: 'Campaigns', icon: Layers },
   { id: 'finance', label: 'Finance', icon: DollarSign },
+  { id: 'messages', label: 'Messages', icon: MessagesSquare },
 ];
 
 /* ─────────────────────────────────────────────────────────────
@@ -1515,6 +1517,16 @@ export function AdminPortal() {
     <CreatorsSection rows={data.creators} onOpen={openCreator} />
   ) : page === 'campaigns' ? (
     <CampaignsSection rows={data.campaigns} onBrand={openBrand} onOpen={openCampaign} />
+  ) : page === 'messages' ? (
+    <div className="space-y-3">
+      <div>
+        <h2 className="text-lg font-bold text-heading">Messages</h2>
+        <p className="text-sm text-muted mt-0.5">
+          Support threads from brands and creators, plus every campaign and video room on the platform.
+        </p>
+      </div>
+      <ChatPanel />
+    </div>
   ) : (
     <FinanceSection data={data} onBrand={openBrand} onCreator={openCreator} />
   );
@@ -1562,7 +1574,7 @@ export function AdminPortal() {
 
       {/* Stacked on a phone, one row per section. Sidebar from lg up, matching
           the brand portal so the two feel like the same product. */}
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 lg:hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 lg:hidden">
         {NAV.map((n) => (
           <button
             key={n.id}

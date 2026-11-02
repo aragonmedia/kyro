@@ -1,8 +1,11 @@
 /**
- * Campaign chat.
+ * Chat.
  *
- * Two kinds of conversation, deliberately not the same thing:
+ * Three kinds of conversation, deliberately not the same thing, and shown as
+ * three sections in the list so nobody has to work out which is which:
  *
+ *   support   , one account and the KYRO team. One per account, and the only
+ *                room that is not about a campaign.
  *   campaign  , the brand and every accepted creator, in one room. This is
  *                where a creator meets the others working the same product.
  *   submission, one creator and the brand, about one video. This is what the
@@ -15,12 +18,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, MessagesSquare, Play, RefreshCw, Send, Users, X } from 'lucide-react';
+import { ArrowLeft, LifeBuoy, MessagesSquare, Play, RefreshCw, Send, Users, X } from 'lucide-react';
 import {
   getThreadVideo,
   listMessages,
   listMyThreads,
   markThreadRead,
+  openSupportThread,
   sendMessage,
   type ChatMessage,
   type ThreadSummary,
@@ -59,15 +63,32 @@ const relative = (iso: string | null) => {
 const at = (h: string | null) => (h ? `@${h.replace(/^@+/, '')}` : 'Creator');
 
 /** The same thread reads differently depending on who is looking at it. */
-function titleFor(t: ThreadSummary, viewerIsBrand: boolean) {
+function titleFor(t: ThreadSummary, viewerIsBrand: boolean, viewerIsAdmin = false) {
+  if (t.kind === 'support') return viewerIsAdmin ? (t.supportName ?? 'Account') : 'KYRO team';
   if (t.kind === 'campaign') return t.campaignName;
   return viewerIsBrand ? `${at(t.creatorHandle)}'s video` : `Your video · ${t.campaignName}`;
 }
 
-function subtitleFor(t: ThreadSummary, viewerIsBrand: boolean) {
+function subtitleFor(t: ThreadSummary, viewerIsBrand: boolean, viewerIsAdmin = false) {
+  if (t.kind === 'support') {
+    return viewerIsAdmin ? 'Support · private' : 'Anything at all · private';
+  }
   if (t.kind === 'campaign') return `${t.brandName} · everyone on this campaign`;
   return viewerIsBrand ? `${t.campaignName} · private` : `${t.brandName} · private`;
 }
+
+/**
+ * The three sections of the list.
+ *
+ * A fixed order rather than one driven by recency: a person looking for the
+ * KYRO team should not have to hunt for the row, and it moving around as
+ * campaigns get busy is exactly what would make them hunt.
+ */
+const SECTIONS: Array<{ kind: ThreadSummary['kind']; label: string; adminLabel?: string }> = [
+  { kind: 'support', label: 'KYRO team', adminLabel: 'Support' },
+  { kind: 'campaign', label: 'Campaigns' },
+  { kind: 'submission', label: 'Videos' },
+];
 
 const USAGE_TONE: Record<UsageState, { label: string; cls: string }> = {
   in_use: { label: 'In use', cls: 'border-emerald-400/30 bg-emerald-400/15 text-emerald-300' },
@@ -196,14 +217,17 @@ function ThreadRow({
   thread,
   active,
   viewerIsBrand,
+  viewerIsAdmin,
   onOpen,
 }: {
   thread: ThreadSummary;
   active: boolean;
   viewerIsBrand: boolean;
+  viewerIsAdmin?: boolean;
   onOpen: () => void;
 }) {
-  const Icon = thread.kind === 'campaign' ? Users : MessagesSquare;
+  const Icon =
+    thread.kind === 'support' ? LifeBuoy : thread.kind === 'campaign' ? Users : MessagesSquare;
   return (
     <button
       type="button"
@@ -223,10 +247,10 @@ function ThreadRow({
       )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="font-semibold text-heading text-sm truncate flex-1">{titleFor(thread, viewerIsBrand)}</p>
+          <p className="font-semibold text-heading text-sm truncate flex-1">{titleFor(thread, viewerIsBrand, viewerIsAdmin)}</p>
           <span className="text-[11px] text-faint flex-shrink-0">{relative(thread.lastAt)}</span>
         </div>
-        <p className="text-xs text-faint truncate">{subtitleFor(thread, viewerIsBrand)}</p>
+        <p className="text-xs text-faint truncate">{subtitleFor(thread, viewerIsBrand, viewerIsAdmin)}</p>
         <p className="text-xs text-muted truncate mt-1">
           {thread.lastBody
             ? `${thread.lastSender ? `${thread.lastSender}: ` : ''}${thread.lastBody}`
@@ -258,6 +282,7 @@ function Conversation({
   const session = useSession();
   const userId = session.userId;
   const viewerIsBrand = session.role === 'brand';
+  const viewerIsAdmin = session.role === 'admin';
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -347,8 +372,8 @@ function Conversation({
           <ArrowLeft size={18} />
         </button>
         <div className="min-w-0">
-          <p className="font-semibold text-heading truncate">{titleFor(thread, viewerIsBrand)}</p>
-          <p className="text-xs text-faint truncate">{subtitleFor(thread, viewerIsBrand)}</p>
+          <p className="font-semibold text-heading truncate">{titleFor(thread, viewerIsBrand, viewerIsAdmin)}</p>
+          <p className="text-xs text-faint truncate">{subtitleFor(thread, viewerIsBrand, viewerIsAdmin)}</p>
         </div>
       </div>
 
@@ -362,11 +387,15 @@ function Conversation({
             <MessagesSquare size={26} className="mx-auto text-faint mb-3" />
             <p className="text-sm text-muted">No messages yet.</p>
             <p className="text-xs text-faint mt-1">
-              {thread.kind === 'campaign'
-                ? 'Say hello to the brand and the other creators on this campaign.'
-                : viewerIsBrand
-                  ? 'Tell the creator what you think of this video.'
-                  : 'Ask the brand anything about this video.'}
+              {thread.kind === 'support'
+                ? viewerIsAdmin
+                  ? 'Nothing from this account yet. You can write first.'
+                  : 'Ask us anything: setup, payouts, a campaign that is not behaving.'
+                : thread.kind === 'campaign'
+                  ? 'Say hello to the brand and the other creators on this campaign.'
+                  : viewerIsBrand
+                    ? 'Tell the creator what you think of this video.'
+                    : 'Ask the brand anything about this video.'}
             </p>
           </div>
         )}
@@ -385,6 +414,11 @@ function Conversation({
                         {m.senderRole === 'brand' && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-400/15 text-purple-300 border border-purple-400/25">
                             BRAND
+                          </span>
+                        )}
+                        {m.senderRole === 'admin' && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-400/15 text-emerald-300 border border-emerald-400/25">
+                            KYRO
                           </span>
                         )}
                       </div>
@@ -449,6 +483,7 @@ function Conversation({
 export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
   const session = useSession();
   const viewerIsBrand = session.role === 'brand';
+  const viewerIsAdmin = session.role === 'admin';
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(openThreadId ?? null);
   const [error, setError] = useState<string | null>(null);
@@ -464,6 +499,33 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
     const timer = setInterval(() => void load(), POLL_MS);
     return () => clearInterval(timer);
   }, [load]);
+
+  /**
+   * A brand or creator always has a room with the KYRO team, so the section
+   * is there before anyone writes in it. Admins get no room of their own:
+   * for them this list is the support queue, and an empty row addressed to
+   * themselves would be the first thing in it.
+   */
+  useEffect(() => {
+    if (viewerIsAdmin || !session.userId) return;
+    let alive = true;
+    void (async () => {
+      const res = await openSupportThread();
+      if (alive && res.data) void load();
+    })();
+    return () => { alive = false; };
+  }, [viewerIsAdmin, session.userId, load]);
+
+  const sections = useMemo(() => {
+    const all = threads ?? [];
+    return SECTIONS
+      .map((s) => ({
+        key: s.kind,
+        label: viewerIsAdmin ? (s.adminLabel ?? s.label) : s.label,
+        rows: all.filter((t) => t.kind === s.kind),
+      }))
+      .filter((s) => s.rows.length > 0);
+  }, [threads, viewerIsAdmin]);
 
   // A thread opened from elsewhere (the Message brand button) wins over
   // whatever was selected here.
@@ -485,9 +547,11 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
           <div className="p-4 border-b border-line">
             <h2 className="font-bold text-heading">Conversations</h2>
             <p className="text-xs text-muted mt-0.5">
-              {viewerIsBrand
-                ? 'Campaign rooms and private threads with creators about their videos.'
-                : 'Campaign rooms and your private threads with brands.'}
+              {viewerIsAdmin
+                ? 'Support threads, campaign rooms and video threads across the platform.'
+                : viewerIsBrand
+                  ? 'The KYRO team, campaign rooms, and private threads with creators about their videos.'
+                  : 'The KYRO team, campaign rooms, and your private threads with brands.'}
             </p>
           </div>
 
@@ -499,21 +563,34 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
               <MessagesSquare size={26} className="mx-auto text-faint mb-3" />
               <p className="text-sm text-muted">No conversations yet.</p>
               <p className="text-xs text-faint mt-1">
-                Get accepted onto a campaign and its room opens up here.
+                {viewerIsAdmin
+                  ? 'Support threads and campaign rooms appear here as they open.'
+                  : 'Get accepted onto a campaign and its room opens up here.'}
               </p>
             </div>
           )}
 
           {threads !== null && threads.length > 0 && (
-            <div className="divide-y divide-line max-h-[70vh] overflow-y-auto">
-              {threads.map((t) => (
-                <ThreadRow
-                  key={t.id}
-                  thread={t}
-                  active={t.id === activeId}
-                  viewerIsBrand={viewerIsBrand}
-                  onOpen={() => setActiveId(t.id)}
-                />
+            <div className="max-h-[70vh] overflow-y-auto">
+              {sections.map((s) => (
+                <div key={s.key}>
+                  <div className="sticky top-0 z-10 px-4 py-2 bg-surface-2/95 backdrop-blur border-y border-line flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-faint">{s.label}</p>
+                    <span className="text-[11px] text-faint">{s.rows.length}</span>
+                  </div>
+                  <div className="divide-y divide-line">
+                    {s.rows.map((t) => (
+                      <ThreadRow
+                        key={t.id}
+                        thread={t}
+                        active={t.id === activeId}
+                        viewerIsBrand={viewerIsBrand}
+                        viewerIsAdmin={viewerIsAdmin}
+                        onOpen={() => setActiveId(t.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}

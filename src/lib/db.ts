@@ -1185,6 +1185,12 @@ export interface OpenCampaign {
   /** What the video should feel like, as opposed to what format it is. */
   contentStyle: string | null;
   brandLogoUrl: string | null;
+  /** The brand's own category, used as the niche filter on browse. */
+  niche: string | null;
+  /** Products on the campaign, with what the brand says each has sold. */
+  products: Array<{ name: string; unitsSold: number | null }>;
+  /** Units across every product that carried a number. Null when none did. */
+  unitsSold: number | null;
 }
 
 /**
@@ -1209,7 +1215,7 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
     const { data, error } = await sb
       .from('campaigns')
       .select(
-        'id, name, brand_id, status, cover_url, deliverable_spec, brief, content_style, commission_rate_bps, clearing_days, brands(name, logo_url)'
+        'id, name, brand_id, status, cover_url, deliverable_spec, brief, content_style, commission_rate_bps, clearing_days, brands(name, logo_url, category, business_type), campaign_products(name, units_sold, position)'
       )
       .in('status', ['live', 'draft'])
       .order('created_at', { ascending: false });
@@ -1227,13 +1233,30 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
       content_style: string | null;
       commission_rate_bps: number | null;
       clearing_days: number | null;
-      brands: { name: string; logo_url: string | null } | { name: string; logo_url: string | null }[] | null;
+      brands:
+        | { name: string; logo_url: string | null; category: string | null; business_type: string | null }
+        | Array<{ name: string; logo_url: string | null; category: string | null; business_type: string | null }>
+        | null;
+      campaign_products: Array<{ name: string; units_sold: number | null; position: number }> | null;
     }>;
 
     return ok(
       rows
         .map((r) => {
           const brand = Array.isArray(r.brands) ? r.brands[0] : r.brands;
+
+          const products = [...(r.campaign_products ?? [])]
+            .sort((a, b) => a.position - b.position)
+            .map((p) => ({ name: p.name, unitsSold: p.units_sold }));
+
+          /* Summed only across the products that carried a number. A
+             campaign where one product sold 400 and the brand said nothing
+             about the other two reads as 400, not as 400 spread over three. */
+          const counted = products.filter((p) => typeof p.unitsSold === 'number');
+          const unitsSold = counted.length
+            ? counted.reduce((sum, p) => sum + (p.unitsSold ?? 0), 0)
+            : null;
+
           return {
             id: r.id,
             name: r.name,
@@ -1247,6 +1270,9 @@ export async function listCampaignsOpenToCreators(): Promise<Result<OpenCampaign
             brandLogoUrl: brand?.logo_url ?? null,
             commissionBps: r.commission_rate_bps,
             clearingDays: r.clearing_days,
+            niche: (brand?.category || brand?.business_type || null),
+            products,
+            unitsSold,
           };
         })
         // A campaign whose brand we cannot name is not something a creator can
@@ -2261,7 +2287,7 @@ export async function listCampaignProducts(campaignId: string): Promise<Result<C
   try {
     const { data, error } = await sb
       .from('campaign_products')
-      .select('id, campaign_id, name, description, image_url, price_cents, external_url')
+      .select('id, campaign_id, name, description, image_url, price_cents, external_url, units_sold')
       .eq('campaign_id', campaignId)
       .order('position', { ascending: true });
 
@@ -2299,6 +2325,8 @@ export interface NewCampaignProduct {
   imageUrl: string | null;
   priceCents: Cents | null;
   externalUrl: string | null;
+  /** Units already sold, as the brand stated. Null means they did not say. */
+  unitsSold: number | null;
 }
 
 /**
@@ -2323,6 +2351,7 @@ export async function addCampaignProducts(
         image_url: p.imageUrl,
         price_cents: p.priceCents,
         external_url: p.externalUrl,
+        units_sold: p.unitsSold,
         position: i,
       }))
     );
@@ -2346,15 +2375,19 @@ export async function addCampaignProducts(
    worth nothing.
    ───────────────────────────────────────────────────────────── */
 
-export type ThreadKind = 'campaign' | 'submission';
+export type ThreadKind = 'campaign' | 'submission' | 'support';
 
 export interface ThreadSummary {
   id: string;
   kind: ThreadKind;
-  campaignId: string;
+  /** Null on a support thread, which is not about a campaign. */
+  campaignId: string | null;
   campaignName: string;
   brandName: string;
   submissionId: string | null;
+  /** Support threads only: whose room it is, and what to call them. */
+  supportUserId: string | null;
+  supportName: string | null;
   lastBody: string | null;
   lastSender: string | null;
   lastAt: string | null;
@@ -2387,10 +2420,12 @@ export async function listMyThreads(): Promise<Result<ThreadSummary[]>> {
       (data ?? []).map((r: Record<string, unknown>) => ({
         id: r.thread_id as string,
         kind: r.kind as ThreadKind,
-        campaignId: r.campaign_id as string,
+        campaignId: (r.campaign_id as string | null) ?? null,
         campaignName: (r.campaign_name as string) ?? 'Campaign',
         brandName: (r.brand_name as string) ?? '',
         submissionId: (r.submission_id as string | null) ?? null,
+        supportUserId: (r.support_user_id as string | null) ?? null,
+        supportName: (r.support_name as string | null) ?? null,
         lastBody: (r.last_body as string | null) ?? null,
         lastSender: (r.last_sender as string | null) ?? null,
         lastAt: (r.last_at as string | null) ?? null,
@@ -2456,6 +2491,25 @@ export async function openCampaignThread(campaignId: string): Promise<Result<str
     return ok((data as string) ?? null);
   } catch (e) {
     return fail(null, describeError(e, 'Could not open that conversation.'));
+  }
+}
+
+/**
+ * The thread with the KYRO team, created on first open.
+ *
+ * Passing a user id is only meaningful for an admin opening someone else's
+ * room; everyone else gets their own back whatever they pass, which is
+ * enforced in the function rather than here.
+ */
+export async function openSupportThread(userId?: string | null): Promise<Result<string | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const { data, error } = await sb.rpc('support_thread', { p_user_id: userId ?? null });
+    if (error) return fail(null, describeError(error, 'Could not open your thread with the KYRO team.'));
+    return ok((data as string) ?? null);
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not open your thread with the KYRO team.'));
   }
 }
 

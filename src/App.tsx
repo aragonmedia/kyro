@@ -5,7 +5,7 @@ import {
   Heart, ChevronLeft, Sun, Moon, EyeOff, BarChart3, ArrowDownRight, ImagePlus, MessagesSquare,
   Settings as SettingsIcon, CreditCard, Banknote
 } from 'lucide-react';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { mockApi } from './lib/api';
 import { useTheme } from './lib/theme';
 import {
@@ -2026,7 +2026,7 @@ function BrandDashboard({
     .map((c) => ({ id: c.id, name: c.name, brandId: c.brandId ?? '', brandName: c.brandName,
                    status: c.status, coverUrl: c.cover, deliverableSpec: null, brief: null,
                    commissionBps: null, clearingDays: null, contentStyle: null,
-                   brandLogoUrl: c.logoUrl }));
+                   brandLogoUrl: c.logoUrl, niche: null, products: [], unitsSold: null }));
 
   const createButton = (
     <button
@@ -2508,6 +2508,8 @@ interface ProductDraft {
   name: string;
   price: string;
   url: string;
+  /** Units already sold. Blank is a real answer: "not saying". */
+  unitsSold: string;
 }
 
 const MAX_PRODUCTS = 10;
@@ -2518,6 +2520,7 @@ const newProductDraft = (): ProductDraft => ({
   name: '',
   price: '',
   url: '',
+  unitsSold: '',
 });
 
 /** Only http(s) links, so a product link can never run script when clicked. */
@@ -2613,7 +2616,7 @@ function ProductDraftRow({
               </button>
             )}
           </div>
-          <div className="grid grid-cols-[96px_1fr] gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-[96px_110px_1fr] gap-2">
             <div className="relative">
               <span className="absolute left-3 top-2 text-sm text-muted">$</span>
               <input
@@ -2625,12 +2628,25 @@ function ProductDraftRow({
                 placeholder="Price"
               />
             </div>
+            {/* The number a creator uses to decide whether the campaign is
+                worth their time. Optional, because a brand launching
+                something new should be able to say nothing rather than type
+                a zero that reads as a flop. */}
+            <input
+              value={draft.unitsSold}
+              onChange={(e) => onChange({ unitsSold: e.target.value })}
+              disabled={disabled}
+              inputMode="numeric"
+              className={small}
+              placeholder="Units sold"
+              title="How many of this product have sold so far. Creators see this when browsing. Leave blank to not say."
+            />
             <input
               value={draft.url}
               onChange={(e) => onChange({ url: e.target.value })}
               disabled={disabled}
               autoCapitalize="none"
-              className={small}
+              className={`${small} col-span-2 sm:col-span-1`}
               placeholder="Product link (optional)"
             />
           </div>
@@ -2671,8 +2687,15 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
 
     // A row the brand never touched is ignored. A row with anything in it
     // needs a name, so creators never see an unnamed product.
-    const filled = products.filter((p) => p.file || p.name.trim() || p.price.trim() || p.url.trim());
-    const productRows: Array<{ draft: ProductDraft; priceCents: number | null; url: string | null }> = [];
+    const filled = products.filter(
+      (p) => p.file || p.name.trim() || p.price.trim() || p.url.trim() || p.unitsSold.trim()
+    );
+    const productRows: Array<{
+      draft: ProductDraft;
+      priceCents: number | null;
+      url: string | null;
+      unitsSold: number | null;
+    }> = [];
     for (const p of filled) {
       if (!p.name.trim()) next[`product:${p.key}`] = 'Name this product.';
       let priceCents: number | null = null;
@@ -2685,7 +2708,16 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
         url = safeProductUrl(p.url);
         if (!url) next[`product:${p.key}`] = 'Enter a full link starting with https://';
       }
-      productRows.push({ draft: p, priceCents, url });
+      /* Blank stays null. A brand with a new product should be able to say
+         nothing rather than type a zero that reads to creators as a flop. */
+      let unitsSold: number | null = null;
+      if (p.unitsSold.trim()) {
+        const n = Number(p.unitsSold.replace(/[^0-9]/g, ''));
+        if (!Number.isFinite(n) || n < 0) next[`product:${p.key}`] = 'Enter a whole number of units, or leave it blank.';
+        else unitsSold = n;
+      }
+
+      productRows.push({ draft: p, priceCents, url, unitsSold });
     }
 
 
@@ -2734,7 +2766,13 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
     // rather than implying nothing was created.
     const created = res.data;
     if (created && productRows.length > 0) {
-      const saved: Array<{ name: string; imageUrl: string | null; priceCents: number | null; externalUrl: string | null }> = [];
+      const saved: Array<{
+        name: string;
+        imageUrl: string | null;
+        priceCents: number | null;
+        externalUrl: string | null;
+        unitsSold: number | null;
+      }> = [];
       for (const row of productRows) {
         let imageUrl: string | null = null;
         if (row.draft.file) {
@@ -2747,7 +2785,13 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
           }
           imageUrl = up.url;
         }
-        saved.push({ name: row.draft.name.trim(), imageUrl, priceCents: row.priceCents, externalUrl: row.url });
+        saved.push({
+          name: row.draft.name.trim(),
+          imageUrl,
+          priceCents: row.priceCents,
+          externalUrl: row.url,
+          unitsSold: row.unitsSold,
+        });
       }
 
       const added = await addCampaignProducts(created.id, brandId, saved);
@@ -2817,7 +2861,7 @@ function CreateCampaignModal({ brandId, onClose, onCreated }: { brandId: string 
                 error={errors[`product:${p.key}`]}
                 onChange={(patch) => updateProduct(p.key, patch)}
                 onRemove={() => removeProduct(p.key)}
-                canRemove={products.length > 1 || Boolean(p.file || p.name || p.price || p.url)}
+                canRemove={products.length > 1 || Boolean(p.file || p.name || p.price || p.url || p.unitsSold)}
               />
             ))}
             {products.length < MAX_PRODUCTS && (
@@ -3390,6 +3434,15 @@ function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (ca
   const [detail, setDetail] = useState<OpenCampaign | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /* What a creator narrows by. Kept in four pieces of plain state rather
+     than one filter object, because four selects are the whole feature and
+     an object would only make them harder to read. */
+  const [query, setQuery] = useState('');
+  const [niche, setNiche] = useState('');
+  const [minCommissionBps, setMinCommissionBps] = useState(0);
+  const [minUnits, setMinUnits] = useState(0);
+  const [withProducts, setWithProducts] = useState(false);
+
   const load = useCallback(async () => {
     const [c, a] = await Promise.all([listCampaignsOpenToCreators(), listMyApplications(creatorId)]);
     setCampaigns(c.data);
@@ -3398,6 +3451,30 @@ function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (ca
   }, [creatorId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  /* Only the niches actually on offer. Offering a filter that returns
+     nothing is worse than offering no filter. */
+  const niches = useMemo(
+    () => [...new Set((campaigns ?? []).map((c) => c.niche).filter((n): n is string => Boolean(n)))].sort(),
+    [campaigns]
+  );
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (campaigns ?? []).filter((c) => {
+      if (niche && c.niche !== niche) return false;
+      if (minCommissionBps && (c.commissionBps ?? 0) < minCommissionBps) return false;
+      // A campaign where the brand said nothing does not clear a minimum.
+      if (minUnits && (c.unitsSold ?? 0) < minUnits) return false;
+      if (withProducts && c.products.length === 0) return false;
+      if (!q) return true;
+      return `${c.name} ${c.brandName} ${c.niche ?? ''} ${c.products.map((p) => p.name).join(' ')}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [campaigns, query, niche, minCommissionBps, minUnits, withProducts]);
+
+  const narrowed = Boolean(query.trim() || niche || minCommissionBps || minUnits || withProducts);
 
   const statusFor = (campaignId: string) => apps.find((a) => a.campaignId === campaignId)?.status ?? null;
   const noteFor = (campaignId: string) => apps.find((a) => a.campaignId === campaignId)?.decisionNote ?? null;
@@ -3479,16 +3556,95 @@ function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (ca
       )}
 
     <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-      <div className="p-5 border-b border-line">
-        <h2 className="text-xl font-bold text-heading">Open campaigns</h2>
-        <p className="text-sm text-muted mt-0.5">Apply to join. You can start making content as soon as you're on.</p>
+      <div className="p-5 border-b border-line space-y-4">
+        <div>
+          <h2 className="text-xl font-bold text-heading">Open campaigns</h2>
+          <p className="text-sm text-muted mt-0.5">Apply to join. You can start making content as soon as you're on.</p>
+        </div>
+
+        {/* Native selects on purpose. They are the right control on a phone,
+            they need no dropdown code, and they are keyboard and screen
+            reader correct for free. */}
+        <div className="space-y-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search campaigns, brands or products"
+            className="w-full px-3 py-2.5 bg-surface-2 border border-line rounded-lg text-sm text-heading placeholder-faint focus:outline-none focus:border-purple-500"
+          />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <select
+              value={niche}
+              onChange={(e) => setNiche(e.target.value)}
+              className="w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-sm text-heading focus:outline-none focus:border-purple-500"
+            >
+              <option value="">Any niche</option>
+              {niches.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <select
+              value={minCommissionBps}
+              onChange={(e) => setMinCommissionBps(Number(e.target.value))}
+              className="w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-sm text-heading focus:outline-none focus:border-purple-500"
+            >
+              <option value={0}>Any commission</option>
+              <option value={500}>5% or more</option>
+              <option value={1000}>10% or more</option>
+              <option value={1500}>15% or more</option>
+              <option value={2000}>20% or more</option>
+            </select>
+            <select
+              value={minUnits}
+              onChange={(e) => setMinUnits(Number(e.target.value))}
+              className="w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-sm text-heading focus:outline-none focus:border-purple-500"
+            >
+              <option value={0}>Any sales</option>
+              <option value={100}>100+ sold</option>
+              <option value={500}>500+ sold</option>
+              <option value={1000}>1,000+ sold</option>
+              <option value={5000}>5,000+ sold</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => setWithProducts((v) => !v)}
+              className={`w-full px-3 py-2 rounded-lg border text-sm font-semibold transition ${
+                withProducts
+                  ? 'border-transparent bg-gradient-kyro text-white'
+                  : 'border-line bg-surface-2 text-muted hover:text-heading'
+              }`}
+            >
+              Has products
+            </button>
+          </div>
+          {narrowed && campaigns !== null && (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-faint tabular-nums">
+                {shown.length} of {campaigns.length}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery(''); setNiche(''); setMinCommissionBps(0); setMinUnits(0); setWithProducts(false);
+                }}
+                className="text-xs font-semibold text-muted hover:text-heading"
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {error && <p className="p-5 text-sm text-pink-300">{error}</p>}
       {campaigns === null && <p className="p-10 text-center text-sm text-muted">Loading…</p>}
 
+      {campaigns !== null && shown.length === 0 && (
+        <p className="p-10 text-center text-sm text-muted">
+          {narrowed ? 'No campaign matches that. Try widening a filter.' : 'Nothing open right now.'}
+        </p>
+      )}
+
       <div className="divide-y divide-line">
-        {(campaigns ?? []).map((c) => {
+        {shown.map((c) => {
           const status = statusFor(c.id);
           return (
             <div key={c.id} className="p-5 flex flex-col sm:flex-row sm:items-center gap-4">
@@ -3504,6 +3660,23 @@ function BrowseCampaigns({ creatorId, onChat }: { creatorId: string; onChat: (ca
                     {c.commissionBps != null && (
                       <span className="text-xs font-semibold text-emerald-400 tabular-nums whitespace-nowrap">
                         · {(c.commissionBps / 100).toFixed(c.commissionBps % 100 === 0 ? 0 : 1)}% per order
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    {c.niche && (
+                      <span className="px-2 py-0.5 rounded-full border border-line bg-surface-2 text-[10px] font-semibold text-muted">
+                        {c.niche}
+                      </span>
+                    )}
+                    {c.unitsSold != null && (
+                      <span className="px-2 py-0.5 rounded-full border border-line bg-surface-2 text-[10px] font-semibold text-muted tabular-nums">
+                        {c.unitsSold.toLocaleString('en-US')} sold
+                      </span>
+                    )}
+                    {c.products.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full border border-line bg-surface-2 text-[10px] font-semibold text-muted">
+                        {c.products.length} {c.products.length === 1 ? 'product' : 'products'}
                       </span>
                     )}
                   </div>

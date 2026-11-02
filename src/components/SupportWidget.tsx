@@ -1,11 +1,12 @@
 /**
  * Talk to the KYRO team.
  *
- * Deliberately a mail link rather than a fake "Chat Now" button. Live chat
- * needs someone on the other end of it; a chat bubble that opens a box nobody
- * reads is worse than an email address that works. When support threads are
- * built on the chat infrastructure this becomes the entry point to those, and
- * the mail link stays as the out-of-hours fallback.
+ * There are now two ways through: the KYRO team thread in Messages, which
+ * keeps the whole conversation inside the product where the team can see it
+ * next to the account, and email, which still works when someone cannot get
+ * into the portal at all. This panel points at both rather than duplicating
+ * the thread, because a second message box with its own history is how a
+ * question ends up answered twice.
  *
  * The subject line carries the page the person was on, because "it's broken"
  * with no context is the most expensive kind of support email.
@@ -59,7 +60,9 @@ export function SupportWidget({ context }: { context?: string }) {
           <div className="p-4 border-b border-line flex items-start justify-between gap-3">
             <div>
               <p className="font-semibold text-heading text-sm">Need a hand?</p>
-              <p className="text-xs text-muted mt-0.5">The KYRO team reads every message.</p>
+              <p className="text-xs text-muted mt-0.5">
+                Open Messages and pick <span className="text-body font-semibold">KYRO team</span>: it is the first thread in the list.
+              </p>
             </div>
             <button type="button" onClick={() => setOpen(false)} className="text-muted hover:text-heading" aria-label="Close">
               <X size={16} />
@@ -74,7 +77,7 @@ export function SupportWidget({ context }: { context?: string }) {
               <Mail size={15} className="text-body" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-heading">Email us</p>
+              <p className="text-sm font-semibold text-heading">Email us instead</p>
               <p className="text-xs text-faint truncate">{SUPPORT_EMAIL}</p>
             </div>
           </a>
