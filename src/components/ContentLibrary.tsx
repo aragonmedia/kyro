@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Download, FileVideo, RefreshCw, X } from 'lucide-react';
 import { listSubmissionsForBrand, type CampaignSubmission } from '../lib/db';
+import { VideoPerformance } from './VideoPerformance';
 import { signedVideoUrl } from '../lib/storage';
 import { CoverImage, VideoTile } from './MediaTile';
 
@@ -184,6 +185,11 @@ function VideoSheet({
                 <TrackingLink token={sub.trackingToken} />
               </div>
             )}
+
+            {/* The same panel the creator sees for this video. */}
+            <div className="px-5 pb-5">
+              <VideoPerformance submissionId={sub.id} />
+            </div>
 
             {/* The same decision controls as everywhere else, so there is one
                 place that decides what "not used" requires. */}

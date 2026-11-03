@@ -1705,6 +1705,60 @@ export async function setApplicationStatus(
    ───────────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────
+   What a video did
+
+   Written only by the Meta sync job. Nothing here invents a figure: a video
+   with no matched ad, or a brand that has not connected Meta, returns an
+   empty series and the panel says so rather than drawing zeroes that read
+   like a result.
+   ───────────────────────────────────────────────────────────── */
+
+export interface VideoDay {
+  day: string;
+  impressions: number;
+  reach: number;
+  spendCents: number;
+  linkClicks: number;
+  plays: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p100: number;
+  thruplays: number;
+  avgWatchSeconds: number | null;
+}
+
+export async function getVideoPerformance(submissionId: string): Promise<Result<VideoDay[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb.rpc('submission_performance', { p_submission_id: submissionId });
+    if (error) return fail([], describeError(error, 'Could not load this video\'s performance.'));
+
+    return ok(
+      (data ?? []).map((r: Record<string, unknown>) => ({
+        day: String(r.day),
+        impressions: Number(r.impressions ?? 0),
+        reach: Number(r.reach ?? 0),
+        spendCents: Number(r.spend_cents ?? 0),
+        linkClicks: Number(r.link_clicks ?? 0),
+        plays: Number(r.video_plays ?? 0),
+        p25: Number(r.video_p25 ?? 0),
+        p50: Number(r.video_p50 ?? 0),
+        p75: Number(r.video_p75 ?? 0),
+        p100: Number(r.video_p100 ?? 0),
+        thruplays: Number(r.thruplays ?? 0),
+        avgWatchSeconds: r.avg_watch_seconds === null || r.avg_watch_seconds === undefined
+          ? null
+          : Number(r.avg_watch_seconds),
+      }))
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load this video\'s performance.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
    Campaign roster, who is on a campaign
    ───────────────────────────────────────────────────────────── */
 

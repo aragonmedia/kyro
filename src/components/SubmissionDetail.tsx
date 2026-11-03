@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { MessagesSquare, X, RefreshCw } from 'lucide-react';
 import { getSubmissionDetail, type MySubmission, type SubmissionDetail } from '../lib/db';
+import { VideoPerformance } from './VideoPerformance';
 import { VideoTile } from './MediaTile';
 
 const money = (cents: number) =>
@@ -163,6 +164,12 @@ export function SubmissionDetailModal({
               )}
             </>
           )}
+
+          {/* The same panel the brand sees for this video, with the same
+              numbers in it. */}
+          <div className="pt-4 border-t border-line">
+            <VideoPerformance submissionId={sub.id} />
+          </div>
 
           {sub.trackingToken && (
             <div className="pt-4 border-t border-line">

@@ -152,3 +152,165 @@ export async function fetchMe(token: string): Promise<{ id: string; name: string
   const me = await graph<{ id: string; name?: string }>('me', token, { fields: 'id,name' });
   return { id: me.id, name: me.name ?? null };
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Finding the ad that belongs to a video, and what it did
+
+   The link between a KYRO submission and a Meta ad is discovered rather
+   than entered. A brand already has to put the submission's tracking token
+   in the ad's destination URL, because that is what attributes a Shopify
+   order back to the creator. So the token is a key that already exists in
+   both systems, and asking anybody to maintain a second mapping would only
+   create something to be wrong.
+   ───────────────────────────────────────────────────────────── */
+
+export interface MetaAdLink {
+  adId: string;
+  name: string;
+  /** Every destination URL this ad points at, lowercased. */
+  urls: string[];
+  /** EFFECTIVE status, e.g. ACTIVE, PAUSED, ADSET_PAUSED. */
+  status: string;
+}
+
+/**
+ * Every ad in an account with the destination URLs its creative points at.
+ *
+ * Meta spreads the link across several creative shapes depending on how the
+ * ad was built, so all of them are collected and the caller searches the
+ * lot rather than guessing which field this particular ad used.
+ */
+export async function listAdsWithLinks(token: string, adAccountId: string): Promise<MetaAdLink[]> {
+  const account = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+  const out: MetaAdLink[] = [];
+  let after: string | null = null;
+
+  // Bounded. An account with more than 5,000 ads is not a brand KYRO is
+  // serving yet, and an unbounded loop against a paginated API is how a
+  // cron run turns into a bill.
+  for (let page = 0; page < 10; page += 1) {
+    const params: Record<string, string> = {
+      fields:
+        'id,name,effective_status,creative{object_story_spec,asset_feed_spec,url_tags,effective_object_story_id,link_url}',
+      limit: '500',
+    };
+    if (after) params.after = after;
+
+    const data: {
+      data?: Array<Record<string, unknown>>;
+      paging?: { cursors?: { after?: string }; next?: string };
+    } = await graph(`${account}/ads`, token, params);
+
+    for (const ad of data.data ?? []) {
+      const creative = (ad.creative ?? {}) as Record<string, unknown>;
+      const urls: string[] = [];
+
+      const push = (value: unknown) => {
+        if (typeof value === 'string' && value) urls.push(value.toLowerCase());
+      };
+
+      push(creative.link_url);
+      push(creative.url_tags);
+
+      const story = (creative.object_story_spec ?? {}) as Record<string, unknown>;
+      for (const key of ['link_data', 'video_data', 'photo_data']) {
+        const block = (story[key] ?? {}) as Record<string, unknown>;
+        push(block.link);
+        push(block.call_to_action && ((block.call_to_action as Record<string, unknown>).value as Record<string, unknown>)?.link);
+      }
+
+      const feed = (creative.asset_feed_spec ?? {}) as Record<string, unknown>;
+      for (const entry of (feed.link_urls as Array<Record<string, unknown>> | undefined) ?? []) {
+        push(entry.website_url);
+        push(entry.display_url);
+      }
+
+      out.push({
+        adId: String(ad.id),
+        name: typeof ad.name === 'string' ? ad.name : '',
+        urls,
+        status: typeof ad.effective_status === 'string' ? ad.effective_status : 'UNKNOWN',
+      });
+    }
+
+    after = data.paging?.next ? data.paging?.cursors?.after ?? null : null;
+    if (!after) break;
+  }
+
+  return out;
+}
+
+export interface MetaDayInsight {
+  day: string;
+  impressions: number;
+  reach: number;
+  spendCents: number;
+  clicks: number;
+  linkClicks: number;
+  videoPlays: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p100: number;
+  thruplays: number;
+  avgWatchSeconds: number | null;
+}
+
+/** Sum the `value` fields of one of Meta's action arrays. */
+const actionTotal = (rows: unknown): number => {
+  if (!Array.isArray(rows)) return 0;
+  return rows.reduce((sum: number, row) => {
+    const value = Number((row as { value?: unknown })?.value ?? 0);
+    return sum + (Number.isFinite(value) ? value : 0);
+  }, 0);
+};
+
+const actionOfType = (rows: unknown, type: string): number => {
+  if (!Array.isArray(rows)) return 0;
+  const hit = rows.find((row) => (row as { action_type?: string })?.action_type === type);
+  const value = Number((hit as { value?: unknown })?.value ?? 0);
+  return Number.isFinite(value) ? value : 0;
+};
+
+/**
+ * One ad's daily performance over a window.
+ *
+ * Daily rather than lifetime because a trend line needs days, and because a
+ * day that is corrected later should correct one row rather than shift a
+ * running total nobody can reconcile.
+ */
+export async function fetchAdInsights(
+  token: string,
+  adId: string,
+  sinceIso: string,
+  untilIso: string
+): Promise<MetaDayInsight[]> {
+  const data = await graph<{ data?: Array<Record<string, unknown>> }>(`${adId}/insights`, token, {
+    fields:
+      'date_start,impressions,reach,spend,clicks,inline_link_clicks,actions,video_play_actions,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions,video_avg_time_watched_actions',
+    time_increment: '1',
+    time_range: JSON.stringify({ since: sinceIso, until: untilIso }),
+    limit: '500',
+  });
+
+  return (data.data ?? []).map((row) => {
+    const spend = Number(row.spend ?? 0);
+    const avg = actionTotal(row.video_avg_time_watched_actions);
+    return {
+      day: String(row.date_start),
+      impressions: Number(row.impressions ?? 0) || 0,
+      reach: Number(row.reach ?? 0) || 0,
+      // Meta reports spend in the account currency as a decimal string.
+      spendCents: Math.round((Number.isFinite(spend) ? spend : 0) * 100),
+      clicks: Number(row.clicks ?? 0) || 0,
+      linkClicks: Number(row.inline_link_clicks ?? 0) || 0,
+      videoPlays: actionTotal(row.video_play_actions),
+      p25: actionTotal(row.video_p25_watched_actions),
+      p50: actionTotal(row.video_p50_watched_actions),
+      p75: actionTotal(row.video_p75_watched_actions),
+      p100: actionTotal(row.video_p100_watched_actions),
+      thruplays: actionOfType(row.actions, 'video_view'),
+      avgWatchSeconds: avg > 0 ? avg : null,
+    };
+  });
+}

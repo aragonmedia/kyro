@@ -10,7 +10,6 @@
  */
 
 import { isSupabaseConfigured, getSupabase } from './supabase';
-import * as meta from './meta';
 import type {
   Role,
   Campaign,
@@ -90,28 +89,13 @@ export const mockApi = {
     return { success: true };
   },
 
-  /* ─── Meta integration (delegates to lib/meta.ts) ── */
-  pushToMeta: async (submissionId: string, videoUrl: string, campaignName: string) => {
-    event('meta.push_submission', { submissionId });
-    return meta.pushSubmissionToMeta(
-      { accessToken: 'demo', adAccountId: 'demo' },
-      { id: submissionId, videoUrl, campaignName }
-    );
-  },
-  fetchInsights: async (metaAdId: string, submissionId: string) => {
-    event('meta.fetch_insights', { metaAdId });
-    return meta.fetchAdInsights(
-      { accessToken: 'demo', adAccountId: 'demo' },
-      metaAdId,
-      submissionId
-    );
-  },
-  connectMetaAdAccount: () => {
-    event('meta.oauth.start');
-    const url = meta.buildOAuthUrl(`${window.location.origin}/api/meta/callback`, 'demo-state');
-    // V1: window.location.href = url;
-    console.log('Would redirect to:', url);
-  },
+  /* ─── Meta integration ─────────────────────────────
+     Removed. These four delegated to src/lib/meta.ts, which returned
+     invented impressions, spend and conversions. Nothing ever called them,
+     which is the only reason a brand was never shown a fabricated number,
+     and the only safe state for a mock that plausible is deleted. The real
+     Meta work lives server side: api/_lib/meta.ts talks to the Graph API
+     and api/_lib/meta-sync.ts writes what it finds to meta_insights. */
 
   /* ─── Sharing ─────────────────────────────────────── */
   shareProfile: (profileId: string) => {
