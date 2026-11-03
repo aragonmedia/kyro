@@ -86,6 +86,8 @@ export interface AdminBrandRow {
   /** What the brand pays with, e.g. "Visa ····4242". Null when nothing is on file. */
   paymentMethod: string | null;
   agreementSignedAt: string | null;
+  /** The owner's account, for opening a thread with them. Null if unclaimed. */
+  ownerUserId: string | null;
   /** The owner's registered address, for reaching them. Null if unclaimed. */
   ownerEmail: string | null;
   ownerName: string | null;
@@ -555,6 +557,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         metaConnected: conn.meta,
         paymentMethod: method,
         agreementSignedAt: agreementByBrand.get(b.id) ?? null,
+        ownerUserId: b.owner_user_id ?? null,
         ownerEmail: owner?.email ?? null,
         ownerName: owner?.full_name ?? null,
         contactPhone: b.contact_phone,

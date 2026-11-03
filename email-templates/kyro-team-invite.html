@@ -1,0 +1,85 @@
+<!--
+  KYRO, team invite email
+
+  ⚠ NOT WIRED. KYRO sends no mail of its own today: the only email that
+  leaves the platform is Supabase auth mail (password reset). Adding a
+  teammate writes a row in brand_members with status 'invited' and sends
+  nothing, and migration 0020 is explicit that an invite does not yet grant
+  access to brand data either.
+
+  This file is the design, kept beside the live templates so that when an
+  email sender is added there is nothing to invent. Wiring it needs three
+  things and no more: a sending service, an /api/team/invite endpoint that
+  renders this with the values below, and the access-enforcement migration
+  so the invite is true when it arrives.
+
+  Values to fill:
+    {{ .InviterName }}   who added them, e.g. "Kevin Aragon"
+    {{ .BrandName }}     the brand they were added to, e.g. "Jaje Health"
+    {{ .RoleLabel }}     their role, e.g. "Manager"
+    {{ .Permissions }}   comma separated, e.g. "View campaigns, Approve videos"
+    {{ .AcceptUrl }}     one-time link that signs them in and claims the seat
+-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0;padding:0;background:#0b1020;">
+  <tr>
+    <td align="center" style="padding:32px 16px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#0f172a;border:1px solid #1f2a44;border-radius:16px;overflow:hidden;">
+
+        <tr>
+          <td style="padding:26px 32px;border-bottom:1px solid #1f2a44;">
+            <img src="https://itskyro.com/kyro-logo.png" width="34" height="34" alt="KYRO" style="vertical-align:middle;border-radius:8px;display:inline-block;" />
+            <span style="vertical-align:middle;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:1px;margin-left:10px;">KYRO</span>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:34px 32px 28px;">
+            <h1 style="margin:0 0 8px;color:#ffffff;font-size:24px;font-weight:700;">{{ .InviterName }} added you to {{ .BrandName }}</h1>
+            <p style="margin:0 0 26px;color:#94a3b8;font-size:15px;line-height:1.6;">
+              You now have a seat on {{ .BrandName }}'s team on KYRO, where the brand runs its creator campaigns and sees what each video sold.
+            </p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b1224;border:1px solid #2a3352;border-radius:14px;">
+              <tr>
+                <td style="padding:22px 24px;">
+                  <div style="color:#a888ff;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;">Your access</div>
+                  <div style="color:#ffffff;font-size:17px;font-weight:700;margin-bottom:6px;">{{ .RoleLabel }}</div>
+                  <div style="color:#94a3b8;font-size:14px;line-height:1.6;">{{ .Permissions }}</div>
+                </td>
+              </tr>
+            </table>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:26px 0 0;">
+              <tr>
+                <td style="background:#7c5cff;border-radius:12px;">
+                  <a href="{{ .AcceptUrl }}" style="display:inline-block;padding:14px 28px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">Accept and sign in</a>
+                </td>
+              </tr>
+            </table>
+
+            <p style="margin:22px 0 0;color:#64748b;font-size:13px;line-height:1.6;">
+              The link signs you in and claims the seat. It works once and expires in 7 days. If you were not expecting this, ignore it: nothing happens until you open it.
+            </p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:22px 32px;border-top:1px solid #1f2a44;">
+            <p style="margin:0 0 6px;color:#64748b;font-size:12px;">
+              <a href="https://itskyro.com/signin" style="color:#a888ff;text-decoration:none;">Sign in</a>
+              &nbsp;·&nbsp;
+              <a href="https://itskyro.com/help" style="color:#a888ff;text-decoration:none;">Help</a>
+              &nbsp;·&nbsp;
+              <a href="https://itskyro.com/privacy" style="color:#a888ff;text-decoration:none;">Privacy</a>
+              &nbsp;·&nbsp;
+              <a href="https://itskyro.com/terms" style="color:#a888ff;text-decoration:none;">Terms</a>
+            </p>
+            <p style="margin:0;color:#475569;font-size:12px;">© 2026 KYRO. The Creator Growth Portal.</p>
+          </td>
+        </tr>
+
+      </table>
+      <p style="margin:16px 0 0;color:#334155;font-size:11px;">You're receiving this because someone added this address to a brand team on KYRO.</p>
+    </td>
+  </tr>
+</table>

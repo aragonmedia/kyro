@@ -36,6 +36,7 @@ import {
 } from '../../lib/admin';
 import { openSignedCopy } from '../../lib/agreements';
 import { ChatPanel } from '../Chat';
+import { openSupportThread } from '../../lib/db';
 import { downloadCsv, toCsv } from '../../lib/csv';
 import { RevenueChart } from './RevenueChart';
 import { DataTable, SimpleTable } from './DataTable';
@@ -1156,9 +1157,10 @@ const TITLES: Record<string, string> = {
    Detail panes
    ───────────────────────────────────────────────────────────── */
 
-function BrandDetail({ brand, data, onBack, onCreator, onCampaign }: {
+function BrandDetail({ brand, data, onBack, onCreator, onCampaign, onMessage, messaging }: {
   brand: AdminBrandRow; data: Overview; onBack: () => void;
   onCreator: (id: string) => void; onCampaign: (id: string) => void;
+  onMessage: (userId: string) => void; messaging: boolean;
 }) {
   const campaigns = data.campaigns.filter((c) => c.brandId === brand.id);
   const creators = data.creators.filter((c) => c.brandIds.includes(brand.id));
@@ -1185,6 +1187,24 @@ function BrandDetail({ brand, data, onBack, onCreator, onCampaign }: {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Message before Email: a thread on KYRO keeps the conversation
+                next to the account, where the next person to pick it up can
+                read it. Mail is still there for anyone not signed in. */}
+            {brand.ownerUserId ? (
+              <button
+                type="button"
+                onClick={() => onMessage(brand.ownerUserId as string)}
+                disabled={messaging}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-kyro text-white border border-transparent text-xs font-semibold whitespace-nowrap disabled:opacity-50"
+                title={`Message ${brand.name} on KYRO`}
+              >
+                <MessagesSquare size={13} /> {messaging ? 'Opening…' : 'Message'}
+              </button>
+            ) : (
+              <span className="text-[11px] text-faint whitespace-nowrap" title="Nobody has claimed this brand yet">
+                Unclaimed
+              </span>
+            )}
             <MailButton to={brand.ownerEmail} subject={`KYRO: ${brand.name}`} />
             <CallButton phone={brand.contactPhone} />
           </div>
@@ -1444,6 +1464,8 @@ export function AdminPortal() {
   const [brandId, setBrandId] = useState<string | null>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
   const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [chatThreadId, setChatThreadId] = useState<string | null>(null);
+  const [messaging, setMessaging] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1462,6 +1484,19 @@ export function AdminPortal() {
   const openCreator = useCallback((id: string) => { setBrandId(null); setCampaignId(null); setCreatorId(id); setPage('creators'); }, []);
   const openCampaign = useCallback((id: string) => { setBrandId(null); setCreatorId(null); setCampaignId(id); setPage('campaigns'); }, []);
   const go = (p: Page) => { setBrandId(null); setCreatorId(null); setCampaignId(null); setPage(p); };
+
+  /* Open the KYRO team thread with an account and land on it. The thread is
+     created on first open, so this works for a brand that has never written
+     in, which is the common case: we are usually the ones starting it. */
+  const messageUser = useCallback(async (userId: string) => {
+    setMessaging(true);
+    const res = await openSupportThread(userId);
+    setMessaging(false);
+    if (!res.data) return;
+    setBrandId(null); setCreatorId(null); setCampaignId(null);
+    setChatThreadId(res.data);
+    setPage('messages');
+  }, []);
 
   const brand = useMemo(() => data?.brands.find((b) => b.id === brandId) ?? null, [data, brandId]);
   const creator = useMemo(() => data?.creators.find((c) => c.id === creatorId) ?? null, [data, creatorId]);
@@ -1485,6 +1520,7 @@ export function AdminPortal() {
     <BrandDetail
       brand={brand} data={data} onBack={() => setBrandId(null)}
       onCreator={openCreator} onCampaign={openCampaign}
+      onMessage={messageUser} messaging={messaging}
     />
   ) : creator ? (
     <CreatorDetail
@@ -1525,7 +1561,7 @@ export function AdminPortal() {
           Support threads from brands and creators, plus every campaign and video room on the platform.
         </p>
       </div>
-      <ChatPanel />
+      <ChatPanel openThreadId={chatThreadId} />
     </div>
   ) : (
     <FinanceSection data={data} onBrand={openBrand} onCreator={openCreator} />
