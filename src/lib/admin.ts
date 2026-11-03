@@ -114,6 +114,8 @@ export interface AdminCreatorRow {
   id: string;
   name: string;
   handle: string | null;
+  /** The creator's account, for opening a thread with them. */
+  userId: string | null;
   /** Registered address, for reaching them about a held payout. */
   email: string | null;
   bio: string | null;
@@ -601,6 +603,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         id: c.id,
         name: profile?.full_name || profile?.email || c.handle || 'Unnamed creator',
         handle: c.handle,
+        userId: c.user_id ?? null,
         email: profile?.email ?? null,
         bio: c.bio,
         location: c.location,

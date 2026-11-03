@@ -1271,10 +1271,11 @@ function BrandDetail({ brand, data, onBack, onCreator, onCampaign, onMessage, me
   );
 }
 
-function CreatorDetail({ creator, data, onBack, onBrand, onCampaign, onChanged }: {
+function CreatorDetail({ creator, data, onBack, onBrand, onCampaign, onChanged, onMessage, messaging }: {
   creator: AdminCreatorRow; data: Overview; onBack: () => void;
   onBrand: (id: string) => void; onCampaign: (id: string) => void;
   onChanged: () => void;
+  onMessage: (userId: string) => void; messaging: boolean;
 }) {
   const campaigns = data.campaigns.filter((c) => creator.campaignIds.includes(c.id));
   const brands = data.brands.filter((b) => creator.brandIds.includes(b.id));
@@ -1298,7 +1299,24 @@ function CreatorDetail({ creator, data, onBack, onBrand, onCampaign, onChanged }
               {creator.location ? ` · ${creator.location}` : ''} · Joined {day(creator.createdAt)}
             </p>
           </div>
-          <MailButton to={creator.email} subject={`KYRO: ${creator.name}`} />
+          <div className="flex items-center gap-2">
+            {creator.userId ? (
+              <button
+                type="button"
+                onClick={() => onMessage(creator.userId as string)}
+                disabled={messaging}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-kyro text-white border border-transparent text-xs font-semibold whitespace-nowrap disabled:opacity-50"
+                title={`Message ${creator.name} on KYRO`}
+              >
+                <MessagesSquare size={13} /> {messaging ? 'Opening…' : 'Message'}
+              </button>
+            ) : (
+              <span className="text-[11px] text-faint whitespace-nowrap" title="This creator has no account yet">
+                No account
+              </span>
+            )}
+            <MailButton to={creator.email} subject={`KYRO: ${creator.name}`} />
+          </div>
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1526,6 +1544,7 @@ export function AdminPortal() {
     <CreatorDetail
       creator={creator} data={data} onBack={() => setCreatorId(null)}
       onBrand={openBrand} onCampaign={openCampaign} onChanged={() => void load()}
+      onMessage={messageUser} messaging={messaging}
     />
   ) : campaign ? (
     <CampaignDetail

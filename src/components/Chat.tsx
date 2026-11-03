@@ -18,10 +18,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, LifeBuoy, MessagesSquare, Play, RefreshCw, Send, Users, X } from 'lucide-react';
+import { ArrowLeft, LifeBuoy, MessagesSquare, Play, RefreshCw, Search, Send, Trash2, Users, X } from 'lucide-react';
 import {
   getThreadVideo,
   listMessages,
+  deleteThread,
   listMyThreads,
   markThreadRead,
   openSupportThread,
@@ -66,7 +67,8 @@ const at = (h: string | null) => (h ? `@${h.replace(/^@+/, '')}` : 'Creator');
 function titleFor(t: ThreadSummary, viewerIsBrand: boolean, viewerIsAdmin = false) {
   if (t.kind === 'support') return viewerIsAdmin ? (t.supportName ?? 'Account') : 'KYRO team';
   if (t.kind === 'campaign') return t.campaignName;
-  return viewerIsBrand ? `${at(t.creatorHandle)}'s video` : `Your video · ${t.campaignName}`;
+  // An admin is looking at other people's videos, same as the brand is.
+  return viewerIsBrand || viewerIsAdmin ? `${at(t.creatorHandle)}'s video` : `Your video · ${t.campaignName}`;
 }
 
 function subtitleFor(t: ThreadSummary, viewerIsBrand: boolean, viewerIsAdmin = false) {
@@ -74,7 +76,7 @@ function subtitleFor(t: ThreadSummary, viewerIsBrand: boolean, viewerIsAdmin = f
     return viewerIsAdmin ? 'Support · private' : 'Anything at all · private';
   }
   if (t.kind === 'campaign') return `${t.brandName} · everyone on this campaign`;
-  return viewerIsBrand ? `${t.campaignName} · private` : `${t.brandName} · private`;
+  return viewerIsBrand || viewerIsAdmin ? `${t.campaignName} · private` : `${t.brandName} · private`;
 }
 
 /**
@@ -274,10 +276,13 @@ function Conversation({
   thread,
   onBack,
   onRead,
+  onDelete,
 }: {
   thread: ThreadSummary;
   onBack: () => void;
   onRead: () => void;
+  /** Admins only. Absent for everyone else, which is the permission. */
+  onDelete?: () => void;
 }) {
   const session = useSession();
   const userId = session.userId;
@@ -371,10 +376,21 @@ function Conversation({
         >
           <ArrowLeft size={18} />
         </button>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-semibold text-heading truncate">{titleFor(thread, viewerIsBrand, viewerIsAdmin)}</p>
           <p className="text-xs text-faint truncate">{subtitleFor(thread, viewerIsBrand, viewerIsAdmin)}</p>
         </div>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="flex-shrink-0 p-2 rounded-lg text-muted hover:text-bad hover:bg-bad-soft transition"
+            title="Delete this conversation"
+            aria-label="Delete this conversation"
+          >
+            <Trash2 size={16} />
+          </button>
+        )}
       </div>
 
       {thread.kind === 'submission' && <VideoContextCard threadId={thread.id} viewerIsBrand={viewerIsBrand} />}
@@ -487,6 +503,12 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(openThreadId ?? null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [campaign, setCampaign] = useState('');
+  const [niche, setNiche] = useState('');
+  /** The thread a delete has been started on. Null means nothing is pending. */
+  const [pendingDelete, setPendingDelete] = useState<ThreadSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     const res = await listMyThreads();
@@ -516,16 +538,58 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
     return () => { alive = false; };
   }, [viewerIsAdmin, session.userId, load]);
 
-  const sections = useMemo(() => {
-    const all = threads ?? [];
-    return SECTIONS
-      .map((s) => ({
-        key: s.kind,
-        label: viewerIsAdmin ? (s.adminLabel ?? s.label) : s.label,
-        rows: all.filter((t) => t.kind === s.kind),
-      }))
-      .filter((s) => s.rows.length > 0);
-  }, [threads, viewerIsAdmin]);
+  /* What there is to filter by, taken from the threads themselves rather
+     than a fixed list: a campaign nobody is in should not be offered. */
+  const campaigns = useMemo(
+    () => [...new Set((threads ?? []).map((t) => t.campaignName).filter((n): n is string => Boolean(n) && n !== 'Campaign'))].sort(),
+    [threads]
+  );
+  const niches = useMemo(
+    () => [...new Set((threads ?? []).map((t) => t.brandNiche).filter((n): n is string => Boolean(n)))].sort(),
+    [threads]
+  );
+
+  const shown = useMemo(() => {
+    let rows = threads ?? [];
+    if (campaign) rows = rows.filter((t) => t.campaignName === campaign);
+    if (niche) rows = rows.filter((t) => t.brandNiche === niche);
+    const q = query.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter((t) =>
+        [t.campaignName, t.brandName, t.brandNiche, t.supportName, t.creatorHandle, t.lastBody, t.lastSender]
+          .some((v) => (v ?? '').toLowerCase().includes(q))
+      );
+    }
+    return rows;
+  }, [threads, campaign, niche, query]);
+
+  const narrowed = Boolean(query.trim() || campaign || niche);
+
+  const sections = useMemo(
+    () =>
+      SECTIONS
+        .map((s) => ({
+          key: s.kind,
+          label: viewerIsAdmin ? (s.adminLabel ?? s.label) : s.label,
+          rows: shown.filter((t) => t.kind === s.kind),
+        }))
+        .filter((s) => s.rows.length > 0),
+    [shown, viewerIsAdmin]
+  );
+
+  /* Two steps, never one. The first click arms it and names what goes, the
+     second does it. A conversation is the only record of what was agreed in
+     it, so a stray click should not be enough. */
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    const res = await deleteThread(pendingDelete.id);
+    setDeleting(false);
+    if (res.error) { setError(res.error); return; }
+    if (activeId === pendingDelete.id) setActiveId(null);
+    setPendingDelete(null);
+    void load();
+  };
 
   // A thread opened from elsewhere (the Message brand button) wins over
   // whatever was selected here.
@@ -540,10 +604,10 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
 
   return (
     <div className="bg-surface border border-line rounded-2xl overflow-hidden">
-      <div className="grid md:grid-cols-[320px_1fr]">
+      <div className="grid md:grid-cols-[320px_minmax(0,1fr)]">
         {/* List. Hidden on mobile once a conversation is open, so the phone
             shows one thing at a time instead of two half things. */}
-        <div className={`border-b md:border-b-0 md:border-r border-line ${active ? 'hidden md:block' : ''}`}>
+        <div className={`min-w-0 border-b md:border-b-0 md:border-r border-line ${active ? 'hidden md:block' : ''}`}>
           <div className="p-4 border-b border-line">
             <h2 className="font-bold text-heading">Conversations</h2>
             <p className="text-xs text-muted mt-0.5">
@@ -554,6 +618,46 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
                   : 'The KYRO team, campaign rooms, and your private threads with brands.'}
             </p>
           </div>
+
+          {/* Filters. Only drawn once there is more than a handful to sift
+              through: a search box above four conversations is furniture. */}
+          {threads !== null && threads.length > 3 && (
+            <div className="p-3 border-b border-line space-y-2">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search conversations"
+                  className="w-full pl-9 pr-3 py-2 bg-surface-2 border border-line rounded-lg text-sm text-heading placeholder:text-faint focus:outline-none focus:border-purple-500"
+                />
+              </div>
+              {(campaigns.length > 1 || niches.length > 1) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={campaign} onChange={(e) => setCampaign(e.target.value)} className="w-full min-w-0 px-2.5 py-2 bg-surface-2 border border-line rounded-lg text-xs text-body focus:outline-none focus:border-purple-500">
+                    <option value="">Any campaign</option>
+                    {campaigns.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <select value={niche} onChange={(e) => setNiche(e.target.value)} className="w-full min-w-0 px-2.5 py-2 bg-surface-2 border border-line rounded-lg text-xs text-body focus:outline-none focus:border-purple-500">
+                    <option value="">Any niche</option>
+                    {niches.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              )}
+              {narrowed && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-faint">{shown.length} of {threads.length}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setQuery(''); setCampaign(''); setNiche(''); }}
+                    className="text-[11px] font-semibold text-kyro-500 hover:underline"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {error && <p className="p-4 text-sm text-pink-300">{error}</p>}
           {threads === null && <p className="p-8 text-center text-sm text-muted">Loading…</p>}
@@ -570,7 +674,11 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
             </div>
           )}
 
-          {threads !== null && threads.length > 0 && (
+          {threads !== null && threads.length > 0 && shown.length === 0 && (
+            <p className="p-8 text-center text-sm text-muted">No conversation matches that.</p>
+          )}
+
+          {threads !== null && shown.length > 0 && (
             <div className="max-h-[70vh] overflow-y-auto">
               {sections.map((s) => (
                 <div key={s.key}>
@@ -596,9 +704,14 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
           )}
         </div>
 
-        <div className={active ? '' : 'hidden md:block'}>
+        <div className={`min-w-0 ${active ? '' : 'hidden md:block'}`}>
           {active ? (
-            <Conversation thread={active} onBack={() => setActiveId(null)} onRead={load} />
+            <Conversation
+              thread={active}
+              onBack={() => setActiveId(null)}
+              onRead={load}
+              onDelete={viewerIsAdmin ? () => setPendingDelete(active) : undefined}
+            />
           ) : (
             <div className="h-[70vh] min-h-[420px] flex flex-col items-center justify-center text-center p-8">
               <MessagesSquare size={30} className="text-faint mb-3" />
@@ -607,6 +720,51 @@ export function ChatPanel({ openThreadId }: { openThreadId?: string | null }) {
           )}
         </div>
       </div>
+
+      {/* Second step. The first click armed it; this one names exactly what
+          goes and makes the person say so again. */}
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => { if (!deleting) setPendingDelete(null); }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-line bg-surface p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-bad-soft border border-bad/30 flex items-center justify-center flex-shrink-0">
+                <Trash2 size={16} className="text-bad" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-heading">Delete this conversation?</p>
+                <p className="text-sm text-muted mt-1 leading-relaxed">
+                  <span className="text-body font-semibold">{titleFor(pendingDelete, viewerIsBrand, viewerIsAdmin)}</span>{' '}
+                  and every message in it go for everyone in the room. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                disabled={deleting}
+                className="flex-1 px-3 py-2.5 rounded-xl bg-surface-2 border border-line text-sm font-semibold text-body hover:text-heading disabled:opacity-50"
+              >
+                Keep it
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDelete()}
+                disabled={deleting}
+                className="flex-1 px-3 py-2.5 rounded-xl bg-bad text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Yes, delete it'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

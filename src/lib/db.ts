@@ -2384,6 +2384,8 @@ export interface ThreadSummary {
   campaignId: string | null;
   campaignName: string;
   brandName: string;
+  /** The brand's niche, for filtering the list. Null when they never set one. */
+  brandNiche: string | null;
   submissionId: string | null;
   /** Support threads only: whose room it is, and what to call them. */
   supportUserId: string | null;
@@ -2423,6 +2425,7 @@ export async function listMyThreads(): Promise<Result<ThreadSummary[]>> {
         campaignId: (r.campaign_id as string | null) ?? null,
         campaignName: (r.campaign_name as string) ?? 'Campaign',
         brandName: (r.brand_name as string) ?? '',
+        brandNiche: (r.brand_niche as string | null) ?? null,
         submissionId: (r.submission_id as string | null) ?? null,
         supportUserId: (r.support_user_id as string | null) ?? null,
         supportName: (r.support_name as string | null) ?? null,
@@ -2510,6 +2513,25 @@ export async function openSupportThread(userId?: string | null): Promise<Result<
     return ok((data as string) ?? null);
   } catch (e) {
     return fail(null, describeError(e, 'Could not open your thread with the KYRO team.'));
+  }
+}
+
+/**
+ * Delete a conversation and everything in it. Admins only.
+ *
+ * Messages cannot be edited or removed one at a time by anyone, on purpose.
+ * Removing a whole thread is a different act and the server checks the role
+ * itself, so this is a thin call rather than a permission decided here.
+ */
+export async function deleteThread(threadId: string): Promise<Result<number>> {
+  const sb = client();
+  if (!sb) return ok(0);
+  try {
+    const { data, error } = await sb.rpc('delete_thread', { p_thread_id: threadId });
+    if (error) return fail(0, describeError(error, 'Could not delete that conversation.'));
+    return ok(Number(data ?? 0));
+  } catch (e) {
+    return fail(0, describeError(e, 'Could not delete that conversation.'));
   }
 }
 
@@ -3467,6 +3489,25 @@ export async function inviteBrandMember(
       }
       return fail(false, describeError(error, 'Could not send that invite.'));
     }
+
+    /* The seat exists now. Telling them about it is a separate, best effort
+       step: with no mail provider configured the endpoint says so and the
+       invite still stands, which is better than refusing to add a teammate
+       because an email could not go out. */
+    try {
+      const { data: session } = await sb.auth.getSession();
+      const token = session?.session?.access_token;
+      if (token) {
+        await fetch('/api/email/invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ brandId, email: clean }),
+        });
+      }
+    } catch {
+      // Nothing to tell the brand: the teammate is on the team either way.
+    }
+
     return ok(true);
   } catch (e) {
     return fail(false, describeError(e, 'Could not send that invite.'));
