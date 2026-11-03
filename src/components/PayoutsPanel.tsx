@@ -13,7 +13,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowUpRight, CheckCircle2, ExternalLink, RefreshCw, Wallet } from 'lucide-react';
 import { getCreatorEarnings, listCreatorTransfers, type PayoutRow } from '../lib/db';
 import { fetchPayoutStatus, openCreatorDashboard, startCreatorPayouts, type CreatorPayoutStatus } from '../lib/platform';
-import { useSession } from '../lib/session';
 
 const money = (cents: number) =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -34,9 +33,6 @@ const STATUS_TONE: Record<string, string> = {
    per transfer on this model. */
 
 export function PayoutsPanel({ creatorId }: { creatorId: string }) {
-  const session = useSession();
-  const creator = session.creator;
-
   const [available, setAvailable] = useState(0);
   const [rows, setRows] = useState<PayoutRow[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,16 +85,11 @@ export function PayoutsPanel({ creatorId }: { creatorId: string }) {
   // Stripe decides whether this person can be paid, not KYRO. Anything stored
   // on our side is a copy of their answer and goes stale.
   const payoutsReady = Boolean(payout?.payoutsEnabled);
-  const taxDone = creator?.taxFormStatus === 'complete';
 
-  // What is holding up the money, said once. Tax first because KYRO will not
-  // send a transfer without it; Stripe readiness before that because nothing
-  // can move at all until onboarding is done.
-  const blocker = !payoutsReady
-    ? 'Set up payouts with Stripe first.'
-    : !taxDone
-      ? 'Your tax info has to be on file before KYRO can release a payout.'
-      : null;
+  /* What is holding up the money, said once. Stripe will not enable payouts
+     until it has everything it needs from the creator, tax information
+     included, so this one check covers what two used to. */
+  const blocker = payoutsReady ? null : 'Set up payouts with Stripe first.';
 
   return (
     <div className="space-y-6">

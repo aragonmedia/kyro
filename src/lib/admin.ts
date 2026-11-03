@@ -122,7 +122,6 @@ export interface AdminCreatorRow {
   location: string | null;
   niche: string[];
   socials: Array<{ network: string; handle: string; followers: number | null }>;
-  taxFormStatus: string;
   /** Brands this creator has submitted to, so a brand page can list its own. */
   brandIds: string[];
   /** Campaign ids, for the same reason. */
@@ -139,7 +138,6 @@ export interface AdminCreatorRow {
   paidCents: number;
   /** Stripe says transfers can land. Without this a payout is held. */
   payoutsReady: boolean;
-  taxComplete: boolean;
   /** When they signed the current creator agreement, or null. */
   agreementSignedAt: string | null;
   /** Why a payout to this creator would be held right now, or null. */
@@ -262,7 +260,7 @@ interface CreatorRaw {
   tiktok_handle: string | null; tiktok_followers: number | null;
   youtube_handle: string | null; youtube_subscribers: number | null;
   stripe_account_id: string | null; stripe_payouts_enabled: boolean;
-  tax_form_status: string; created_at: string;
+  created_at: string;
 }
 interface ProfileRaw { id: string; full_name: string | null; email: string | null }
 interface SubmissionRaw {
@@ -340,7 +338,7 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         .select('id, brand_id, user_id, doc_type, version, signed_at, signer_name, signer_title, signer_email, legal_entity_name, document_path')
         .order('signed_at', { ascending: false }),
       sb.from('campaigns').select('id, brand_id, name, status, commission_rate_bps, platform_fee_bps, created_at'),
-      sb.from('creators').select('id, user_id, handle, bio, location, niche, instagram_handle, instagram_followers, tiktok_handle, tiktok_followers, youtube_handle, youtube_subscribers, stripe_account_id, stripe_payouts_enabled, tax_form_status, created_at'),
+      sb.from('creators').select('id, user_id, handle, bio, location, niche, instagram_handle, instagram_followers, tiktok_handle, tiktok_followers, youtube_handle, youtube_subscribers, stripe_account_id, stripe_payouts_enabled, created_at'),
       sb.from('profiles').select('id, full_name, email'),
       sb.from('submissions').select('id, campaign_id, creator_id, brand_id, status'),
       sb.from('earnings').select('brand_id, campaign_id, creator_id, order_id, commissionable_cents, commission_cents, platform_fee_cents, state, created_at'),
@@ -583,21 +581,18 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
       const agg = byCreator.get(c.id) ?? blank();
       const profile = c.user_id ? profileById.get(c.user_id) : undefined;
       const payoutsReady = Boolean(c.stripe_account_id) && c.stripe_payouts_enabled;
-      const taxComplete = c.tax_form_status === 'complete';
 
       const agreementSignedAt = c.user_id ? creatorAgreementByUser.get(c.user_id) ?? null : null;
 
-      /* Migrations 0032 and 0039 hold a share unless all three are true.
-         Saying which one is missing turns "why has this creator not been
-         paid" from a support conversation into a glance, and the order
+      /* The planner holds a share unless both are true (migrations 0039 and
+         0046). Saying which one is missing turns "why has this creator not
+         been paid" from a support conversation into a glance, and the order
          matches the order the planner checks them in. */
       const heldReason = !payoutsReady
         ? 'Stripe payouts not enabled'
-        : !taxComplete
-          ? 'Tax details incomplete'
-          : !agreementSignedAt
-            ? 'Agreement not signed'
-            : null;
+        : !agreementSignedAt
+          ? 'Agreement not signed'
+          : null;
 
       return {
         id: c.id,
@@ -613,7 +608,6 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
           { network: 'TikTok', handle: c.tiktok_handle, followers: c.tiktok_followers },
           { network: 'YouTube', handle: c.youtube_handle, followers: c.youtube_subscribers },
         ].filter((x): x is { network: string; handle: string; followers: number | null } => Boolean(x.handle)),
-        taxFormStatus: c.tax_form_status,
         brandIds: [...(brandsPerCreator.get(c.id) ?? new Set<string>())],
         campaignIds: [...(campaignsPerCreator.get(c.id) ?? new Set<string>())],
         campaigns: campaignsPerCreator.get(c.id)?.size ?? 0,
@@ -625,7 +619,6 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
         pendingCents: agg.pending,
         paidCents: paidPerCreator.get(c.id) ?? 0,
         payoutsReady,
-        taxComplete,
         agreementSignedAt,
         heldReason,
         createdAt: c.created_at,
@@ -753,35 +746,3 @@ export async function loadAdminOverview(): Promise<Result<AdminOverview>> {
   }
 }
 
-/* ─────────────────────────────────────────────────────────────
-   The one thing an admin writes
-   ───────────────────────────────────────────────────────────── */
-
-/**
- * Accept or un-accept a creator's tax details.
- *
- * This is the switch that releases a payout. Migration 0032 holds every share
- * until tax_form_status reads 'complete', and nothing in the product could
- * set it: the creator submits their details and somebody at KYRO has to look
- * at them, which is a judgement rather than a form submission.
- *
- * Migration 0037 pins that column against every browser session except an
- * admin's, so this call works for an admin and for nobody else. It is a plain
- * table write rather than an endpoint for exactly that reason: the database
- * is already deciding, and a server route would only be restating it.
- */
-export async function setCreatorTaxStatus(
-  creatorId: string,
-  status: 'complete' | 'pending' | 'not_collected'
-): Promise<{ error: string | null }> {
-  const sb = getSupabase();
-  if (!sb) return { error: 'Supabase is not configured.' };
-
-  const { error } = await sb
-    .from('creators')
-    .update({ tax_form_status: status })
-    .eq('id', creatorId);
-
-  if (error) return { error: error.message || 'Could not update the tax status.' };
-  return { error: null };
-}

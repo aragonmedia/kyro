@@ -1692,53 +1692,17 @@ export async function setApplicationStatus(
 
 /* ─────────────────────────────────────────────────────────────
    Creator tax details
+
+   There is no code here any more, and that is the point. KYRO used to
+   collect a legal name, entity type and address, mark the record pending,
+   and wait for an admin to accept it before a payout could be released.
+   Stripe collects the creator's tax information during Express onboarding
+   and files the 1099, so KYRO was asking a second time for something it
+   never read, and migration 0046 stopped using the answer as a gate.
+
+   The columns and the rows people already submitted are still there. They
+   are a record of what creators told us and they are not ours to delete.
    ───────────────────────────────────────────────────────────── */
-
-export interface TaxDetailsInput {
-  legalName: string;
-  entityType: 'individual' | 'business';
-  address: string;
-  country: string;
-}
-
-/**
- * Save the tax details KYRO is allowed to hold.
- *
- * Status moves to `pending`, never straight to `complete`. The form is not
- * finished until the payout provider has collected the SSN or EIN, which
- * happens outside KYRO, so calling it complete here would tell a creator they
- * can withdraw when they cannot.
- */
-export async function saveTaxDetails(
-  creatorId: string,
-  input: TaxDetailsInput
-): Promise<Result<boolean>> {
-  const sb = client();
-  if (!sb) return ok(false);
-
-  if (!input.legalName.trim()) return fail(false, 'Enter your full legal name.');
-  if (!input.address.trim()) return fail(false, 'Enter your address.');
-  if (!input.country.trim()) return fail(false, 'Enter your country.');
-
-  try {
-    const { error } = await sb
-      .from('creators')
-      .update({
-        tax_legal_name: input.legalName.trim(),
-        tax_entity_type: input.entityType,
-        tax_address: input.address.trim(),
-        tax_country: input.country.trim(),
-        tax_form_status: 'pending',
-        tax_form_submitted_at: new Date().toISOString(),
-      })
-      .eq('id', creatorId);
-
-    if (error) return fail(false, describeError(error, 'Could not save your tax details.'));
-    return ok(true);
-  } catch (e) {
-    return fail(false, describeError(e, 'Could not save your tax details.'));
-  }
-}
 
 /* ─────────────────────────────────────────────────────────────
    Campaign roster, who is on a campaign

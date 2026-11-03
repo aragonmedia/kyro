@@ -27,10 +27,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, Building2, CheckCircle2, Clock, DollarSign, Download,
-  FileText, Layers, Loader2, MessagesSquare, RefreshCw, TrendingUp, Users, Video, Wallet, XCircle,
+  FileText, Layers, MessagesSquare, RefreshCw, TrendingUp, Users, Video, Wallet, XCircle,
 } from 'lucide-react';
 import {
-  loadAdminOverview, setCreatorTaxStatus,
+  loadAdminOverview,
   type AdminBrandRow, type AdminCampaignRow, type AdminCreatorRow, type AdminDocument,
   type AdminOverview as Overview, type AdminRunRow,
 } from '../../lib/admin';
@@ -130,7 +130,7 @@ const BRAND_FIELDS: FilterField<AdminBrandRow>[] = [
 ];
 
 const CREATOR_STATES = [
-  'Payable', 'Payouts held', 'Stripe not set up', 'Tax incomplete', 'Earning', 'No videos yet',
+  'Payable', 'Payouts held', 'Stripe not set up', 'Agreement not signed', 'Earning', 'No videos yet',
 ] as const;
 
 const CREATOR_FIELDS: FilterField<AdminCreatorRow>[] = [
@@ -142,7 +142,7 @@ const CREATOR_FIELDS: FilterField<AdminCreatorRow>[] = [
       v === 'Payable' ? !c.heldReason
         : v === 'Payouts held' ? Boolean(c.heldReason)
           : v === 'Stripe not set up' ? !c.payoutsReady
-            : v === 'Tax incomplete' ? !c.taxComplete
+            : v === 'Agreement not signed' ? !c.agreementSignedAt
               : v === 'Earning' ? c.earnedCents > 0
                 : c.submissions === 0,
   },
@@ -1056,43 +1056,24 @@ function Documents({ rows, subject }: { rows: AdminDocument[]; subject: string }
 }
 
 /**
- * The three things that have to be true before a creator is paid, and the one
- * of them KYRO decides.
+ * What has to be true before a creator is paid.
  *
- * Stripe answers the first and the creator answers the third. The second is a
- * judgement somebody here makes about the details they submitted, and until
- * this panel existed there was no way to make it: migration 0032 holds every
- * share until the tax status reads complete, and nothing in the product could
- * write that word.
+ * Both are answered elsewhere and neither is KYRO's to override, which is why
+ * nothing here is a button. Stripe answers the first, and will not enable
+ * payouts until it has what it needs from the creator, their tax information
+ * included; the creator answers the second by signing. KYRO used to hold a
+ * third, its own tax form, accepted by hand in this panel. Migration 0046
+ * retired it: it asked for something Stripe already collects and put a person
+ * between a finished onboarding and a payment.
  */
-function PayoutReadiness({ creator, onChanged }: {
-  creator: AdminCreatorRow;
-  onChanged: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const set = async (status: 'complete' | 'pending') => {
-    setBusy(true);
-    setError(null);
-    const res = await setCreatorTaxStatus(creator.id, status);
-    setBusy(false);
-    if (res.error) { setError(res.error); return; }
-    onChanged();
-  };
-
+function PayoutReadiness({ creator }: { creator: AdminCreatorRow }) {
   const rows: Array<{ label: string; ok: boolean; note: string }> = [
     {
       label: 'Stripe payouts',
       ok: creator.payoutsReady,
-      note: creator.payoutsReady ? 'Stripe will accept transfers' : 'Not enabled on their account',
-    },
-    {
-      label: 'Tax details',
-      ok: creator.taxComplete,
-      note: creator.taxFormStatus === 'pending'
-        ? 'Submitted, waiting on you'
-        : creator.taxComplete ? 'Accepted' : 'Not submitted',
+      note: creator.payoutsReady
+        ? 'Stripe will accept transfers, so it has their tax information'
+        : 'Not enabled on their account',
     },
     {
       label: 'Creator agreement',
@@ -1105,7 +1086,7 @@ function PayoutReadiness({ creator, onChanged }: {
     <Panel
       title="Payout readiness"
       note={creator.heldReason
-        ? 'Their share is held until all three are met.'
+        ? 'Their share is held until both are met.'
         : 'Nothing is holding their payouts.'}
     >
       <div className="divide-y divide-line">
@@ -1118,28 +1099,9 @@ function PayoutReadiness({ creator, onChanged }: {
               <p className="text-sm font-semibold text-heading">{r.label}</p>
               <p className="text-xs text-muted">{r.note}</p>
             </div>
-            {r.label === 'Tax details' && (
-              <button
-                type="button"
-                disabled={busy || (!creator.taxComplete && creator.taxFormStatus === 'not_collected')}
-                onClick={() => void set(creator.taxComplete ? 'pending' : 'complete')}
-                title={!creator.taxComplete && creator.taxFormStatus === 'not_collected'
-                  ? 'Nothing has been submitted to accept yet'
-                  : undefined}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-xs font-semibold text-body hover:text-heading disabled:opacity-40"
-              >
-                {busy && <Loader2 size={13} className="animate-spin" />}
-                {creator.taxComplete ? 'Put back to pending' : 'Accept tax details'}
-              </button>
-            )}
           </div>
         ))}
       </div>
-      {error && (
-        <div className="p-4 border-t border-line">
-          <p className="text-xs text-bad">{error}</p>
-        </div>
-      )}
     </Panel>
   );
 }
@@ -1271,10 +1233,9 @@ function BrandDetail({ brand, data, onBack, onCreator, onCampaign, onMessage, me
   );
 }
 
-function CreatorDetail({ creator, data, onBack, onBrand, onCampaign, onChanged, onMessage, messaging }: {
+function CreatorDetail({ creator, data, onBack, onBrand, onCampaign, onMessage, messaging }: {
   creator: AdminCreatorRow; data: Overview; onBack: () => void;
   onBrand: (id: string) => void; onCampaign: (id: string) => void;
-  onChanged: () => void;
   onMessage: (userId: string) => void; messaging: boolean;
 }) {
   const campaigns = data.campaigns.filter((c) => creator.campaignIds.includes(c.id));
@@ -1322,7 +1283,6 @@ function CreatorDetail({ creator, data, onBack, onBrand, onCampaign, onChanged, 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Field label="Email" value={creator.email} />
           <Field label="Payouts" value={creator.payoutsReady ? 'Enabled on Stripe' : 'Not enabled'} />
-          <Field label="Tax details" value={creator.taxFormStatus === 'complete' ? 'Complete' : creator.taxFormStatus} />
           <Field label="Niche" value={creator.niche.length ? creator.niche.join(', ') : null} />
           <Field
             label="Social"
@@ -1362,7 +1322,7 @@ function CreatorDetail({ creator, data, onBack, onBrand, onCampaign, onChanged, 
         />
       </Panel>
 
-      <PayoutReadiness creator={creator} onChanged={onChanged} />
+      <PayoutReadiness creator={creator} />
 
       <Documents rows={creator.documents} subject={creator.name} />
 
@@ -1543,7 +1503,7 @@ export function AdminPortal() {
   ) : creator ? (
     <CreatorDetail
       creator={creator} data={data} onBack={() => setCreatorId(null)}
-      onBrand={openBrand} onCampaign={openCampaign} onChanged={() => void load()}
+      onBrand={openBrand} onCampaign={openCampaign}
       onMessage={messageUser} messaging={messaging}
     />
   ) : campaign ? (

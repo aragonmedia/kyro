@@ -34,7 +34,6 @@ import {
   listRosterForBrand,
   listMyApplications,
   listMySubmissions,
-  saveTaxDetails,
   saveCreatorSocials,
   setApplicationStatus,
   setEmailNotifications,
@@ -3168,7 +3167,6 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
         <div className="space-y-6">
           <PayoutsPanel creatorId={creatorId} />
           <AffiliateOrdersCard creatorId={creatorId} onOpen={onViewOrders} />
-          <PayoutAccountCard />
           <SignAgreement
             docType="creator_agreement"
             userId={session.userId ?? undefined}
@@ -4587,169 +4585,6 @@ function SubmitVideoModal({
 }
 
 /* ─────────────────────────────────────────────────────────────
-   CREATOR: PAYOUT ACCOUNT AND TAX FORM
-   ───────────────────────────────────────────────────────────── */
-/**
- * Tax details, and nothing else.
- *
- * This card used to collect a bank account too. It no longer does, and must
- * not again: the account money actually lands in is the one the creator gave
- * Stripe during onboarding, and a second one typed into KYRO went to a table
- * no transfer has ever read. Two places to set a bank account, one of which
- * silently does nothing, is how a creator ends up certain they were paid to
- * the wrong account. Changing it belongs on Stripe, behind Manage on Stripe
- * in the Payouts panel.
- *
- * Tax details stay here because KYRO has to accept them before a payout is
- * released, which is a judgement made in the admin portal. They are not a
- * W-9 and they are not what produces a tax form: Stripe collects the
- * creator's tax information during Express onboarding and files for
- * connected accounts. KYRO deliberately never holds a TIN, because holding
- * one is a compliance burden that buys nothing.
- */
-function PayoutAccountCard() {
-  const session = useSession();
-  const creator = session.creator;
-
-  const [taxEditing, setTaxEditing] = useState(false);
-  const [legalName, setLegalName] = useState('');
-  const [entityType, setEntityType] = useState<'individual' | 'business'>('individual');
-  const [taxAddress, setTaxAddress] = useState('');
-  const [taxCountry, setTaxCountry] = useState('United States');
-  const [taxSaving, setTaxSaving] = useState(false);
-  const [taxError, setTaxError] = useState<string | null>(null);
-
-  if (!creator) return null;
-
-  const submitTax = async () => {
-    setTaxError(null);
-    setTaxSaving(true);
-    const res = await saveTaxDetails(creator.id, {
-      legalName, entityType, address: taxAddress, country: taxCountry,
-    });
-    setTaxSaving(false);
-    if (res.error) { setTaxError(res.error); return; }
-    await session.refresh();
-    setTaxEditing(false);
-  };
-
-  const taxDone = creator.taxFormStatus === 'complete';
-
-  const field = "w-full px-3 py-2 bg-surface-2 border border-line rounded-lg text-heading placeholder-faint focus:outline-none focus:border-purple-500";
-
-  return (
-    <div className="grid gap-5 md:max-w-xl">
-      {/* Tax details */}
-      <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <ShieldCheck size={16} className="text-body" />
-          <h3 className="font-semibold text-heading">Tax details</h3>
-        </div>
-
-        <div className={`flex items-start gap-3 p-3 rounded-xl border ${taxDone ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-400/30 bg-amber-400/10'}`}>
-          {taxDone
-            ? <CheckCircle size={18} className="text-emerald-400 flex-shrink-0 mt-0.5" />
-            : <AlertCircle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />}
-          <div className="space-y-0.5">
-            <p className={`text-sm font-semibold ${taxDone ? 'text-emerald-200' : 'text-amber-200'}`}>
-              {taxDone ? 'Tax details accepted' : creator.taxFormStatus === 'pending' ? 'Tax details in review' : 'Tax details needed'}
-            </p>
-            {taxDone && creator.taxFormSubmittedAt && (
-              <p className="text-xs text-emerald-200/70">Submitted {new Date(creator.taxFormSubmittedAt).toLocaleDateString()}</p>
-            )}
-          </div>
-        </div>
-
-        {!taxEditing && (
-          <>
-            <p className="text-sm text-muted leading-relaxed">
-              KYRO needs these on file before any money is sent to you. Your tax forms come from
-              Stripe, who collect your tax information when you set up payouts and file for
-              connected accounts.
-            </p>
-            {creator.taxLegalName && (
-              <p className="text-xs text-faint">On file for {creator.taxLegalName}{creator.taxCountry ? ` · ${creator.taxCountry}` : ''}</p>
-            )}
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setTaxEditing(true)}
-                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold"
-              >
-                {creator.taxLegalName ? 'Update tax details' : 'Submit tax details'}
-              </button>
-            </div>
-          </>
-        )}
-
-        {taxEditing && (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Full legal name</label>
-              <input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="As it appears on your tax return" className={field} />
-              <p className="text-xs text-faint">This has to match the name on the payout account you gave Stripe.</p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Filing as</label>
-              <div className="flex items-center gap-1 p-1 bg-surface-2 border border-line rounded-lg w-fit">
-                {(['individual', 'business'] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setEntityType(t)}
-                    className={`text-xs font-semibold px-3 py-1.5 rounded transition capitalize ${t === entityType ? 'bg-gradient-kyro text-white' : 'text-muted hover:text-heading'}`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Address</label>
-              <input value={taxAddress} onChange={(e) => setTaxAddress(e.target.value)} placeholder="Street, city, state, ZIP" className={field} />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted">Country</label>
-              <input value={taxCountry} onChange={(e) => setTaxCountry(e.target.value)} placeholder="United States" className={field} />
-              <p className="text-xs text-faint">US creators file a W-9. Everyone else files a W-8BEN.</p>
-            </div>
-
-            <div className="p-3 rounded-xl border border-line bg-surface-2">
-              <p className="text-xs text-muted leading-relaxed">
-                KYRO does not ask for your Social Security or EIN number and has nowhere to put one. Stripe collects it directly during payout setup.
-              </p>
-            </div>
-
-            {taxError && <p className="text-xs text-pink-300">{taxError}</p>}
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void submitTax()}
-                disabled={taxSaving || !legalName || !taxAddress || !taxCountry}
-                className="px-4 py-2 rounded-lg bg-gradient-kyro text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
-              >
-                {taxSaving && <RefreshCw size={14} className="animate-spin" />}
-                Submit
-              </button>
-              <button type="button" onClick={() => { setTaxEditing(false); setTaxError(null); }} className="px-4 py-2 rounded-lg border border-line text-sm text-muted hover:text-heading">
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-
-
-/* ─────────────────────────────────────────────────────────────
    ABOUT KYRO PAGE
    ───────────────────────────────────────────────────────────── */
 function AboutPage({ onBack, onSignIn, onGetStarted }: { onBack: () => void; onSignIn: () => void; onGetStarted: () => void }) {
@@ -5123,8 +4958,6 @@ function CreatorPaymentSummary() {
   const creator = session.creator;
   if (!creator) return <p className="text-sm text-muted">No creator profile on this account yet.</p>;
 
-  const taxDone = creator.taxFormStatus === 'complete';
-
   return (
     <div className="space-y-3">
       {/* No bank digits here. The account that matters is the one Stripe
@@ -5135,20 +4968,8 @@ function CreatorPaymentSummary() {
         <p className="text-sm text-muted">Held by Stripe. Change it from Manage on Stripe, on the Payouts tab.</p>
       </div>
 
-      <div className="p-4 rounded-xl border border-line bg-surface-2 space-y-1">
-        <p className="text-xs text-faint">Tax info</p>
-        <p className={`text-sm font-semibold ${taxDone ? 'text-emerald-400' : 'text-amber-300'}`}>
-          {taxDone ? 'On file' : creator.taxFormStatus === 'pending' ? 'In review' : 'Needed'}
-        </p>
-        {creator.taxFormSubmittedAt && (
-          <p className="text-xs text-muted">
-            Submitted {new Date(creator.taxFormSubmittedAt).toLocaleDateString()}
-          </p>
-        )}
-      </div>
-
       <p className="text-xs text-faint">
-        Tax info is changed on the Payouts tab. Your bank account is changed on Stripe.
+        Stripe collects your tax information during payout setup and files your 1099. KYRO never asks for a tax ID.
       </p>
     </div>
   );
