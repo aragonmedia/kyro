@@ -80,6 +80,7 @@ import { MetaAdAccountPicker, MetaConnectButton } from './components/MetaConnect
 import { CampaignSummarySheet } from './components/CampaignSummary';
 import { TeamPanel } from './components/Team';
 import { ContentLibrary } from './components/ContentLibrary';
+import { TestingBacklogNote } from './components/TestingBacklogNote';
 import { toCsv, downloadCsv } from './lib/csv';
 import { PaymentMethodSheet, type PayMethod } from './components/PaymentMethod';
 import { Markdown } from './lib/markdown';
@@ -2324,6 +2325,7 @@ function BrandDashboard({
           {page === 'submissions' && (
             <>
               <PageHead title="Submissions" sub="Videos creators have sent you. Say what you're running and what you're not." />
+              {liveMode && brandId && <div className="mb-4"><TestingBacklogNote brandId={brandId} /></div>}
               {liveMode && brandId
                 ? (
                   <ContentLibrary

@@ -1705,6 +1705,65 @@ export async function setApplicationStatus(
    ───────────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────
+   Videos a brand approved and never ran
+
+   The bottleneck in creator marketing has flipped. Brands can now take in
+   far more video than their media buying can test, so "approved" has
+   stopped meaning "given a chance". A creator whose video is never tested
+   gets no money and, worse, no feedback: a flop at least tells them
+   something.
+
+   KYRO can see this exactly rather than by proxy, because the Meta sync
+   records which approved videos became running ads. This is the brand's own
+   backlog, shown to the brand.
+   ───────────────────────────────────────────────────────────── */
+
+export interface TestingBacklog {
+  /** Approved videos on this brand's campaigns. */
+  approved: number;
+  /** Of those, how many are matched to a Meta ad. */
+  running: number;
+  /** Approved, never matched to an ad. */
+  waiting: number;
+  /** Without Meta connected there is no way to know, and we say so. */
+  metaConnected: boolean;
+}
+
+export async function getTestingBacklog(brandId: string): Promise<Result<TestingBacklog | null>> {
+  const sb = client();
+  if (!sb) return ok(null);
+  try {
+    const [subs, conn] = await Promise.all([
+      sb
+        .from('submissions')
+        .select('id, meta_ad_id, campaigns!inner(brand_id)')
+        .eq('campaigns.brand_id', brandId)
+        .in('status', ['approved', 'live']),
+      sb
+        .from('brand_connections')
+        .select('status')
+        .eq('brand_id', brandId)
+        .eq('provider', 'meta')
+        .maybeSingle(),
+    ]);
+
+    if (subs.error) return fail(null, describeError(subs.error, 'Could not check your video backlog.'));
+
+    const rows = (subs.data ?? []) as Array<{ meta_ad_id: string | null }>;
+    const running = rows.filter((r) => Boolean(r.meta_ad_id)).length;
+
+    return ok({
+      approved: rows.length,
+      running,
+      waiting: rows.length - running,
+      metaConnected: conn.data?.status === 'active',
+    });
+  } catch (e) {
+    return fail(null, describeError(e, 'Could not check your video backlog.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
    What a video did
 
    Written only by the Meta sync job. Nothing here invents a figure: a video

@@ -139,15 +139,16 @@ export function SubmissionDetailModal({
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Money only. Impressions used to sit here saying "needs Meta
+                  access", which was a placeholder for a thing that now
+                  exists: the performance panel below carries impressions
+                  alongside the retention and clicks that give them meaning.
+                  One number in two places is one number that can disagree
+                  with itself. */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <Stat label="Orders" value={data.orders.toLocaleString()} />
                 <Stat label="Revenue driven" value={money(data.revenueCents)} hint="Order value" />
                 <Stat label="You earned" value={money(data.commissionCents)} hint="Commission" />
-                <Stat
-                  label="Impressions"
-                  value={data.impressions ? data.impressions.toLocaleString() : '-'}
-                  hint={data.impressions ? 'From Meta' : 'Needs Meta access'}
-                />
               </div>
 
               {data.orders > 0 && data.firstOrderAt && data.lastOrderAt && (
