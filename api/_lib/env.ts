@@ -98,11 +98,19 @@ export const metaConfig = () => ({
   graphVersion: optional('META_GRAPH_API_VERSION') || 'v25.0',
   redirectUri: optional('META_REDIRECT_URI') || `${appOrigin()}/api/meta/callback`,
   /**
-   * ads_management writes ads, ads_read reads performance, business_management
-   * lets a brand pick from the ad accounts their business owns rather than
-   * only those they personally administer.
+   * ads_read reads performance. business_management lets a brand pick from
+   * the ad accounts their business owns rather than only the ones they
+   * personally administer, which is most brands of any size.
+   *
+   * ads_management is deliberately NOT here. It grants the right to create
+   * and change ads, and KYRO never does: every Meta call it makes is a read.
+   * Asking a brand to hand over ad-writing permission for a feature that
+   * only reports is a worse trade than it looks, and requesting a permission
+   * the product does not exercise is its own reason to fail App Review.
+   * If KYRO ever publishes ads itself, this is where that changes, and it
+   * should change at the same time as the code that needs it.
    */
-  scopes: (optional('META_SCOPES') || 'ads_management,ads_read,business_management')
+  scopes: (optional('META_SCOPES') || 'ads_read,business_management')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
