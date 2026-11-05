@@ -14,9 +14,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Copy, Download, FileVideo, RefreshCw, X } from 'lucide-react';
+import { Download, FileVideo, RefreshCw, X } from 'lucide-react';
 import { listSubmissionsForBrand, type CampaignSubmission } from '../lib/db';
 import { VideoPerformance } from './VideoPerformance';
+import { UseThisVideo } from './UseThisVideo';
 import { signedVideoUrl } from '../lib/storage';
 import { CoverImage, VideoTile } from './MediaTile';
 
@@ -38,56 +39,20 @@ const isPlaceholder = (path: string | null) => !path || path.startsWith('demo/')
    One video
    ───────────────────────────────────────────────────────────── */
 
-/**
- * The link the brand puts behind this video's ad.
- *
- * The code in utm_content is what credits the order back to this creator.
- * Without it on screen, a brand running ads by hand has no way to attribute
- * anything, which is most brands until the Meta connection exists.
- */
-function TrackingLink({ token }: { token: string }) {
-  const [copied, setCopied] = useState(false);
-  const params = `utm_source=kyro&utm_content=${token}`;
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(params);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      /* Clipboard blocked: the code is on screen to copy by hand. */
-    }
-  };
-
-  return (
-    <div className="p-3 rounded-lg border border-line bg-surface-2 space-y-1.5">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold text-muted">Ad link for this video</p>
-        <button
-          type="button"
-          onClick={() => void copy()}
-          className="text-xs font-semibold text-purple-300 hover:text-purple-200 inline-flex items-center gap-1"
-        >
-          {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      <p className="text-xs font-mono text-body break-all">{params}</p>
-      <p className="text-[11px] text-faint leading-relaxed">
-        Add these to the product URL your ad points at. Orders from that link are credited to this
-        creator, for example your-store.com/products/x?{params}
-      </p>
-    </div>
-  );
-}
+/* The ad link used to live here as a block the brand read, copied and then
+   confirmed in a separate click. It is one button now, in UseThisVideo,
+   because three steps to do one thing is two chances to do two of them. */
 
 function VideoSheet({
   sub,
   onClose,
   review,
+  onDecided,
 }: {
   sub: CampaignSubmission;
   onClose: () => void;
   review: React.ReactNode;
+  onDecided: () => void;
 }) {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(!isPlaceholder(sub.videoUrl));
@@ -180,11 +145,15 @@ function VideoSheet({
               )}
             </div>
 
-            {sub.trackingToken && (
-              <div className="px-5 pb-5">
-                <TrackingLink token={sub.trackingToken} />
-              </div>
-            )}
+            {/* One action, and the chain it starts, before anything else. */}
+            <div className="px-5 pb-5">
+              <UseThisVideo
+                submissionId={sub.id}
+                trackingToken={sub.trackingToken}
+                usage={sub.usage}
+                onDecided={onDecided}
+              />
+            </div>
 
             {/* The same panel the creator sees for this video. */}
             <div className="px-5 pb-5">
@@ -399,6 +368,7 @@ export function ContentLibrary({
           sub={open}
           onClose={() => setOpen(null)}
           review={renderReview(open, () => { setOpen(null); void load(); })}
+          onDecided={() => { setOpen(null); void load(); }}
         />
       )}
     </div>
