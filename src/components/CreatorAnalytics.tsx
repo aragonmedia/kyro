@@ -20,8 +20,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Video } from 'lucide-react';
-import { listCreatorOrders, type CreatorOrderRow, type MySubmission } from '../lib/db';
+import { Activity, ArrowLeft, ChevronRight, RefreshCw, Video } from 'lucide-react';
+import {
+  listCreatorOrders,
+  listVideoPerformance,
+  type CreatorOrderRow,
+  type MySubmission,
+  type VideoDayFor,
+} from '../lib/db';
+import { VideoPerformance } from './VideoPerformance';
+import { CoverImage } from './MediaTile';
 
 const WINDOWS = [
   { days: 7, label: '7 days' },
@@ -40,6 +48,88 @@ const USAGE = [
   { key: 'awaiting', label: 'Awaiting', fill: 'bg-warn', text: 'text-warn' },
   { key: 'not_used', label: 'Not used', fill: 'bg-faint', text: 'text-muted' },
 ] as const;
+
+const count = (n: number) => n.toLocaleString('en-US');
+const pct = (n: number | null) => (n === null ? 'No data' : `${(n * 100).toFixed(1)}%`);
+
+interface DayTotals {
+  days: number;
+  impressions: number;
+  reach: number;
+  spendCents: number;
+  linkClicks: number;
+  plays: number;
+  hookRate: number | null;
+  linkCtr: number | null;
+  avgWatch: number | null;
+}
+
+/** Total a set of performance days. Rates are derived, never stored. */
+function sumDays(rows: Array<{
+  impressions: number; reach: number; spendCents: number; linkClicks: number;
+  plays: number; avgWatchSeconds: number | null;
+}>): DayTotals {
+  const sum = (pick: (r: (typeof rows)[number]) => number) => rows.reduce((t, r) => t + pick(r), 0);
+  const impressions = sum((r) => r.impressions);
+  const plays = sum((r) => r.plays);
+  const linkClicks = sum((r) => r.linkClicks);
+
+  /* Weighted by plays: a day with six plays should not move the average as
+     hard as a day with six thousand. */
+  const watchWeighted = rows.reduce((t, r) => (r.avgWatchSeconds === null ? t : t + r.avgWatchSeconds * r.plays), 0);
+  const watchBase = rows.reduce((t, r) => (r.avgWatchSeconds === null ? t : t + r.plays), 0);
+
+  return {
+    days: rows.length,
+    impressions,
+    reach: sum((r) => r.reach),
+    spendCents: sum((r) => r.spendCents),
+    linkClicks,
+    plays,
+    hookRate: impressions > 0 ? plays / impressions : null,
+    linkCtr: impressions > 0 ? linkClicks / impressions : null,
+    avgWatch: watchBase > 0 ? watchWeighted / watchBase : null,
+  };
+}
+
+function Spark({ rows }: { rows: Array<{ day: string; spendCents: number }> }) {
+  if (rows.length < 2) return null;
+  const top = Math.max(...rows.map((r) => r.spendCents), 1);
+  const pts = rows.map((r, i) => {
+    const x = (i / (rows.length - 1)) * 100;
+    const y = 28 - (r.spendCents / top) * 26;
+    return `${x},${y}`;
+  });
+  return (
+    <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-8" aria-hidden="true">
+      <defs>
+        <linearGradient id="kyro-spark" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#5b9bff" />
+          <stop offset="100%" stopColor="#ff33cc" />
+        </linearGradient>
+      </defs>
+      <polyline
+        points={pts.join(' ')}
+        fill="none"
+        stroke="url(#kyro-spark)"
+        strokeWidth={2}
+        vectorEffect="non-scaling-stroke"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function PerfTile({ label, value, note }: { label: string; value: string; note?: string }) {
+  return (
+    <div className="p-4 rounded-xl border border-line bg-surface-2">
+      <p className="text-xs text-muted truncate">{label}</p>
+      <p className="text-xl font-bold text-heading tabular-nums mt-1">{value}</p>
+      {note && <p className="text-xs text-faint mt-0.5">{note}</p>}
+    </div>
+  );
+}
 
 interface CampaignStat {
   id: string;
@@ -61,16 +151,28 @@ export function CreatorAnalytics({
   const [windowDays, setWindowDays] = useState<number>(30);
   const [campaignId, setCampaignId] = useState<string>(ALL);
   const [orders, setOrders] = useState<CreatorOrderRow[] | null>(null);
+  const [perf, setPerf] = useState<VideoDayFor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /* Which campaign is open. Null is the table; an id is that campaign's
+     videos. One level deep on purpose: a creator wants the list, not a
+     hierarchy to get lost in. */
+  const [openCampaign, setOpenCampaign] = useState<string | null>(null);
+  const [openVideo, setOpenVideo] = useState<string | null>(null);
+
+  const ids = useMemo(() => submissions.map((s) => s.id), [submissions]);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await listCreatorOrders(creatorId);
-    setOrders(res.data);
-    setError(res.error);
+    const [ordersRes, perfRes] = await Promise.all([
+      listCreatorOrders(creatorId),
+      listVideoPerformance(ids),
+    ]);
+    setOrders(ordersRes.data);
+    setPerf(perfRes.data);
+    setError(ordersRes.error);
     setLoading(false);
-  }, [creatorId]);
+  }, [creatorId, ids]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -156,6 +258,36 @@ export function CreatorAnalytics({
   const windowEarned = byCampaign.reduce((s, c) => s + c.earnedCents, 0);
   const windowOrders = byCampaign.reduce((s, c) => s + c.orders, 0);
 
+  /* Performance days inside the window, for the campaign in view. Keyed by
+     submission so a campaign or a single video can be totalled from the same
+     rows rather than refetched. */
+  const perfInWindow = useMemo(() => {
+    const campaignOf = new Map(submissions.map((s) => [s.id, s.campaignId]));
+    return perf.filter((d) => {
+      if (new Date(`${d.day}T00:00:00Z`).getTime() < since) return false;
+      if (campaignId === ALL) return true;
+      return campaignOf.get(d.submissionId) === campaignId;
+    });
+  }, [perf, since, campaignId, submissions]);
+
+  const totals = useMemo(() => sumDays(perfInWindow), [perfInWindow]);
+
+  const perfBySubmission = useMemo(() => {
+    const out = new Map<string, VideoDayFor[]>();
+    for (const d of perfInWindow) {
+      const list = out.get(d.submissionId);
+      if (list) list.push(d);
+      else out.set(d.submissionId, [d]);
+    }
+    return out;
+  }, [perfInWindow]);
+
+  const open = openCampaign ? byCampaign.find((c) => c.id === openCampaign) ?? null : null;
+  const openVideos = useMemo(
+    () => (openCampaign ? submissions.filter((s) => s.campaignId === openCampaign) : []),
+    [submissions, openCampaign]
+  );
+
   return (
     <div className="space-y-6">
       {/* Filters in one row above everything they filter. */}
@@ -220,6 +352,24 @@ export function CreatorAnalytics({
         </div>
       )}
 
+      {/* Reach and spend behind the videos, when Meta has reported any.
+          Four numbers and a shape. Anything longer stops being read. */}
+      {totals.days > 0 && (
+        <div className="bg-surface border border-line rounded-2xl p-5 md:p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Activity size={16} className="text-body" />
+            <h2 className="text-lg font-bold text-heading">Performance</h2>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <PerfTile label="Impressions" value={count(totals.impressions)} />
+            <PerfTile label="Hook rate" value={pct(totals.hookRate)} />
+            <PerfTile label="Link CTR" value={pct(totals.linkCtr)} note={`${count(totals.linkClicks)} clicks`} />
+            <PerfTile label="Spend behind you" value={money(totals.spendCents)} />
+          </div>
+          <Spark rows={perfInWindow} />
+        </div>
+      )}
+
       {/* Videos: the part-to-whole, plus the one rate worth knowing. */}
       <div className="bg-surface border border-line rounded-2xl p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
@@ -274,23 +424,42 @@ export function CreatorAnalytics({
         )}
       </div>
 
-      {/* Per campaign. The table is the point: a creator wants to know which
-          brand is worth making the next video for. */}
+      {/* Per campaign, and one level into it. A creator wants to know which
+          brand is worth making the next video for, then which of their
+          videos did the work. */}
       <div className="bg-surface border border-line rounded-2xl overflow-hidden">
         <div className="p-5 border-b border-line flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-heading">By campaign</h2>
-            <p className="text-sm text-muted mt-0.5">Where your videos are earning.</p>
+          <div className="min-w-0">
+            {open ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => { setOpenCampaign(null); setOpenVideo(null); }}
+                  className="flex items-center gap-2 text-sm text-muted hover:text-heading mb-1"
+                >
+                  <ArrowLeft size={15} /> All campaigns
+                </button>
+                <h2 className="text-lg font-bold text-heading truncate">{open.name}</h2>
+                <p className="text-sm text-muted mt-0.5">{open.brandName}</p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-bold text-heading">By campaign</h2>
+                <p className="text-sm text-muted mt-0.5">Tap one to see its videos.</p>
+              </>
+            )}
           </div>
-          <div className="text-right">
-            <p className="text-lg font-bold text-heading tabular-nums">{money(windowEarned)}</p>
-            <p className="text-xs text-faint">{windowOrders} orders in this period</p>
+          <div className="text-right flex-shrink-0">
+            <p className="text-lg font-bold text-heading tabular-nums">
+              {money(open ? open.earnedCents : windowEarned)}
+            </p>
+            <p className="text-xs text-faint">{open ? open.orders : windowOrders} orders</p>
           </div>
         </div>
 
         {loading && orders === null && <p className="p-10 text-center text-sm text-muted">Loading…</p>}
 
-        {orders !== null && byCampaign.length === 0 && (
+        {!open && orders !== null && byCampaign.length === 0 && (
           <div className="p-10 text-center">
             <Video size={26} className="mx-auto text-faint mb-3" />
             <p className="text-sm text-muted">Nothing in this period.</p>
@@ -298,7 +467,7 @@ export function CreatorAnalytics({
           </div>
         )}
 
-        {byCampaign.length > 0 && (
+        {!open && byCampaign.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -312,10 +481,19 @@ export function CreatorAnalytics({
               </thead>
               <tbody className="divide-y divide-line">
                 {byCampaign.map((c) => (
-                  <tr key={c.id} className="hover:bg-surface-2">
+                  <tr
+                    key={c.id}
+                    onClick={() => setOpenCampaign(c.id)}
+                    className="hover:bg-surface-2 cursor-pointer"
+                  >
                     <td className="p-4">
-                      <p className="font-semibold text-heading">{c.name}</p>
-                      <p className="text-xs text-faint">{c.brandName}</p>
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-heading truncate">{c.name}</p>
+                          <p className="text-xs text-faint truncate">{c.brandName}</p>
+                        </div>
+                        <ChevronRight size={15} className="text-faint flex-shrink-0 ml-auto sm:ml-1" />
+                      </div>
                     </td>
                     <td className="p-4 text-right tabular-nums text-body">{c.videos}</td>
                     <td className="p-4 text-right tabular-nums">
@@ -327,6 +505,71 @@ export function CreatorAnalytics({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* One campaign's videos. Each row is the video and its numbers;
+            opening one shows the full panel underneath it. */}
+        {open && (
+          <div className="divide-y divide-line">
+            {openVideos.length === 0 && (
+              <p className="p-10 text-center text-sm text-muted">No videos on this campaign yet.</p>
+            )}
+
+            {openVideos.map((v) => {
+              const rows = perfBySubmission.get(v.id) ?? [];
+              const t = sumDays(rows);
+              const tone =
+                v.usage === 'in_use' ? 'text-good' : v.usage === 'not_used' ? 'text-muted' : 'text-warn';
+              const label =
+                v.usage === 'in_use' ? 'In use' : v.usage === 'not_used' ? 'Not used' : 'Awaiting';
+              const isOpen = openVideo === v.id;
+
+              return (
+                <div key={v.id}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenVideo(isOpen ? null : v.id)}
+                    className="w-full text-left p-4 flex items-center gap-3 hover:bg-surface-2 transition"
+                  >
+                    {/* The frame is what a creator recognises their own video
+                        by. Every row here is on the same campaign, so
+                        repeating its name would identify nothing. */}
+                    <div className="w-9 aspect-[9/16] rounded-md overflow-hidden border border-line flex-shrink-0">
+                      <CoverImage src={v.thumbnailUrl ?? v.coverUrl} name={v.campaignName} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-heading truncate">
+                        {new Date(v.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </p>
+                      <p className={`text-xs ${tone}`}>{label}</p>
+                    </div>
+                    {t.days > 0 && (
+                      <div className="hidden sm:flex items-center gap-5 flex-shrink-0 text-right">
+                        <div>
+                          <p className="text-sm font-semibold text-heading tabular-nums">{count(t.impressions)}</p>
+                          <p className="text-[11px] text-faint">impressions</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-heading tabular-nums">{money(t.spendCents)}</p>
+                          <p className="text-[11px] text-faint">spend</p>
+                        </div>
+                      </div>
+                    )}
+                    <ChevronRight
+                      size={16}
+                      className={`text-faint flex-shrink-0 transition ${isOpen ? 'rotate-90' : ''}`}
+                    />
+                  </button>
+
+                  {isOpen && (
+                    <div className="p-4 pt-0">
+                      <VideoPerformance submissionId={v.id} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

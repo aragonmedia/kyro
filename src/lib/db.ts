@@ -1787,6 +1787,62 @@ export interface VideoDay {
   avgWatchSeconds: number | null;
 }
 
+/** One day of one video's performance, with the video it belongs to. */
+export interface VideoDayFor extends VideoDay {
+  submissionId: string;
+}
+
+/**
+ * Performance for several videos at once.
+ *
+ * The per-video panel asks for one submission; the creator's Stats tab needs
+ * the lot, and a request per video would be dozens of round trips to draw one
+ * summary. Row-level security is what limits this to the caller's own videos,
+ * so there is no ownership check here to drift out of step with it.
+ */
+export async function listVideoPerformance(
+  submissionIds: string[],
+  sinceDay?: string
+): Promise<Result<VideoDayFor[]>> {
+  const sb = client();
+  if (!sb || submissionIds.length === 0) return ok([]);
+  try {
+    let q = sb
+      .from('meta_insights')
+      .select(
+        'submission_id, day, impressions, reach, spend_cents, link_clicks, video_plays, video_p25, video_p50, video_p75, video_p100, thruplays, avg_watch_seconds'
+      )
+      .in('submission_id', submissionIds);
+
+    if (sinceDay) q = q.gte('day', sinceDay);
+
+    const { data, error } = await q.order('day');
+    if (error) return fail([], describeError(error, 'Could not load performance.'));
+
+    return ok(
+      (data ?? []).map((r: Record<string, unknown>) => ({
+        submissionId: String(r.submission_id),
+        day: String(r.day),
+        impressions: Number(r.impressions ?? 0),
+        reach: Number(r.reach ?? 0),
+        spendCents: Number(r.spend_cents ?? 0),
+        linkClicks: Number(r.link_clicks ?? 0),
+        plays: Number(r.video_plays ?? 0),
+        p25: Number(r.video_p25 ?? 0),
+        p50: Number(r.video_p50 ?? 0),
+        p75: Number(r.video_p75 ?? 0),
+        p100: Number(r.video_p100 ?? 0),
+        thruplays: Number(r.thruplays ?? 0),
+        avgWatchSeconds: r.avg_watch_seconds === null || r.avg_watch_seconds === undefined
+          ? null
+          : Number(r.avg_watch_seconds),
+      }))
+    );
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load performance.'));
+  }
+}
+
 export async function getVideoPerformance(submissionId: string): Promise<Result<VideoDay[]>> {
   const sb = client();
   if (!sb) return ok([]);

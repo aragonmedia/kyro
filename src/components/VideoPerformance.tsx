@@ -210,7 +210,7 @@ function Retention({ shares }: { shares: number[] }) {
       <p className="text-xs text-faint mt-1 text-center">
         {active
           ? `${pct(active.share)} still watching at ${MARKS[hover ?? 0].label.toLowerCase()}`
-          : 'Share of people who started the video and were still watching'}
+          : 'Still watching'}
       </p>
     </div>
   );
@@ -312,7 +312,7 @@ function Daily({ days }: { days: VideoDay[] }) {
       <p className="text-xs text-faint mt-1 text-center">
         {active
           ? `${dayLabel(active.day.day)}: ${money(active.day.spendCents)} spent, ${count(active.day.linkClicks)} link clicks`
-          : 'Spend behind this video, by day'}
+          : 'Spend by day'}
       </p>
     </div>
   );
@@ -393,15 +393,27 @@ export function VideoPerformance({ submissionId }: { submissionId: string }) {
      about what it knows and one that shows a creator a flat line. */
   if (days.length === 0) {
     return (
-      <div className="bg-surface border border-line rounded-2xl p-5 space-y-2">
-        <div className="flex items-center gap-2">
+      <div className="bg-surface border border-line rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-4">
           <Activity size={16} className="text-body" />
           <h3 className="font-semibold text-heading">Performance</h3>
         </div>
-        <p className="text-sm text-muted leading-relaxed">
-          Nothing to show yet. Performance appears once this video is running as an ad and KYRO has matched
-          it, which happens automatically from the tracking link in the ad's destination URL.
-        </p>
+        {/* The shape of the thing that is missing, rather than a paragraph
+            explaining its absence. */}
+        <div className="rounded-xl border border-dashed border-line py-8 px-4 text-center">
+          <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-10 mb-3" aria-hidden="true">
+            <polyline
+              points="0,26 25,20 50,22 75,10 100,13"
+              fill="none"
+              className="stroke-line"
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+              strokeLinecap="round"
+              strokeDasharray="4 4"
+            />
+          </svg>
+          <p className="text-sm text-muted">Not running as an ad yet</p>
+        </div>
       </div>
     );
   }
@@ -421,7 +433,7 @@ export function VideoPerformance({ submissionId }: { submissionId: string }) {
           icon={Percent}
           label="Hook rate"
           value={totals.hookRate === null ? 'No data' : pct(totals.hookRate)}
-          note="Plays for every impression"
+          note="Plays per impression"
         />
         <Tile
           icon={MousePointerClick}
@@ -431,13 +443,13 @@ export function VideoPerformance({ submissionId }: { submissionId: string }) {
         />
         <Tile
           icon={Timer}
-          label="Avg watch time"
+          label="Avg watch"
           value={seconds(totals.avgWatch) ?? 'No data'}
           note={`${count(totals.plays)} plays`}
         />
         <Tile
           icon={Activity}
-          label="Spend behind it"
+          label="Spend"
           value={money(totals.spendCents)}
           note={`${count(totals.impressions)} impressions`}
         />
@@ -455,11 +467,7 @@ export function VideoPerformance({ submissionId }: { submissionId: string }) {
         <Daily days={days} />
       </div>
 
-      <p className="text-xs text-faint leading-relaxed">
-        From Meta, updated daily. Retention comes from Meta's quartiles, so it is measured at the start and
-        at a quarter, half, three quarters and the end of the video rather than second by second. Earnings
-        are counted separately, from Shopify orders attributed to this video's tracking link.
-      </p>
+      <p className="text-xs text-faint">From Meta, updated daily.</p>
     </div>
   );
 }
