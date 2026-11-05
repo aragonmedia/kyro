@@ -88,9 +88,13 @@ function VideoSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="grid sm:grid-cols-[minmax(0,260px)_1fr]">
-          {/* Preview */}
-          <div className="bg-black sm:rounded-l-2xl overflow-hidden">
-            <div className="relative aspect-[9/16] max-h-[60vh] sm:max-h-none mx-auto">
+          {/* Preview.
+              self-start so the column is only as tall as the video. Stretched
+              to the row height it filled the gap under a 9:16 frame with
+              black, which read as the video being the wrong shape. Sticky so
+              it stays in view while the decision and the numbers scroll. */}
+          <div className="sm:rounded-l-2xl overflow-hidden sm:self-start sm:sticky sm:top-0">
+            <div className="relative aspect-[9/16] max-h-[60vh] sm:max-h-none mx-auto bg-black sm:rounded-l-2xl overflow-hidden">
               {src ? (
                 <video src={src} poster={poster ?? undefined} controls playsInline className="w-full h-full object-contain bg-black" />
               ) : (
