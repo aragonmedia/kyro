@@ -1705,6 +1705,28 @@ export async function setApplicationStatus(
    ───────────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────
+   Taking a video off the platform
+   ───────────────────────────────────────────────────────────── */
+
+/**
+ * Record that someone took the file.
+ *
+ * Who is stamped from the session by a trigger, never from here, so this
+ * sends only which video. Best effort by design: a failed log must not stop
+ * a brand downloading content they are entitled to, and the storage policy
+ * is what decides entitlement.
+ */
+export async function logContentDownload(submissionId: string): Promise<void> {
+  const sb = client();
+  if (!sb) return;
+  try {
+    await sb.from('content_downloads').insert({ submission_id: submissionId });
+  } catch {
+    /* The download is the thing that matters; the record is evidence. */
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
    Videos a brand approved and never ran
 
    The bottleneck in creator marketing has flipped. Brands can now take in

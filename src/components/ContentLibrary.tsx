@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, FileVideo, RefreshCw, X } from 'lucide-react';
-import { listSubmissionsForBrand, type CampaignSubmission } from '../lib/db';
+import { listSubmissionsForBrand, logContentDownload, type CampaignSubmission } from '../lib/db';
 import { VideoPerformance } from './VideoPerformance';
 import { UseThisVideo } from './UseThisVideo';
 import { signedVideoUrl } from '../lib/storage';
@@ -141,6 +141,7 @@ function VideoSheet({
                   <a
                     href={src}
                     download
+                    onClick={() => void logContentDownload(sub.id)}
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-line bg-surface-2 text-sm font-semibold text-body hover:text-heading"
                   >
                     <Download size={14} /> Download video
