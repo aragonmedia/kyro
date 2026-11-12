@@ -49,6 +49,8 @@ import {
   getBrandBalance,
   parseMoneyToCents,
   parsePercentToFraction,
+  listSampleRequests,
+  type SampleRequest,
 } from './lib/db';
 import type { BrandBalance, LeaderboardCreator, BrandApplication, RosterCreator, BrandConnection, CampaignSubmission, CampaignWithStats, MyApplication, MySubmission, OnboardingStatus, OpenCampaign } from './lib/db';
 import { uploadSubmissionVideo, uploadCampaignCover, uploadBrandLogo } from './lib/storage';
@@ -80,6 +82,7 @@ import { MetaAdAccountPicker, MetaConnectButton } from './components/MetaConnect
 import { CampaignSummarySheet } from './components/CampaignSummary';
 import { TeamPanel } from './components/Team';
 import { ContentLibrary } from './components/ContentLibrary';
+import { RequestSample, SampleQueue } from './components/Samples';
 import { TestingBacklogNote } from './components/TestingBacklogNote';
 import { toCsv, downloadCsv } from './lib/csv';
 import { PaymentMethodSheet, type PayMethod } from './components/PaymentMethod';
@@ -2326,6 +2329,9 @@ function BrandDashboard({
             <>
               <PageHead title="Submissions" sub="Videos creators have sent you. Say what you're running and what you're not." />
               {liveMode && brandId && <div className="mb-4"><TestingBacklogNote brandId={brandId} /></div>}
+              {/* Samples sit above the videos because approving one is what
+                  produces the next video. */}
+              {liveMode && brandId && <div className="mb-6"><SampleQueue brandId={brandId} /></div>}
               {liveMode && brandId
                 ? (
                   <ContentLibrary
@@ -2953,6 +2959,7 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
   const [openSub, setOpenSub] = useState<MySubmission | null>(null);
   const [mine, setMine] = useState<MySubmission[]>([]);
   const [accepted, setAccepted] = useState<OpenCampaign[]>([]);
+  const [samples, setSamples] = useState<SampleRequest[]>([]);
   const [tab, setTab] = useState<'submissions' | 'analytics' | 'browse' | 'chat' | 'payouts'>('submissions');
   const [section, setSection] = useState<'uploaded' | 'in_use' | 'not_used' | 'campaigns'>('in_use');
   const [chatThreadId, setChatThreadId] = useState<string | null>(null);
@@ -2971,6 +2978,16 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
   }, [creatorId]);
 
   useEffect(() => { void loadMine(); }, [loadMine]);
+
+  /* Their own sample requests, so each campaign row can show where it stands
+     instead of offering to ask again. */
+  const loadSamples = useCallback(async () => {
+    if (!creatorId) { setSamples([]); return; }
+    const res = await listSampleRequests();
+    setSamples(res.data);
+  }, [creatorId]);
+
+  useEffect(() => { void loadSamples(); }, [loadSamples]);
 
   /** Open the private thread with the brand about one video. */
   const messageBrand = async (submissionId: string) => {
@@ -3056,22 +3073,46 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
           {/* Uploading is the thing a creator came to do, so it sits above the
               archive of what they already sent rather than at the end of it. */}
           {accepted.length > 0 && (
-            <div className="bg-surface border border-line rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="font-semibold text-heading">
-                  You're on {plural(accepted.length, 'campaign')}
-                </p>
-                <p className="text-sm text-muted mt-0.5">
-                  Post whenever you like. No approval needed before you upload.
-                </p>
+            <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-semibold text-heading">
+                    You're on {plural(accepted.length, 'campaign')}
+                  </p>
+                  <p className="text-sm text-muted mt-0.5">
+                    Post whenever you like. No approval needed before you upload.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setSubmitFor(null); setShowSubmit(true); }}
+                  className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold inline-flex items-center gap-2 whitespace-nowrap"
+                >
+                  <Upload size={16} /> Upload a video
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => { setSubmitFor(null); setShowSubmit(true); }}
-                className="px-5 py-2.5 rounded-lg bg-gradient-kyro text-white font-semibold inline-flex items-center gap-2 whitespace-nowrap"
-              >
-                <Upload size={16} /> Upload a video
-              </button>
+
+              {/* Asking for product belongs beside the campaigns it is for,
+                  not behind a tab of its own. */}
+              {creatorId && (
+                <div className="border-t border-line pt-4 space-y-3">
+                  {accepted.map((c) => (
+                    <div key={c.id} className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-heading truncate">{c.name}</p>
+                        <p className="text-xs text-faint truncate">{c.brandName}</p>
+                      </div>
+                      <RequestSample
+                        campaignId={c.id}
+                        campaignName={c.name}
+                        creatorId={creatorId}
+                        existing={samples.find((s) => s.campaignId === c.id) ?? null}
+                        onDone={loadSamples}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

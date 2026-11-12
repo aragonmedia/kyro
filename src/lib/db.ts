@@ -1705,6 +1705,169 @@ export async function setApplicationStatus(
    ───────────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────
+   Samples
+
+   A creator cannot make a video about a product they do not have. KYRO
+   records the asking, the answer and the date it went out; the brand ships
+   the way it already ships.
+
+   The number this exists for is the posting rate: of the samples a brand
+   actually sent, how many turned into a video. Sample farming is real and
+   expensive, and nothing here could tell it apart from bad luck before.
+   ───────────────────────────────────────────────────────────── */
+
+export type SampleStatus = 'requested' | 'approved' | 'declined' | 'sent';
+
+export interface SampleRequest {
+  id: string;
+  campaignId: string;
+  campaignName: string;
+  brandName: string;
+  creatorId: string;
+  creatorHandle: string;
+  product: string | null;
+  note: string | null;
+  shipName: string;
+  shipAddress: string;
+  shipCountry: string;
+  status: SampleStatus;
+  declineReason: string | null;
+  requestedAt: string;
+  decidedAt: string | null;
+  sentAt: string | null;
+}
+
+const SAMPLE_SELECT =
+  'id, campaign_id, creator_id, product, note, ship_name, ship_address, ship_country, ' +
+  'status, decline_reason, requested_at, decided_at, sent_at, ' +
+  'campaigns(name, brands(name)), creators(handle)';
+
+const mapSample = (r: Record<string, unknown>): SampleRequest => {
+  const campaign = r.campaigns as { name?: string; brands?: { name?: string } } | null;
+  const creator = r.creators as { handle?: string } | null;
+  return {
+    id: r.id as string,
+    campaignId: r.campaign_id as string,
+    campaignName: campaign?.name ?? 'Campaign',
+    brandName: campaign?.brands?.name ?? '',
+    creatorId: r.creator_id as string,
+    creatorHandle: creator?.handle ?? '',
+    product: (r.product as string | null) ?? null,
+    note: (r.note as string | null) ?? null,
+    shipName: (r.ship_name as string) ?? '',
+    shipAddress: (r.ship_address as string) ?? '',
+    shipCountry: (r.ship_country as string) ?? '',
+    status: r.status as SampleStatus,
+    declineReason: (r.decline_reason as string | null) ?? null,
+    requestedAt: r.requested_at as string,
+    decidedAt: (r.decided_at as string | null) ?? null,
+    sentAt: (r.sent_at as string | null) ?? null,
+  };
+};
+
+/** Row-level security decides what comes back; this only says which way to sort. */
+export async function listSampleRequests(): Promise<Result<SampleRequest[]>> {
+  const sb = client();
+  if (!sb) return ok([]);
+  try {
+    const { data, error } = await sb
+      .from('sample_requests')
+      .select(SAMPLE_SELECT)
+      .order('requested_at', { ascending: false });
+    if (error) return fail([], describeError(error, 'Could not load sample requests.'));
+    return ok(((data ?? []) as unknown as Array<Record<string, unknown>>).map(mapSample));
+  } catch (e) {
+    return fail([], describeError(e, 'Could not load sample requests.'));
+  }
+}
+
+export interface SampleAsk {
+  campaignId: string;
+  creatorId: string;
+  product: string;
+  note: string;
+  shipName: string;
+  shipAddress: string;
+  shipCountry: string;
+}
+
+export async function requestSample(input: SampleAsk): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+  if (!input.shipName.trim()) return fail(false, 'Add the name the parcel should go to.');
+  if (!input.shipAddress.trim()) return fail(false, 'Add the address to ship to.');
+
+  try {
+    /* brand_id and status are set by the trigger from the campaign and the
+       session, so neither is sent. */
+    const { error } = await sb.from('sample_requests').insert({
+      campaign_id: input.campaignId,
+      creator_id: input.creatorId,
+      brand_id: '00000000-0000-0000-0000-000000000000',
+      product: input.product.trim() || null,
+      note: input.note.trim() || null,
+      ship_name: input.shipName.trim(),
+      ship_address: input.shipAddress.trim(),
+      ship_country: input.shipCountry.trim() || 'United States',
+    });
+    if (error) {
+      if ((error as { code?: string }).code === '23505') {
+        return fail(false, 'You already have a request open on this campaign.');
+      }
+      return fail(false, describeError(error, 'Could not send that request.'));
+    }
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not send that request.'));
+  }
+}
+
+/** The brand's answer. Dates are stamped server side, never sent from here. */
+export async function decideSampleRequest(
+  id: string,
+  status: 'approved' | 'declined' | 'sent',
+  declineReason?: string
+): Promise<Result<boolean>> {
+  const sb = client();
+  if (!sb) return ok(false);
+  try {
+    const { error } = await sb
+      .from('sample_requests')
+      .update({ status, decline_reason: status === 'declined' ? (declineReason ?? null) : null })
+      .eq('id', id);
+    if (error) return fail(false, describeError(error, 'Could not update that request.'));
+    return ok(true);
+  } catch (e) {
+    return fail(false, describeError(e, 'Could not update that request.'));
+  }
+}
+
+export interface PostingRate {
+  sent: number;
+  posted: number;
+}
+
+/**
+ * How often this creator posted after a sample went out.
+ *
+ * Counted against what the caller can see, so a brand gets its own record
+ * with that creator rather than every brand's.
+ */
+export async function getSamplePostingRate(creatorId: string): Promise<Result<PostingRate>> {
+  const empty = { sent: 0, posted: 0 };
+  const sb = client();
+  if (!sb) return ok(empty);
+  try {
+    const { data, error } = await sb.rpc('sample_posting_rate', { p_creator_id: creatorId });
+    if (error) return fail(empty, describeError(error, 'Could not load the posting rate.'));
+    const row = ((data ?? []) as Array<Record<string, unknown>>)[0];
+    return ok({ sent: Number(row?.sent ?? 0), posted: Number(row?.posted ?? 0) });
+  } catch (e) {
+    return fail(empty, describeError(e, 'Could not load the posting rate.'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
    Taking a video off the platform
    ───────────────────────────────────────────────────────────── */
 
