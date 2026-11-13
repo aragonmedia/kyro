@@ -391,15 +391,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq('id', eventId);
   };
 
-  // 4. Which brand is this store?
+  // 4. Which brand is this store, and is the connection still live?
+  //
+  //    The status is read but deliberately NOT filtered on. shop/redact
+  //    arrives 48 hours after an uninstall, by which time the connection is
+  //    already disconnected: resolving only active connections would mean
+  //    never erasing a shop that asked to be erased. So the lookup finds the
+  //    brand either way, and the topics that bring data in check the status
+  //    for themselves below.
   const conn = await db
     .from('brand_connections')
-    .select('brand_id')
+    .select('brand_id, status')
     .eq('provider', 'shopify')
     .eq('external_id', shop)
     .maybeSingle();
 
   const brandId = (conn.data?.brand_id as string | undefined) ?? null;
+  const connectionLive = (conn.data?.status as string | undefined) === 'active';
 
   if (brandId) {
     await db.from('webhook_events').update({ brand_id: brandId }).eq('id', eventId);
@@ -413,6 +421,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await finish(`no brand connected for ${shop}`);
     // Not retryable: a later delivery will find the same missing connection.
     return res.status(200).json({ ok: true, ignored: 'unknown shop' });
+  }
+
+  /* A store the merchant disconnected inside KYRO keeps its Shopify webhooks
+     until the app is uninstalled there, so orders carry on arriving. Writing
+     them would mean a brand that says "disconnected" on screen while its
+     dashboard keeps moving, and commission accruing against a store nobody
+     agreed to any more. Uninstall and the compliance topics are unaffected:
+     they are the ones that still have work to do afterwards. */
+  const ingesting = topic.startsWith('orders/')
+    || topic.startsWith('fulfillments/')
+    || topic === 'refunds/create';
+
+  if (ingesting && !connectionLive) {
+    await finish(`connection not active for ${shop}`);
+    return res.status(200).json({ ok: true, ignored: 'disconnected store' });
   }
 
   try {

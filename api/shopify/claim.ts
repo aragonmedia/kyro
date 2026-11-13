@@ -131,14 +131,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
     if (connError) console.error('[kyro] claim: could not update brand_connections', connError);
 
-    // 2. Billing origin. A brand that did not exist before the install
-    //    discovered KYRO on Shopify and starts on the 30-day fee trial.
+    // 2. Billing origin follows the install, not the signup.
+    //
+    //    This store arrived through the Shopify App Store, so Shopify bills
+    //    KYRO's fee for it: App Store rule 1.2.1. That holds whether the
+    //    merchant signed up during the install or already had a KYRO
+    //    account, and it used to only hold for the first case, which left a
+    //    merchant who installed from the App Store onto an existing account
+    //    being charged by KYRO through Stripe instead.
+    //
+    //    The fee waiver still asks whether the brand is new. A brand six
+    //    months in should not collect a free month by reinstalling.
     const brandCreated = Date.parse(brand.created_at as string);
     const installStarted = Date.parse(pending.created_at as string);
-    if (Number.isFinite(brandCreated) && Number.isFinite(installStarted) && brandCreated >= installStarted - ORIGIN_MARGIN_MS) {
-      const { error: billingError } = await sb.rpc('apply_app_store_billing', { p_brand_id: brandId });
-      if (billingError) console.error('[kyro] claim: could not apply app store billing', billingError);
-    }
+    const isNewBrand = Number.isFinite(brandCreated)
+      && Number.isFinite(installStarted)
+      && brandCreated >= installStarted - ORIGIN_MARGIN_MS;
+    const { error: billingError } = await sb.rpc('apply_app_store_billing', {
+      p_brand_id: brandId,
+      p_with_trial: isNewBrand,
+    });
+    if (billingError) console.error('[kyro] claim: could not apply app store billing', billingError);
 
     // 3. The parked token has a home now.
     await sb.from('shopify_pending_installs').delete().eq('shop', shop);

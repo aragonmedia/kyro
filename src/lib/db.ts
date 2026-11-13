@@ -988,11 +988,15 @@ export async function disconnectProvider(
   const sb = client();
   if (!sb) return ok(false);
   try {
-    const { error } = await sb
-      .from('brand_connections')
-      .update({ status: 'disconnected', disconnected_at: new Date().toISOString() })
-      .eq('brand_id', brandId)
-      .eq('provider', provider);
+    /* Through the RPC rather than a direct update, because disconnecting has
+       to delete the stored token as well, and platform_credentials is
+       RLS-on-with-no-policies: the browser cannot touch it. Migration 0050
+       does both halves in one transaction, so there is no state where the
+       connection is closed and the key is still on file. */
+    const { error } = await sb.rpc('revoke_provider', {
+      p_brand_id: brandId,
+      p_provider: provider,
+    });
     if (error) return fail(false, describeError(error, 'Could not disconnect.'));
     return ok(true);
   } catch (e) {
