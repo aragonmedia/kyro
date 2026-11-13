@@ -83,6 +83,7 @@ import { CampaignSummarySheet } from './components/CampaignSummary';
 import { TeamPanel } from './components/Team';
 import { ContentLibrary } from './components/ContentLibrary';
 import { SampleQueue, SampleShelf } from './components/Samples';
+import { ChoosePlan } from './components/ChoosePlan';
 import { TestingBacklogNote } from './components/TestingBacklogNote';
 import { toCsv, downloadCsv } from './lib/csv';
 import { PaymentMethodSheet, type PayMethod } from './components/PaymentMethod';
@@ -1862,14 +1863,18 @@ function BrandDashboard({
         setConnectOutcome({ provider: 'shopify', ok: false, shop, message: res.error });
         return;
       }
-      setConnectOutcome({ provider: 'shopify', ok: true, shop, message: `${shop} is connected.` });
+      setConnectOutcome({
+        provider: 'shopify',
+        ok: true,
+        shop,
+        message: `${shop} is connected.`,
+        // Offered, not forced. See ChoosePlan for why this stopped being a
+        // redirect.
+        planUrl: res.pricingUrl ?? undefined,
+      });
       void loadGates();
       // Billing origin may have changed, which changes what Finance shows.
       void session.refresh();
-      // Shopify charges for KYRO, so a merchant who has not approved a plan
-      // is sent to Shopify's own pricing page to approve one. Shopify returns
-      // them here afterwards.
-      if (res.pricingUrl) window.location.assign(res.pricingUrl);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveMode, brandId, pendingShop]);
@@ -2090,6 +2095,16 @@ function BrandDashboard({
                 Dismiss
               </button>
             </div>
+          )}
+
+          {/* The plan the store still has to approve, as an offer rather than
+              a redirect out of the app. */}
+          {connectOutcome?.ok && connectOutcome.provider === 'shopify' && connectOutcome.planUrl && (
+            <ChoosePlan
+              shop={connectOutcome.shop}
+              planUrl={connectOutcome.planUrl}
+              onDismiss={() => setConnectOutcome(null)}
+            />
           )}
 
           {/* Coming back from Stripe is the one moment a brand is unsure

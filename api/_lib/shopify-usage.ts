@@ -14,8 +14,16 @@
  * in one place, the merchant's plan, where they can see it.
  */
 
-/** Usage events are not the Admin API. This host and path are their own. */
-const EVENTS_URL = 'https://api.shopify.com/app/unstable/events';
+/**
+ * Usage events are not the Admin API. This host and path are their own.
+ *
+ * Pinned to a dated version rather than `unstable`. `unstable` is Shopify's
+ * working copy: its payload shape can change the day they change it, and the
+ * events endpoint answers 202 and then discards anything it does not like,
+ * without a webhook or an error. A silent change there is a month of fees
+ * nobody notices.
+ */
+const EVENTS_URL = 'https://api.shopify.com/app/2026-10/events';
 
 export const USAGE_METER = 'attributed_sales_usd';
 
@@ -43,6 +51,13 @@ export interface UsageResult {
  * The caller records what was sent either way.
  */
 export async function reportUsage(token: string, event: UsageEvent): Promise<UsageResult> {
+  /* Shopify rejects a zero value, and silently: a 202 comes back and the
+     event is dropped. A rounded-to-nothing sale is not worth a fee anyway,
+     so it never leaves here and the caller is told plainly. */
+  if (!(event.valueUsd > 0)) {
+    return { status: 0, error: 'value must be greater than zero' };
+  }
+
   let res: Response;
   try {
     res = await fetch(EVENTS_URL, {

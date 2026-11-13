@@ -229,6 +229,16 @@ export interface ConnectOutcome {
   ok: boolean;
   shop?: string;
   message: string;
+  /**
+   * Where the merchant approves KYRO's plan, when Shopify reports no approved
+   * subscription for the store.
+   *
+   * Set rather than followed. The install used to redirect straight here, and
+   * a merchant whose pricing page had nothing on it ended up stranded outside
+   * KYRO with nothing to click. Carrying the link back instead lets the app
+   * ask for the plan somewhere it can also say what the plan is for.
+   */
+  planUrl?: string;
 }
 
 /**
@@ -292,8 +302,9 @@ export function takeConnectionOutcome(): ConnectOutcome | null {
 
   const shop = params.get('shop') || undefined;
   const reason = params.get('reason') || '';
+  const planUrl = params.get('planUrl') || undefined;
 
-  consume('shopify', 'shop', 'reason');
+  consume('shopify', 'shop', 'reason', 'planUrl');
   tidyUrl();
 
   if (shopify === 'connected') {
@@ -302,6 +313,10 @@ export function takeConnectionOutcome(): ConnectOutcome | null {
       ok: true,
       shop,
       message: shop ? `${shop} is connected.` : 'Your Shopify store is connected.',
+      /* Only an admin.shopify.com address is honoured. The query string is
+         whatever the browser was handed, so a link the app is about to put a
+         button on has to be one Shopify could have sent. */
+      planUrl: planUrl && /^https:\/\/admin\.shopify\.com\//.test(planUrl) ? planUrl : undefined,
     };
   }
 

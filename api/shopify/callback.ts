@@ -197,23 +197,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 7. Shopify does the charging (rule 1.2.1), and it can only do that once
-    //    the merchant has approved a plan. A store with no approved
-    //    subscription goes straight to Shopify's own pricing page. Everyone
-    //    else goes back into the app.
+    //    the merchant has approved a plan.
+    //
+    //    A store with no approved subscription used to be bounced straight
+    //    out of the install to Shopify's pricing page. That is a trap: when
+    //    the pricing page has nothing on it, which is what an App Store
+    //    reviewer hit, the merchant is left outside KYRO with no way back in
+    //    and nothing to click. So the install now always finishes inside the
+    //    app, and the app asks for the plan where it can also explain it.
     //
     //    Best effort on purpose: failing to read the plan must not cost the
     //    merchant the install they just approved.
+    let planUrl: string | null = null;
     try {
       const plan = await syncPlan(sb, brandId, shop, token.access_token);
-      if (plan && !plan.active && plan.pricingUrl) {
-        res.setHeader('Location', plan.pricingUrl);
-        return res.status(302).end();
-      }
+      if (plan && !plan.active) planUrl = plan.pricingUrl;
     } catch (e) {
       console.error('[kyro] shopify/callback plan step threw', e);
     }
 
-    return back(res, { shopify: 'connected', shop });
+    return back(res, { shopify: 'connected', shop, ...(planUrl ? { planUrl } : {}) });
   } catch (e) {
     console.error('[kyro] shopify/callback failed', e);
     return back(res, { shopify: 'error', reason: 'unexpected' });
