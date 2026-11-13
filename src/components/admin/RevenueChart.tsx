@@ -24,6 +24,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { downloadCsv, toCsv } from '../../lib/csv';
+import { axisMoney, axisTop, nearestIndex, smoothPath } from '../../lib/chart';
 import type { AdminMonth, AdminTotals } from '../../lib/admin';
 import { money, moneyExact, monthLabel, stamp, usd } from './format';
 
@@ -53,67 +54,9 @@ const PLOT_H = H - PAD.top - PAD.bottom;
 /** Four gridlines, including the baseline. */
 const TICKS = 4;
 
-/**
- * An axis a person would say out loud.
- *
- * The step is rounded first and the top falls out of it, rather than the
- * other way round. Rounding the top and then quartering it is what produces
- * an axis reading $0, $1.3K, $2.5K, $3.8K: every intermediate tick is a
- * number nobody would ever choose.
- */
-function axisTop(maxValue: number, ticks: number): number {
-  if (maxValue <= 0) return ticks;
-  const rough = maxValue / ticks;
-  const magnitude = 10 ** Math.floor(Math.log10(rough));
-  const scaled = rough / magnitude;
-  /* 1.5 and 3 are on the ladder because without them a series peaking just
-     over a round number doubles the axis and spends half the panel on empty
-     space above the line. */
-  const step = (scaled <= 1 ? 1
-    : scaled <= 1.5 ? 1.5
-      : scaled <= 2 ? 2
-        : scaled <= 2.5 ? 2.5
-          : scaled <= 3 ? 3
-            : scaled <= 5 ? 5 : 10) * magnitude;
-  return step * ticks;
-}
-
-/** $0, $1.2K, $340K, $1.8M. Compact from a thousand up, as the axis wants. */
-function tick(cents: number): string {
-  const dollars = cents / 100;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(dollars >= 10_000_000 ? 0 : 1)}M`;
-  if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(dollars >= 10_000 ? 0 : 1)}K`;
-  return `$${Math.round(dollars)}`;
-}
-
-/**
- * A smooth path through the points.
- *
- * Catmull-Rom converted to cubic beziers, with every control point clamped
- * inside the range of the two values it sits between. Without the clamp a
- * curve through a spike dips below the months either side of it, and on a
- * money chart that invents a fall that did not happen.
- */
-function smoothPath(points: Array<{ x: number; y: number }>): string {
-  if (points.length === 0) return '';
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-
-  let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const p0 = points[i - 1] ?? points[i];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[i + 2] ?? p2;
-
-    const lo = Math.min(p1.y, p2.y);
-    const hi = Math.max(p1.y, p2.y);
-    const c1y = Math.min(Math.max(p1.y + (p2.y - p0.y) / 6, lo), hi);
-    const c2y = Math.min(Math.max(p2.y - (p3.y - p1.y) / 6, lo), hi);
-
-    d += ` C ${p1.x + (p2.x - p1.x) / 3} ${c1y}, ${p2.x - (p2.x - p1.x) / 3} ${c2y}, ${p2.x} ${p2.y}`;
-  }
-  return d;
-}
+/* The axis ladder, the smoothing and the pointer maths live in lib/chart,
+   shared with the creator earnings chart so the two cannot round or curve
+   differently and stop looking like one product. */
 
 export function RevenueChart({ months, totals }: { months: AdminMonth[]; totals: AdminTotals }) {
   const [measure, setMeasure] = useState<Measure>('sales');
@@ -166,14 +109,8 @@ export function RevenueChart({ months, totals }: { months: AdminMonth[]; totals:
 
   const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const box = frame.current?.getBoundingClientRect();
-    if (!box || points.length === 0) return;
-    // The SVG is scaled, so the pointer has to come back into chart units.
-    const x = ((e.clientX - box.left) / box.width) * W;
-    let nearest = 0;
-    for (let i = 1; i < points.length; i += 1) {
-      if (Math.abs(points[i].x - x) < Math.abs(points[nearest].x - x)) nearest = i;
-    }
-    setHover(nearest);
+    if (!box) return;
+    setHover(nearestIndex(e.clientX, box, W, points));
   };
 
   const exportCsv = () => {
@@ -283,7 +220,7 @@ export function RevenueChart({ months, totals }: { months: AdminMonth[]; totals:
                     textAnchor="end"
                     className="fill-faint text-[11px] tabular-nums"
                   >
-                    {tick(value)}
+                    {axisMoney(value)}
                   </text>
                 </g>
               );

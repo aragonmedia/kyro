@@ -21,10 +21,12 @@ import {
   getSamplePostingRate,
   listSampleRequests,
   requestSample,
+  type OpenCampaign,
   type PostingRate,
   type SampleRequest,
   type SampleStatus,
 } from '../lib/db';
+import { CoverImage } from './MediaTile';
 
 const STATUS: Record<SampleStatus, { label: string; cls: string }> = {
   requested: { label: 'Asked', cls: 'border-warn/30 bg-warn-soft text-warn' },
@@ -131,6 +133,103 @@ export function RequestSample({
           Cancel
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Creator: the shelf of campaigns they can ask from
+   ───────────────────────────────────────────────────────────── */
+
+/**
+ * Asking for product, as a shelf rather than a list of names.
+ *
+ * A creator deciding what to ask for is looking at the product, so the
+ * product image is the row. Names alone made this read as settings, and the
+ * campaigns a creator is on are the one place in the portal where the thing
+ * being sold should be visible.
+ *
+ * It lives behind its own chip beside Active campaigns rather than inside
+ * the upload banner, because uploading is the thing a creator came to do and
+ * a sample form sitting under it is a queue-jumper.
+ */
+export function SampleShelf({
+  campaigns,
+  creatorId,
+  requests,
+  onDone,
+}: {
+  campaigns: OpenCampaign[];
+  creatorId: string;
+  requests: SampleRequest[];
+  onDone: () => void;
+}) {
+  if (campaigns.length === 0) {
+    return (
+      <div className="bg-surface border border-line rounded-2xl p-10 text-center">
+        <Package size={28} className="mx-auto text-faint mb-3" />
+        <p className="text-sm text-muted">No campaigns to ask from yet.</p>
+        <p className="text-xs text-faint mt-1">
+          Once a brand accepts you onto a campaign, you can ask them for product here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid md:grid-cols-2 gap-4">
+        {campaigns.map((c) => {
+          const existing = requests.find((r) => r.campaignId === c.id) ?? null;
+          return (
+            <div key={c.id} className="bg-surface border border-line rounded-2xl overflow-hidden">
+              <div className="flex items-center gap-3 p-4 border-b border-line">
+                <div className="w-14 h-14 rounded-xl overflow-hidden border border-line flex-shrink-0">
+                  <CoverImage src={c.coverUrl} name={c.brandName} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-heading truncate">{c.name}</p>
+                  <p className="text-xs text-muted truncate">{c.brandName}</p>
+                </div>
+              </div>
+
+              {/* Products the brand listed, so the name in the form is one a
+                  warehouse can act on rather than a guess. */}
+              {c.products.length > 0 && (
+                <div className="px-4 pt-3 flex flex-wrap gap-1.5">
+                  {c.products.slice(0, 4).map((p) => (
+                    <span
+                      key={p.name}
+                      className="px-2 py-0.5 rounded-full border border-line bg-surface-2 text-[11px] text-muted truncate max-w-[11rem]"
+                    >
+                      {p.name}
+                    </span>
+                  ))}
+                  {c.products.length > 4 && (
+                    <span className="text-[11px] text-faint self-center">
+                      +{c.products.length - 4} more
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="p-4">
+                <RequestSample
+                  campaignId={c.id}
+                  campaignName={c.name}
+                  creatorId={creatorId}
+                  existing={existing}
+                  onDone={onDone}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-xs text-faint">
+        The brand ships it themselves. KYRO records what you asked for, what they said, and when it went out.
+      </p>
     </div>
   );
 }

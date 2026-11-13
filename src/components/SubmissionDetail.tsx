@@ -15,12 +15,16 @@ import { MessagesSquare, X, RefreshCw } from 'lucide-react';
 import { getSubmissionDetail, type MySubmission, type SubmissionDetail } from '../lib/db';
 import { VideoPerformance } from './VideoPerformance';
 import { VideoTile } from './MediaTile';
+import { signedVideoUrl } from '../lib/storage';
 
 const money = (cents: number) =>
   (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+/** Seeded submissions point at a path with nothing stored behind it. */
+const isPlaceholder = (path: string | null) => !path || path.startsWith('demo/');
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -42,6 +46,8 @@ export function SubmissionDetailModal({
   onMessage: () => void;
 }) {
   const [data, setData] = useState<SubmissionDetail | null>(null);
+  const [src, setSrc] = useState<string | null>(null);
+  const [loadingVideo, setLoadingVideo] = useState(!isPlaceholder(sub.videoUrl));
 
   useEffect(() => {
     let alive = true;
@@ -53,6 +59,24 @@ export function SubmissionDetailModal({
       alive = false;
     };
   }, [sub.id]);
+
+  /* A creator could see a frame of their own video but not play it, which is
+     an odd thing for the place they came to check their own work. The bucket
+     is private, so playback is a short-lived signed link rather than a public
+     URL: the same path the brand's library uses, and the storage policy only
+     mints one for the creator who made it. */
+  useEffect(() => {
+    if (isPlaceholder(sub.videoUrl)) { setSrc(null); setLoadingVideo(false); return; }
+    let alive = true;
+    setLoadingVideo(true);
+    void (async () => {
+      const url = await signedVideoUrl(sub.videoUrl as string);
+      if (!alive) return;
+      setSrc(url);
+      setLoadingVideo(false);
+    })();
+    return () => { alive = false; };
+  }, [sub.videoUrl]);
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => {
@@ -78,13 +102,36 @@ export function SubmissionDetailModal({
         className="bg-surface border border-line rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="relative aspect-video">
-          <VideoTile
-          name={sub.campaignName}
-          label={sub.brandName}
-          src={sub.thumbnailUrl ?? sub.coverUrl}
-          showPlay={!sub.thumbnailUrl}
-        />
+        {/* The footage is 9:16, so the frame is. A landscape box around
+            vertical video either crops it or pads it with black, and both
+            read as the video being the wrong shape. Capped by height rather
+            than width so a tall frame cannot push the numbers off screen. */}
+        <div className="relative bg-black">
+          <div className="relative mx-auto h-[52vh] max-h-[560px] aspect-[9/16]">
+            {src ? (
+              <video
+                src={src}
+                poster={sub.thumbnailUrl ?? sub.coverUrl ?? undefined}
+                controls
+                playsInline
+                className="w-full h-full object-contain bg-black"
+              />
+            ) : (
+              <>
+                <VideoTile
+                  name={sub.campaignName}
+                  label={sub.brandName}
+                  src={sub.thumbnailUrl ?? sub.coverUrl}
+                  showPlay={!loadingVideo && !sub.thumbnailUrl}
+                />
+                {loadingVideo && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <RefreshCw size={18} className="animate-spin text-white/80" />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -121,6 +168,14 @@ export function SubmissionDetailModal({
                 {sub.brandNote || 'The brand did not leave a note.'}
               </p>
             </div>
+          )}
+
+          {!loadingVideo && !src && (
+            <p className="text-xs text-faint leading-relaxed">
+              {isPlaceholder(sub.videoUrl)
+                ? 'Demo video: there is no file stored for this one, so it cannot be played. Real uploads play here.'
+                : 'Could not load this video. It may still be processing.'}
+            </p>
           )}
 
           {/* A note you cannot answer is a verdict, not feedback. */}

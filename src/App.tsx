@@ -82,7 +82,7 @@ import { MetaAdAccountPicker, MetaConnectButton } from './components/MetaConnect
 import { CampaignSummarySheet } from './components/CampaignSummary';
 import { TeamPanel } from './components/Team';
 import { ContentLibrary } from './components/ContentLibrary';
-import { RequestSample, SampleQueue } from './components/Samples';
+import { SampleQueue, SampleShelf } from './components/Samples';
 import { TestingBacklogNote } from './components/TestingBacklogNote';
 import { toCsv, downloadCsv } from './lib/csv';
 import { PaymentMethodSheet, type PayMethod } from './components/PaymentMethod';
@@ -2961,7 +2961,7 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
   const [accepted, setAccepted] = useState<OpenCampaign[]>([]);
   const [samples, setSamples] = useState<SampleRequest[]>([]);
   const [tab, setTab] = useState<'submissions' | 'analytics' | 'browse' | 'chat' | 'payouts'>('submissions');
-  const [section, setSection] = useState<'uploaded' | 'in_use' | 'not_used' | 'campaigns'>('in_use');
+  const [section, setSection] = useState<'uploaded' | 'in_use' | 'not_used' | 'campaigns' | 'samples'>('in_use');
   const [chatThreadId, setChatThreadId] = useState<string | null>(null);
   const unread = useUnreadTotal();
 
@@ -3008,11 +3008,16 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
     a.usage === b.usage ? 0 : a.usage === 'awaiting' ? -1 : b.usage === 'awaiting' ? 1 : 0
   );
 
+  /* Samples a brand still has to act on. A settled one is history, and a
+     count that includes it never goes back down. */
+  const openSamples = samples.filter((s) => s.status === 'requested' || s.status === 'approved');
+
   const SECTIONS = [
     { id: 'uploaded' as const, label: 'Uploaded', count: mine.length },
     { id: 'not_used' as const, label: 'Not used', count: notUsed.length },
     { id: 'in_use' as const, label: 'In use', count: inUse.length },
     { id: 'campaigns' as const, label: 'Active campaigns', count: accepted.length },
+    { id: 'samples' as const, label: 'Samples', count: openSamples.length },
   ];
 
   const shown = section === 'uploaded' ? uploaded : section === 'in_use' ? inUse : section === 'not_used' ? notUsed : [];
@@ -3091,28 +3096,6 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
                   <Upload size={16} /> Upload a video
                 </button>
               </div>
-
-              {/* Asking for product belongs beside the campaigns it is for,
-                  not behind a tab of its own. */}
-              {creatorId && (
-                <div className="border-t border-line pt-4 space-y-3">
-                  {accepted.map((c) => (
-                    <div key={c.id} className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-heading truncate">{c.name}</p>
-                        <p className="text-xs text-faint truncate">{c.brandName}</p>
-                      </div>
-                      <RequestSample
-                        campaignId={c.id}
-                        campaignName={c.name}
-                        creatorId={creatorId}
-                        existing={samples.find((s) => s.campaignId === c.id) ?? null}
-                        onDone={loadSamples}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
 
@@ -3134,7 +3117,7 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
                 </span>
               </button>
             ))}
-            {awaiting.length > 0 && section !== 'campaigns' && section !== 'uploaded' && (
+            {awaiting.length > 0 && section !== 'campaigns' && section !== 'samples' && section !== 'uploaded' && (
               <button type="button" onClick={() => setSection('uploaded')} className="text-xs text-faint hover:text-heading ml-1 underline-offset-2 hover:underline">
                 {plural(awaiting.length, 'video')} still with the brand
               </button>
@@ -3150,8 +3133,20 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
                 if (res.data) { setChatThreadId(res.data); setTab('chat'); }
               }}
             />
+          ) : section === 'samples' ? (
+            creatorId && (
+              <SampleShelf
+                campaigns={accepted}
+                creatorId={creatorId}
+                requests={samples}
+                onDone={loadSamples}
+              />
+            )
           ) : (
             <>
+              {/* The whole body of work, counted, above the grid of it. */}
+              {section === 'uploaded' && <LibrarySummary subs={mine} />}
+
               {/* Portrait tiles: the video is 9:16, so the card should be too.
                   A landscape frame around vertical footage reads as the wrong
                   medium before a creator has read a word. */}
@@ -3236,6 +3231,57 @@ function CreatorDashboard({ onViewOrders }: { onViewOrders: () => void }) {
           onSubmitted={() => void loadMine()}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Everything a creator has ever made, counted.
+ *
+ * The grid below it is the library; this is the shelf label. A creator who
+ * has been on KYRO a few months scrolls past forty tiles without ever
+ * learning how many there are, how many brands they have worked with, or
+ * what share of their work got run.
+ *
+ * Four counts, no money. Earnings have two homes already, the card at the
+ * top of this page and the Stats tab, and a third figure derived a third way
+ * is a third number that can disagree with the other two.
+ */
+function LibrarySummary({ subs }: { subs: MySubmission[] }) {
+  if (subs.length === 0) return null;
+
+  const inUse = subs.filter((s) => s.usage === 'in_use').length;
+  const decided = inUse + subs.filter((s) => s.usage === 'not_used').length;
+  const brands = new Set(subs.map((s) => s.brandName)).size;
+  const first = subs.reduce(
+    (earliest, s) => (s.submittedAt < earliest ? s.submittedAt : earliest),
+    subs[0].submittedAt
+  );
+
+  const cells = [
+    { label: 'Videos made', value: String(subs.length) },
+    { label: brands === 1 ? 'Brand worked with' : 'Brands worked with', value: String(brands) },
+    { label: 'Running now', value: String(inUse) },
+    {
+      label: 'Used by brands',
+      value: decided === 0 ? 'Pending' : `${Math.round((inUse / decided) * 100)}%`,
+    },
+  ];
+
+  return (
+    <div className="bg-surface border border-line rounded-2xl p-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {cells.map((c) => (
+          <div key={c.label}>
+            <p className="text-xs text-muted">{c.label}</p>
+            <p className="text-2xl font-bold text-heading tabular-nums mt-0.5">{c.value}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-faint mt-4">
+        Everything you have sent through KYRO, since{' '}
+        {new Date(first).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.
+      </p>
     </div>
   );
 }

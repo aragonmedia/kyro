@@ -20,7 +20,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowLeft, ChevronRight, RefreshCw, Video } from 'lucide-react';
+import { Activity, ArrowLeft, ChevronRight, RefreshCw, Search, Video, X } from 'lucide-react';
 import {
   listCreatorOrders,
   listVideoPerformance,
@@ -29,6 +29,7 @@ import {
   type VideoDayFor,
 } from '../lib/db';
 import { VideoPerformance } from './VideoPerformance';
+import { CreatorEarningsChart, type EarningDay } from './CreatorEarningsChart';
 import { CoverImage } from './MediaTile';
 
 const WINDOWS = [
@@ -150,6 +151,10 @@ export function CreatorAnalytics({
 }) {
   const [windowDays, setWindowDays] = useState<number>(30);
   const [campaignId, setCampaignId] = useState<string>(ALL);
+  /* Search narrows by campaign or brand name. Once a creator is on a dozen
+     campaigns the chip row is a wall, and scanning it is slower than typing
+     three letters of the brand. */
+  const [query, setQuery] = useState('');
   const [orders, setOrders] = useState<CreatorOrderRow[] | null>(null);
   const [perf, setPerf] = useState<VideoDayFor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -195,12 +200,36 @@ export function CreatorAnalytics({
     return [...seen.values()];
   }, [submissions]);
 
+  const needle = query.trim().toLowerCase();
+
+  const matching = useMemo(
+    () =>
+      needle === ''
+        ? campaigns
+        : campaigns.filter(
+            (c) =>
+              c.name.toLowerCase().includes(needle) || c.brandName.toLowerCase().includes(needle)
+          ),
+    [campaigns, needle]
+  );
+
+  /* One place decides which campaigns are in scope, so the chips, the chart,
+     the performance tiles and the table can never disagree about what the
+     creator is currently looking at. Null means all of them. */
+  const scope = useMemo<Set<string> | null>(() => {
+    if (campaignId !== ALL) return new Set([campaignId]);
+    if (needle === '') return null;
+    return new Set(matching.map((c) => c.id));
+  }, [campaignId, needle, matching]);
+
+  const inScope = useCallback((id: string) => scope === null || scope.has(id), [scope]);
+
   const windowSubs = useMemo(
     () => submissions.filter((s) => {
-      if (campaignId !== ALL && s.campaignId !== campaignId) return false;
+      if (!inScope(s.campaignId)) return false;
       return new Date(s.submittedAt).getTime() >= since;
     }),
-    [submissions, campaignId, since]
+    [submissions, inScope, since]
   );
 
   const counts = useMemo(() => {
@@ -246,14 +275,14 @@ export function CreatorAnalytics({
       if (o.state === 'reversed') continue;
       const id = idByName.get(`${o.brandName}::${o.campaignName}`);
       if (!id) continue;
-      if (campaignId !== ALL && id !== campaignId) continue;
+      if (!inScope(id)) continue;
       const row = ensure(id, o.campaignName, o.brandName);
       row.orders += 1;
       row.earnedCents += o.commissionCents;
     }
 
     return [...stats.values()].sort((a, b) => b.earnedCents - a.earnedCents);
-  }, [windowSubs, orders, campaigns, campaignId, since]);
+  }, [windowSubs, orders, campaigns, inScope, since]);
 
   const windowEarned = byCampaign.reduce((s, c) => s + c.earnedCents, 0);
   const windowOrders = byCampaign.reduce((s, c) => s + c.orders, 0);
@@ -265,10 +294,42 @@ export function CreatorAnalytics({
     const campaignOf = new Map(submissions.map((s) => [s.id, s.campaignId]));
     return perf.filter((d) => {
       if (new Date(`${d.day}T00:00:00Z`).getTime() < since) return false;
-      if (campaignId === ALL) return true;
-      return campaignOf.get(d.submissionId) === campaignId;
+      const campaign = campaignOf.get(d.submissionId);
+      return campaign !== undefined && inScope(campaign);
     });
-  }, [perf, since, campaignId, submissions]);
+  }, [perf, since, inScope, submissions]);
+
+  /**
+   * One bucket per day of the window, including the empty ones.
+   *
+   * Plotting only the days that had an order compresses the gaps and draws a
+   * line that climbs steadily through a fortnight of silence, which is the
+   * opposite of what happened.
+   */
+  const earningDays = useMemo<EarningDay[]>(() => {
+    const buckets = new Map<string, EarningDay>();
+    for (let i = 0; i < windowDays; i += 1) {
+      const d = new Date(since);
+      d.setUTCDate(d.getUTCDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      buckets.set(key, { day: key, earnedCents: 0, orders: 0 });
+    }
+
+    const idByName = new Map(campaigns.map((c) => [`${c.brandName}::${c.name}`, c.id]));
+    for (const o of orders ?? []) {
+      const placed = new Date(o.placedAt);
+      if (placed.getTime() < since) continue;
+      if (o.state === 'reversed') continue;
+      const id = idByName.get(`${o.brandName}::${o.campaignName}`);
+      if (!id || !inScope(id)) continue;
+      const bucket = buckets.get(placed.toISOString().slice(0, 10));
+      if (!bucket) continue;
+      bucket.orders += 1;
+      bucket.earnedCents += o.commissionCents;
+    }
+
+    return [...buckets.values()];
+  }, [orders, campaigns, inScope, since, windowDays]);
 
   const totals = useMemo(() => sumDays(perfInWindow), [perfInWindow]);
 
@@ -290,7 +351,8 @@ export function CreatorAnalytics({
 
   return (
     <div className="space-y-6">
-      {/* Filters in one row above everything they filter. */}
+      {/* Window, search and refresh on one row; the campaign chips get their
+          own below, since that is the row that grows. */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 p-1 bg-surface border border-line rounded-lg">
           {WINDOWS.map((w) => (
@@ -307,33 +369,27 @@ export function CreatorAnalytics({
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setCampaignId(ALL)}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition ${
-              campaignId === ALL
-                ? 'border-transparent bg-gradient-kyro text-white'
-                : 'border-line bg-surface text-muted hover:text-heading'
-            }`}
-          >
-            All campaigns
-          </button>
-          {campaigns.map((c) => (
+        {/* Search sits with the window strip rather than above the chips,
+            because it does the same job they do: narrowing what is in view. */}
+        <div className="relative flex-1 min-w-[12rem] max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
+          <input
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setCampaignId(ALL); setOpenCampaign(null); }}
+            placeholder="Search campaign or brand"
+            aria-label="Search campaign or brand"
+            className="w-full pl-9 pr-8 py-2 bg-surface border border-line rounded-lg text-xs text-heading placeholder-faint focus:outline-none focus:border-purple-500"
+          />
+          {query !== '' && (
             <button
-              key={c.id}
               type="button"
-              onClick={() => setCampaignId(c.id)}
-              title={`${c.name} · ${c.brandName}`}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition max-w-[12rem] truncate ${
-                campaignId === c.id
-                  ? 'border-transparent bg-gradient-kyro text-white'
-                  : 'border-line bg-surface text-muted hover:text-heading'
-              }`}
+              onClick={() => setQuery('')}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-faint hover:text-heading"
             >
-              {c.name}
+              <X size={14} />
             </button>
-          ))}
+          )}
         </div>
 
         <button
@@ -345,6 +401,43 @@ export function CreatorAnalytics({
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
         </button>
       </div>
+
+      {/* Campaign chips on their own line, so a creator on a dozen campaigns
+          does not push the window strip and the search box off the row. */}
+      <div className="flex flex-wrap items-center gap-1.5 -mt-3">
+        <button
+          type="button"
+          onClick={() => setCampaignId(ALL)}
+          className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition ${
+            campaignId === ALL
+              ? 'border-transparent bg-gradient-kyro text-white'
+              : 'border-line bg-surface text-muted hover:text-heading'
+          }`}
+        >
+          All campaigns
+        </button>
+        {matching.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => setCampaignId(c.id)}
+            title={`${c.name} · ${c.brandName}`}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition max-w-[12rem] truncate ${
+              campaignId === c.id
+                ? 'border-transparent bg-gradient-kyro text-white'
+                : 'border-line bg-surface text-muted hover:text-heading'
+            }`}
+          >
+            {c.name}
+          </button>
+        ))}
+        {needle !== '' && matching.length === 0 && (
+          <span className="text-xs text-faint">No campaign matches that.</span>
+        )}
+      </div>
+
+      {/* The money, over time, before anything that explains it. */}
+      <CreatorEarningsChart days={earningDays} windowDays={windowDays} />
 
       {error && (
         <div className="p-3 rounded-lg border border-bad/30 bg-bad-soft">
